@@ -1,0 +1,39 @@
+# Build output
+build/
+build_fresh/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+*.dll
+cmake-build*/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.sln
+*.vcxproj*
+*.suo
+*.user
+*.swp
+
+# External (not needed for build)
+external/*.tar.gz
+external/*.zip
+external/*.tar
+
+# Session files
+*.pjs
+
+# Config with secrets
+config.toml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
