@@ -1,5 +1,3 @@
-static constexpr const char* COMPACTION_MODEL = "deepseek-chat";
-
 #include "agent.h"
 #include "prompts.h"
 
@@ -299,13 +297,13 @@ bool Agent::compactSession() {
         return false;
     }
 
-    // Send synchronous summarize request (use cheap model)
+    // Send synchronous summarize request (use same model for context compatibility)
     ChatRequest req;
-    req.model = COMPACTION_MODEL;  // cheaper model for compaction
+    req.model = model_;  // use same model to ensure context window compatibility
     req.messages.push_back(Message::System(loadCompactionPrompt()));
     req.messages.push_back(Message::User(input));
     req.stream = false;
-    req.maxTokens = 2048;
+    req.maxTokens = configMaxTokens;
     req.temperature = 0.0;
 
     std::string error;
