@@ -355,8 +355,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow) {
                         (long long)renderTime.count(),
                         (long long)gpuTime.count());
             }
-#endif
             lastAgentState = curAgentState;
+#endif
         }
         catch (const std::exception& e) {
 #ifndef PROJV_RELEASE
