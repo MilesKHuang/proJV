@@ -250,16 +250,45 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow) {
     io.IniFilename = nullptr; // no .ini file
 
     // Font -- load CJK-capable system font for Chinese/ASCII mixed content
+    // Resolve font path relative to the executable directory (not CWD)
+    char fontPath[MAX_PATH] = {};
+    GetModuleFileNameA(nullptr, fontPath, MAX_PATH);
+    std::filesystem::path exeDir = std::filesystem::path(fontPath).parent_path();
+    std::string fontFullPath = (exeDir / "assets/msyh.ttc").string();
+
     ImFontConfig fontCfg;
     fontCfg.SizePixels = 17.0f;
-    // Try bundled font first, fall back to system font
-    if (!io.Fonts->AddFontFromFileTTF(
-            "assets/msyh.ttc", 17.0f, &fontCfg,
+    // Try bundled font first
+    if (std::filesystem::exists(fontFullPath) &&
+        io.Fonts->AddFontFromFileTTF(
+            fontFullPath.c_str(), 17.0f, &fontCfg,
             io.Fonts->GetGlyphRangesChineseSimplifiedCommon()))
     {
-        // Fallback if Microsoft YaHei is not available
-        fontCfg.SizePixels = 16.0f;
-        io.Fonts->AddFontDefault(&fontCfg);
+#ifndef PROJV_RELEASE
+        LOG_F(INFO, "Loaded font: %s", fontFullPath.c_str());
+#endif
+    }
+    else
+    {
+        // Fallback: try finding msyh.ttc in system font directory
+        std::string sysFontPath = "C:\\Windows\\Fonts\\msyh.ttc";
+        if (std::filesystem::exists(sysFontPath) &&
+            io.Fonts->AddFontFromFileTTF(
+                sysFontPath.c_str(), 17.0f, &fontCfg,
+                io.Fonts->GetGlyphRangesChineseSimplifiedCommon()))
+        {
+#ifndef PROJV_RELEASE
+            LOG_F(INFO, "Loaded system font: %s", sysFontPath.c_str());
+#endif
+        }
+        else
+        {
+            fontCfg.SizePixels = 16.0f;
+            io.Fonts->AddFontDefault(&fontCfg);
+#ifndef PROJV_RELEASE
+            LOG_F(WARNING, "No CJK font found, using default");
+#endif
+        }
     }
 
     // Setup style

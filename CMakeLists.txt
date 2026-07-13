@@ -137,3 +137,11 @@ target_sources(proJV PRIVATE
     ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
 )
 target_include_directories(proJV PRIVATE ${IMGUI_DIR}/backends)
+
+# ── Copy assets to build directory ──
+add_custom_command(TARGET proJV POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:proJV>/assets"
+    COMMENT "Copying assets to build output"
+)
