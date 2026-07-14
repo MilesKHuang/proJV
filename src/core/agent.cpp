@@ -441,14 +441,44 @@ bool Agent::hasDestructiveCommand(const ToolCall& call) const {
     try { cmd = nlohmann::json::parse(call.arguments).value("command",""); } catch (...) { return false; }
     std::string lo = cmd; for (auto& c : lo) c = (char)tolower((unsigned char)c);
     struct K { const char* w; bool tb; };
-    const K kw[] = {{"del ",1},{"del\t",1},{"del\"",1},{"del/",1},
-                    {"erase ",1},{"erase\t",1},
-                    {"rm ",1},{"rm\t",1},{"rm\"",1},{"rm/",1},
-                    {"rmdir ",1},{"rmdir\t",1},
-                    {"rd ",1},{"rd\t",1},{"rd\"",1},{"rd/",1},
-                    {"format ",1},
-                    {"remove-item ",1},{"diskpart",0},{"taskkill",0},{"shutdown",0}};
-    for (auto& k : kw) { size_t p = lo.find(k.w); while (p != std::string::npos) { bool ok = true; if (k.tb && p > 0) { char prev = lo[p-1]; ok = (prev==' '||prev=='\t'||prev=='\r'||prev=='\n'); } if (ok) return true; p = lo.find(k.w, p+1); } }
+    const K kw[] = {
+        // "del" variants (CMD: del, PowerShell alias for Remove-Item)
+        {"del ",1},{"del\t",1},{"del\"",1},{"del/",1},
+        {"del;",1},{"del|",1},{"del>",1},{"del)",1},{"del&",1},
+        // "erase" (CMD synonym for del)
+        {"erase ",1},{"erase\t",1},
+        // "rm" variants (Unix / PowerShell Remove-Item alias)
+        {"rm ",1},{"rm\t",1},{"rm\"",1},{"rm/",1},
+        {"rm;",1},{"rm|",1},{"rm>",1},{"rm)",1},{"rm&",1},
+        // "rmdir" (CMD / PowerShell)
+        {"rmdir ",1},{"rmdir\t",1},
+        // "rd" variants (CMD remove directory)
+        {"rd ",1},{"rd\t",1},{"rd\"",1},{"rd/",1},
+        {"rd;",1},{"rd|",1},{"rd>",1},{"rd)",1},
+        // "remove-item" variants (PowerShell)
+        {"remove-item ",1},{"remove-item;",1},{"remove-item|",1},
+        {"remove-item>",1},{"remove-item)",1},{"remove-item&",1},
+        // "ri" (PowerShell shorthand for Remove-Item — requires token boundary)
+        {"ri ",1},{"ri;",1},{"ri|",1},{"ri>",1},
+        // destructive commands (no boundary check)
+        {"format ",1},{"diskpart",0},{"taskkill",0},{"shutdown",0}
+    };
+    for (auto& k : kw) {
+        size_t p = lo.find(k.w);
+        while (p != std::string::npos) {
+            bool ok = true;
+            if (k.tb && p > 0) {
+                char prev = lo[p-1];
+                // Previous char must be a token boundary:
+                // whitespace, quotes, shell operators (; | > ) &), or '='.
+                ok = (prev==' '||prev=='\t'||prev=='\r'||prev=='\n'
+                   ||prev=='"'||prev=='\''||prev==';'||prev=='|'
+                   ||prev=='>'||prev==')'||prev=='&'||prev=='=');
+            }
+            if (ok) return true;
+            p = lo.find(k.w, p+1);
+        }
+    }
     return false;
 }
 
