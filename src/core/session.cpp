@@ -292,8 +292,10 @@ size_t Session::messageCount() const {
 }
 
 void Session::loadMessages(std::vector<Message>&& msgs) {
-    std::lock_guard<std::mutex> lock(mtx);
-    messages = std::move(msgs);
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        messages = std::move(msgs);
+    }  // release lock: repairOrphanedToolCalls() acquires mtx itself
     // Auto-repair: fix orphaned tool pairs after loading (prevents HTTP 400
     // from stale stored sessions where tool_call/tool_result pairs got
     // misaligned during a crash or interrupted write).
