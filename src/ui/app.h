@@ -36,6 +36,11 @@ public:
     // Dialog management
     void newChat();
 
+    // Agent worker thread management
+    void launchAgentThread();
+    void joinAgentThread();
+    void checkAgentThread();
+
 private:
     AppConfig config;
     DeepSeekClient client;
@@ -109,6 +114,10 @@ private:
 
     // Handle save/load flags from agent
     void checkAgentFlags();
+
+    // Agent worker thread (spawned per turn)
+    std::thread agentThread_;
+    std::atomic<bool> agentThreadRunning_{false};
 
     // TODO panel
     bool showTodoPanel = true;

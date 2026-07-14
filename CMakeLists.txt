@@ -28,7 +28,6 @@ set(COMMON_SOURCES
     ${SRC_DIR}/client/models.cpp
     ${SRC_DIR}/client/deepseek.cpp
     ${SRC_DIR}/core/config.cpp
-    ${SRC_DIR}/core/tool_worker.cpp
     ${SRC_DIR}/core/agent.cpp
     ${SRC_DIR}/core/session.cpp
     ${SRC_DIR}/tools/registry.cpp
@@ -54,7 +53,6 @@ set(HEADERS
     ${SRC_DIR}/client/deepseek.h
     ${SRC_DIR}/core/config.h
     ${SRC_DIR}/core/agent.h
-    ${SRC_DIR}/core/tool_worker.h
     ${SRC_DIR}/core/session.h
     ${SRC_DIR}/core/storage.h
     ${SRC_DIR}/core/storage_queue.h

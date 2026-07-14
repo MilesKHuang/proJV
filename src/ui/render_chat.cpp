@@ -1,4 +1,4 @@
-#define IMGUI_DEFINE_MATH_OPERATORS
+﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "render_chat.h"
 #include "tools/registry.h"
@@ -15,7 +15,7 @@
 #include <exception>
 #include <stdexcept>
 
-// --- Spinner helper (animated processing indicator) — Item 10.1 ------------
+// --- Spinner helper (animated processing indicator)  -- ?Item 10.1 ------------
 // Draws a rotating arc at current cursor position. Advances ImGui cursor.
 static void renderSpinner(float radius, float thickness, const ImVec4& color) {
     auto drawList = ImGui::GetWindowDrawList();
@@ -209,7 +209,7 @@ void RenderCopyButton(const char* label, const char* text) {
 }
 
 // --- Helper: format a tool message for display ----------------------------
-// Converts Message (role=="tool" or with toolCalls) → (ChatBubble role, content)
+// Converts Message (role=="tool" or with toolCalls)  -> ?(ChatBubble role, content)
 static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
     if (!msg.toolCalls.empty()) {
         // Compact per-tool display: one line per tool with key arg only
@@ -240,7 +240,7 @@ static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
         }
         return {"tool_call", d};
     }
-    // role == "tool" — compact summary with optional detail toggle
+    // role == "tool"  -- ?compact summary with optional detail toggle
     {
         std::string d;
         // Compute a brief summary line
@@ -258,7 +258,7 @@ static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
         // Append first line of content for "done X" feel
         std::string firstLine = msg.content.substr(0, msg.content.find('\n'));
         if (firstLine.size() > 80) firstLine = firstLine.substr(0, 77) + "...";
-        if (!firstLine.empty()) d += " — " + firstLine;
+        if (!firstLine.empty()) d += "  -- ?" + firstLine;
         return {"tool_result", d};
     }
 }
@@ -288,7 +288,7 @@ void App::deriveBubblesFromMessage(const Message& msg) {
         return;
     }
 
-    // Tool messages: assistant with tool_calls → tool_call, role=="tool" → tool_result
+    // Tool messages: assistant with tool_calls  -> ?tool_call, role=="tool"  -> ?tool_result
     if (!msg.toolCalls.empty() || msg.role == "tool") {
         auto [role, display] = formatToolMsg(msg);
 
@@ -300,7 +300,7 @@ void App::deriveBubblesFromMessage(const Message& msg) {
             thinkBubble.role = "assistant";
             thinkBubble.hasReasoning = true;
             thinkBubble.reasoningText = msg.reasoningContent;
-            thinkBubble.content.clear();  // no body text — tools come next
+            thinkBubble.content.clear();  // no body text  -- ?tools come next
             chatHistory.push_back(thinkBubble);
         }
 
@@ -348,7 +348,7 @@ void App::buildBubblesFromMessages() {
     lastMessageId_ = 0;
 
     // Read from DB (via getNewMessagesSince), not session.
-    // This keeps the data boundary: UI → DB, session is Agent-internal.
+    // This keeps the data boundary: UI  -> ?DB, session is Agent-internal.
     auto msgs = agent->getNewMessagesSince(0);
     for (const auto& msg : msgs) {
         deriveBubblesFromMessage(msg);
@@ -362,16 +362,16 @@ void App::buildBubblesFromMessages() {
 
 // --- App::syncChatFromAgent -----------------------------------------------
 // Pure DB-driven incremental sync.  Reads new messages from SQLite and
-// derives ChatBubbles.  Single source of truth — no streaming overlay,
+// derives ChatBubbles.  Single source of truth  -- ?no streaming overlay,
 // no dedup.  Status bar (agent->getStatus()) provides real-time feedback.
 void App::syncChatFromAgent() {
     if (!agent) return;
     auto status = agent->getStatus();
     bool wroteNew = false;
 
-    // Sync new DB messages → chatHistory.
+    // Sync new DB messages  -> ?chatHistory.
     // Single source of truth: agent->getNewMessagesSince() reads from DB.
-    // No live streaming bubble — the status bar provides real-time feedback.
+    // No live streaming bubble  -- ?the status bar provides real-time feedback.
     auto newMsgs = agent->getNewMessagesSince(lastMessageId_);
     if (!newMsgs.empty()) debugLogf("[Bubble] syncChat: %zu new msgs, lastMsgId=%lld",
         newMsgs.size(), (long long)lastMessageId_);
@@ -391,7 +391,7 @@ void App::syncChatFromAgent() {
     }
 
     // Cap visible bubbles at 200 to bound rendering cost.
-    // Full history is still in DB — start a new chat if you need fresh context.
+    // Full history is still in DB  -- ?start a new chat if you need fresh context.
     constexpr size_t kMaxBubbles = 200;
     if (chatHistory.size() > kMaxBubbles) {
         size_t excess = chatHistory.size() - kMaxBubbles;
@@ -424,7 +424,7 @@ void App::renderChatArea() {
     if (skipCount > 0) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         ImGui::TextWrapped(
-            "[ Showing last %d of %d messages — older history hidden ]",
+            "[ Showing last %d of %d messages  -- ?older history hidden ]",
             kMaxVisibleBubbles, totalBubbles);
         ImGui::PopStyleColor();
         ImGui::Separator();
@@ -597,7 +597,7 @@ void App::renderChatArea() {
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availWidth - bubbleWidth));
             }
 
-            // 10.5: Compacted context marker — special yellow/warning styling
+            // 10.5: Compacted context marker  -- ?special yellow/warning styling
             bool isCompacted = (bubble.role == "system" &&
                 bubble.content.find("[Context compacted:") != std::string::npos);
             if (isCompacted)
@@ -800,14 +800,15 @@ void App::renderInputArea() {
                 inputBuf[0] = '\0';
             } else {
                 inputBuf[0] = '\0';
-                agent->sendMessage(text);
+                agent->startTurn(text);
+                launchAgentThread();
             }
         }
     }
 
     ImGui::SameLine();
     if (isWaiting) {
-        ImGui::EndDisabled();  // pop outer app-level disable → Cancel stays active
+        ImGui::EndDisabled();  // pop outer app-level disable  -> ?Cancel stays active
         if (ImGui::Button("Cancel", ImVec2(buttonWidth, btnHeight))) {
             if (agent) agent->cancel();
         }
@@ -836,7 +837,8 @@ void App::renderInputArea() {
                     inputBuf[0] = '\0';
                 } else {
                     inputBuf[0] = '\0';
-                    agent->sendMessage(text);
+                    agent->startTurn(text);
+                    launchAgentThread();
                 }
             }
         }
@@ -845,3 +847,4 @@ void App::renderInputArea() {
 
     ImGui::EndChild();  // InputFill
 }
+

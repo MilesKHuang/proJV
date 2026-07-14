@@ -166,11 +166,16 @@ static std::string buildProjectContext(const std::string& workspacePath) {
 
 App::App() {}
 App::~App() {
-    // 1. Stop write queue first -- flushes all pending writes
+    // 1. Cancel agent and join worker thread
+    if (agent) {
+        agent->cancel();
+        joinAgentThread();
+    }
+    // 2. Stop write queue first -- flushes all pending writes
     storageWriteQueue.stop();
-    // 2. Delete agent -- cancels background threads (tool worker, streaming)
+    // 3. Delete agent
     delete agent;
-    // 3. Storage destructor closes both connections naturally
+    // 4. Storage destructor closes both connections naturally
 }
 
 void App::setupTools() {
@@ -405,6 +410,7 @@ void App::render() {
     }
 
     syncChatFromAgent();
+    checkAgentThread();
     checkAgentFlags();
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -831,9 +837,34 @@ void App::switchToDialog(const std::string& dbPath) {
         dbPath.c_str(), chatHistory.size(), agent->getSession().messageCount());
 }
 
+// ---- Agent thread management --------------------------------------------
+void App::launchAgentThread() {
+    if (agentThreadRunning_.load()) return;
+    joinAgentThread();
+    agentThreadRunning_.store(true);
+    agentThread_ = std::thread([this]() {
+        agent->newTurn();
+        agent->run();
+        agentThreadRunning_.store(false);
+    });
+}
+
+void App::joinAgentThread() {
+    if (agentThread_.joinable()) {
+        try { agentThread_.join(); } catch (...) {}
+    }
+}
+
+void App::checkAgentThread() {
+    if (!agentThreadRunning_.load() && agentThread_.joinable()) {
+        joinAgentThread();
+    }
+}
+
 // --- New Chat -------------------------------------------------------------
 
 void App::newChat() {
+
     if (!agent) return;
 
     agent->cancel();
@@ -902,3 +933,5 @@ void App::renderTodoPanel() {
     }
 
 }
+
+
