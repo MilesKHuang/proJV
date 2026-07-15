@@ -2,7 +2,6 @@
 #include "models.h"
 #include "core/config.h"
 #include "core/storage.h"
-#include "core/storage_queue.h"
 #include "client/deepseek.h"
 #include "core/agent.h"
 #include "tools/registry.h"
@@ -46,7 +45,6 @@ private:
     DeepSeekClient client;
     ToolRegistry tools;
     Storage storage;
-    StorageWriteQueue storageWriteQueue;
 
     Agent* agent = nullptr;
 
@@ -118,6 +116,7 @@ private:
     // Agent worker thread (spawned per turn)
     std::thread agentThread_;
     std::atomic<bool> agentThreadRunning_{false};
+    std::thread fetchModelsThread_;
 
     // TODO panel
     bool showTodoPanel = true;

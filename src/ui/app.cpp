@@ -171,8 +171,8 @@ App::~App() {
         agent->cancel();
         joinAgentThread();
     }
-    // 2. Stop write queue first -- flushes all pending writes
-    storageWriteQueue.stop();
+    // 2. Join fetchModels thread if still running
+    if (fetchModelsThread_.joinable()) fetchModelsThread_.join();
     // 3. Delete agent
     delete agent;
     // 4. Storage destructor closes both connections naturally
@@ -202,11 +202,6 @@ bool App::initialize() {
 
     agent = new Agent(client, tools);
 
-    // -- Start the serialized write queue --------------------------
-    storageWriteQueue.start();
-    agent->enqueueWrite = [this](std::function<void()> fn) {
-        storageWriteQueue.enqueue(std::move(fn));
-    };
     // Token usage callback
     agent->onTokenUsage = [this](int p, int c) {
         totalPromptTokens += p;
@@ -262,8 +257,7 @@ bool App::initialize() {
             // 把已在 session 中的 system 消息写入 DB
             for (const auto& msg : agent->getSession().getContextMessages()) {
                 if (msg.role == "system") {
-                    storageWriteQueue.enqueue(
-                        [this, msg]() { storage.insertMessage(msg); });
+                    storage.insertMessage(msg);
                 }
             }
         } else {
@@ -295,10 +289,11 @@ bool App::initialize() {
 
     applyTheme(0);
 
-    // -- R1/D: fetchModels 后台化，UI 用默认模型占位 ------------------
+    // -- R1/D: fetchModels managed thread, UI uses default model placeholder
     if (!config.apiKey.empty()) {
         modelsLoading.store(true, std::memory_order_release);
-        std::thread([this]() {
+        if (fetchModelsThread_.joinable()) fetchModelsThread_.join();
+        fetchModelsThread_ = std::thread([this]() {
             std::string err;
             auto models = client.fetchModels(&err);
             {
@@ -315,7 +310,7 @@ bool App::initialize() {
                 }
                 modelsLoading.store(false, std::memory_order_release);
             }
-        }).detach();
+        });
     }
 
     return true;
@@ -778,7 +773,7 @@ void App::saveDialogToFile() {
         debugLog("[Dialog] saveDialogToFile: no open database");
         return;
     }
-    storageWriteQueue.flush();
+    
     storage.closeDatabase();
     std::filesystem::copy_file(srcPath, filename,
         std::filesystem::copy_options::overwrite_existing);
@@ -811,7 +806,7 @@ void App::switchToDialog(const std::string& dbPath) {
     if (!agent) return;
     agent->cancel();
 
-    storageWriteQueue.flush();
+    
 
     std::string oldPath = storage.currentPath();
     agent->clearSession();
@@ -868,7 +863,7 @@ void App::newChat() {
     if (!agent) return;
 
     agent->cancel();
-    storageWriteQueue.flush();
+    
 
     auto now = std::time(nullptr);
     char buf[64];
@@ -933,5 +928,3 @@ void App::renderTodoPanel() {
     }
 
 }
-
-

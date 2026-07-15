@@ -101,8 +101,6 @@ proJV/
 │ │ ├── session.h/.cpp       # 对话管理 + Token 估算
 │ │ ├── config.h/.cpp        # TOML 配置加载
 │ │ ├── storage.h/.cpp       # SQLite 持久化
-│ │ ├── storage_queue.h/.cpp # 异步写入队列
-│ │ ├── tool_worker.h/.cpp   # 后台工具执行线程
 │ │ └── prompts_loader.cpp   # 系统提示词加载
 │ ├─┬ ui/                    # 用户界面
 │ │ ├── app.h/.cpp           # 主应用 + 窗口管理
@@ -125,7 +123,7 @@ proJV/
 ```
 用户输入 → Agent（思考/推理）
                 ↓
-        需要调工具？ → ToolWorker（后台线程执行）
+        需要调工具？ → Agent（Agent 线程同步执行）
                 ↓
         生成回复 → libcurl SSE 流式接收 → UI 气泡渲染
                 ↓

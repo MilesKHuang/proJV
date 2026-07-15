@@ -39,7 +39,6 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/web_tools.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
     ${SRC_DIR}/core/storage.cpp
-    ${SRC_DIR}/core/storage_queue.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/ui/app.cpp
@@ -55,7 +54,6 @@ set(HEADERS
     ${SRC_DIR}/core/agent.h
     ${SRC_DIR}/core/session.h
     ${SRC_DIR}/core/storage.h
-    ${SRC_DIR}/core/storage_queue.h
     ${SRC_DIR}/tools/registry.h
     ${SRC_DIR}/tools/shell_tool.h
     ${SRC_DIR}/tools/file_tool.h

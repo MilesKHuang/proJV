@@ -10,11 +10,11 @@ namespace SQLite { class Database; }
 // Dual-connection design: readDb_ (OPEN_READONLY) and writeDb_ (OPEN_READWRITE).
 // Read methods always use readDb_; write methods always use writeDb_.
 // With WAL mode, SQLite supports concurrent reads from one reader and one writer
-// without locks. Callers MUST serialize writes via StorageWriteQueue or equivalent.
+// without locks. Writes are synchronous on the Agent thread (no separate write queue).
 //
 // Thread safety:
 //   - Read: safe from any thread (WAL multi-reader)
-//   - Write: must be called from one thread at a time (enforced by StorageWriteQueue)
+//   - Write: called synchronously on the Agent thread (single writer, no queue needed)
 class Storage {
 public:
     Storage();

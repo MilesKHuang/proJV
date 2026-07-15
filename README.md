@@ -100,8 +100,6 @@ proJV/
 │ │ ├── session.h/.cpp       # Session management + token estimation
 │ │ ├── config.h/.cpp        # TOML config loader
 │ │ ├── storage.h/.cpp       # SQLite persistence
-│ │ ├── storage_queue.h/.cpp # Async write queue
-│ │ ├── tool_worker.h/.cpp   # Background tool execution
 │ │ └── prompts_loader.cpp   # System prompt loading
 │ ├─┬ ui/                    # User interface
 │ │ ├── app.h/.cpp           # Main app + window management
@@ -124,7 +122,7 @@ proJV/
 ```
 User input → Agent (think/reason)
                 ↓
-        Need tool? → ToolWorker (background thread)
+        Need tool? → Agent (sync execution on agent thread)
                 ↓
         Generate reply → libcurl SSE stream → UI bubble render
                 ↓

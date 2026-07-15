@@ -103,7 +103,7 @@ bool Storage::openReadDb() {
         readDb_ = std::make_unique<SQLite::Database>(
             currentPath_,
             SQLite::OPEN_READONLY,
-            3000
+            500
         );
         return true;
     } catch (const SQLite::Exception& e) {
