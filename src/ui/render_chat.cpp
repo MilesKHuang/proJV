@@ -7,7 +7,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <imgui.h>
-#include <imgui_markdown.h>
+#include "md4c_imgui_render.h"
 #include <algorithm>
 #include <format>
 #include <sstream>
@@ -44,144 +44,50 @@ static std::string timestamp() {
     return buf;
 }
 
-// --- imgui_markdown config + link/image/format callbacks ------------------
-static void MdLinkCallback(ImGui::MarkdownLinkCallbackData data) {
-    std::string url(data.link, data.linkLength);
-    if (!data.isImage)
-        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-static ImGui::MarkdownImageData MdImageCallback(ImGui::MarkdownLinkCallbackData) {
-    return {false};
+// --- md4c link callback ---------------------------------------------------
+static void md4cLinkCallback(const char* url, size_t urlLen, void*) {
+    std::string urlStr(url, urlLen);
+    ShellExecuteA(nullptr, "open", urlStr.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-static void MdFormatCallback(const ImGui::MarkdownFormatInfo& info, bool start_) {
-    switch (info.type) {
-    case ImGui::MarkdownFormatType::NORMAL_TEXT:
-        break;
-    case ImGui::MarkdownFormatType::EMPHASIS:
-        if (start_) {
-            if (info.level == 1) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 1.0f, 1.0f));
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.35f, 1.0f));
-            }
-        } else {
-            ImGui::PopStyleColor();
-        }
-        break;
-    case ImGui::MarkdownFormatType::HEADING:
-        if (start_) {
-            int idx = (info.level > 3) ? 2 : info.level - 1;
-            ImGui::Dummy(ImVec2(0.0f, 16.0f));
-            if (info.config->headingFormats[idx].font) {
-#ifdef IMGUI_HAS_TEXTURES
-                ImGui::PushFont(info.config->headingFormats[idx].font, 0.0f);
-#else
-                ImGui::PushFont(info.config->headingFormats[idx].font);
-#endif
-            }
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            ImVec2 pos = ImGui::GetCursorScreenPos();
-            float w = ImGui::GetContentRegionAvail().x;
-            float h = ImGui::GetTextLineHeight() + 6.0f;
-            dl->AddRectFilled(ImVec2(pos.x, pos.y),
-                ImVec2(pos.x + w, pos.y + h),
-                IM_COL32(255, 255, 255, 20), 3.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-        } else {
-            ImGui::PopStyleColor();
-            int idx = (info.level > 3) ? 2 : info.level - 1;
-            if (info.config->headingFormats[idx].font) {
-                ImGui::PopFont();
-            }
-            ImGui::Dummy(ImVec2(0.0f, 16.0f));
-        }
-        break;
-    case ImGui::MarkdownFormatType::UNORDERED_LIST:
-        break;
-    case ImGui::MarkdownFormatType::LINK:
-        if (start_) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.8f, 1.0f, 1.0f));
-        } else {
-            ImGui::PopStyleColor();
-            if (info.itemHovered) {
-                ImGui::UnderLine(ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered]);
-            } else {
-                ImGui::UnderLine(ImVec4(0.4f, 0.6f, 0.9f, 1.0f));
-            }
-        }
-        break;
-    }
-}
-
-static ImGui::MarkdownConfig makeMdConfig() {
-    ImGui::MarkdownConfig cfg;
-    for (int i = 0; i < ImGui::MarkdownConfig::NUMHEADINGS; ++i)
-        cfg.headingFormats[i] = {nullptr, 0.0f, true};
-    cfg.linkCallback = MdLinkCallback;
-    cfg.imageCallback = MdImageCallback;
-    cfg.formatCallback = MdFormatCallback;
-    cfg.formatFlags = ImGuiMarkdownFormatFlags_DiscardExtraNewLines
-        | ImGuiMarkdownFormatFlags_NoNewLineBeforeHeading;
-    return cfg;
-}
 
 // --- Render text with markdown + code block support -----------------------
 void renderFormattedText(const std::string& text, float bubbleWidth) {
-    try {
-    struct Segment { std::string content; bool isCode; };
-    std::vector<Segment> segs;
-    size_t pos = 0;
-    while (pos < text.size()) {
-        auto cb = text.find("```", pos);
-        if (cb == std::string::npos) { segs.push_back({text.substr(pos), false}); break; }
-        if (cb > pos) segs.push_back({text.substr(pos, cb - pos), false});
-        auto nl = text.find('\n', cb + 3);
-        if (nl == std::string::npos) break;
-        size_t start = nl + 1;
-        auto close = text.find("```", start);
-        if (close == std::string::npos) { segs.push_back({text.substr(start), true}); break; }
-        std::string code = text.substr(start, close - start);
-        if (!code.empty() && (code.back() == '\n' || code.back() == '\r')) code.pop_back();
-        segs.push_back({code, true});
-        pos = close + 3;
-    }
+    // --- Degradation guard: detect unclosed fences / overlong unbroken lines ---
+    {
+        int fenceCount = 0;
+        size_t pos = 0;
+        while ((pos = text.find("```", pos)) != std::string::npos) {
+            ++fenceCount;
+            pos += 3;
+        }
+        bool unclosedFence = (fenceCount % 2 != 0);
 
-    static ImGui::MarkdownConfig mdCfg = makeMdConfig();
-    int blockIdx = 0;
-    for (auto& seg : segs) {
-        if (seg.isCode) {
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.18f, 0.18f, 0.22f, 1.0f));
-            ImGui::PushID(blockIdx++);
-            // Truncate large code blocks to keep rendering fast.
-            std::string codeText = seg.content;
-            constexpr int kMaxCodeLines = 30;
-            int lineCount = 0; size_t cutoff = 0;
-            for (size_t p = 0; p < codeText.size() && lineCount < kMaxCodeLines; ++p) {
-                if (codeText[p] == '\n') ++lineCount;
-                cutoff = p + 1;
+        bool overlongLine = false;
+        size_t lineStart = 0;
+        for (size_t i = 0; i < text.size(); ++i) {
+            if (text[i] == '\n') {
+                if (i - lineStart > 3000) { overlongLine = true; break; }
+                lineStart = i + 1;
             }
-            bool truncated = (cutoff < codeText.size());
-            if (truncated) codeText = codeText.substr(0, cutoff) + "\n... [truncated]";
+        }
+        if (text.size() - lineStart > 3000) overlongLine = true;
 
-            ImGui::BeginChild("code", ImVec2(bubbleWidth - 16.0f, 0),
-                ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.85f, 0.60f, 1.0f));
-            ImGui::TextUnformatted(codeText.c_str());
-            ImGui::PopStyleColor();
-            ImGui::EndChild();
-            ImGui::PopStyleColor();
-            ImGui::PopStyleVar(2);
-            ImGui::PopID();
-        } else {
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
-            ImGui::MarkdownEx(seg.content.c_str(), seg.content.size(), mdCfg);
-            ImGui::PopStyleVar();
+        if (unclosedFence || overlongLine) {
+            debugLogf("[Render] fmt FALLBACK unclosedFence=%d overlongLine=%d len=%zu",
+                      unclosedFence, overlongLine, text.size());
+            size_t maxChars = 8000;
+            std::string display = text;
+            if (display.size() > maxChars)
+                display = display.substr(0, maxChars) + "\n... [truncated for safety]";
+            ImGui::TextUnformatted(display.c_str());
+            debugLog("[Render] fmt EXIT (fallback)");
+            return;
         }
     }
+
+    try {
+        md4c_imgui_render(text, bubbleWidth, md4cLinkCallback);
     }
     catch (const std::exception& e) {
         debugLog(std::string("Markdown exception: ") + e.what());
@@ -831,4 +737,3 @@ void App::renderInputArea() {
 
     ImGui::EndChild();  // InputFill
 }
-

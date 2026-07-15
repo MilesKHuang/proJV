@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(proJV VERSION 0.5.0 LANGUAGES CXX)
+project(proJV VERSION 0.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,7 @@ set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
 set(IMGUI_DIR "${EXTERNAL_DIR}/imgui")
 set(IMGUI_MD_DIR "${EXTERNAL_DIR}")
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+set(MD4C_DIR "${EXTERNAL_DIR}/md4c-master/src")
 
 # ── SQLiteCpp ──
 add_subdirectory(
@@ -44,6 +45,9 @@ set(COMMON_SOURCES
     ${SRC_DIR}/ui/app.cpp
     ${SRC_DIR}/ui/render_chat.cpp
     ${SRC_DIR}/ui/render_settings.cpp
+    ${SRC_DIR}/ui/md4c_imgui_render.cpp
+    ${MD4C_DIR}/md4c.c
+    ${MD4C_DIR}/entity.c
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -96,6 +100,7 @@ target_include_directories(proJV_lib PRIVATE
     ${IMGUI_DIR}/backends
     ${IMGUI_MD_DIR}
     ${SRC_DIR}
+    ${MD4C_DIR}
     ${SRC_DIR}/client
     ${CURL_INCLUDE_DIR}
 )
