@@ -87,7 +87,9 @@ void renderFormattedText(const std::string& text, float bubbleWidth) {
     }
 
     try {
-        md4c_imgui_render(text, bubbleWidth, md4cLinkCallback);
+        // [TEST] bypass md4c — isolate crash to parsing/rendering code
+        ImGui::TextWrapped("%s", text.c_str());
+        // md4c_imgui_render(text, bubbleWidth, md4cLinkCallback);
     }
     catch (const std::exception& e) {
         debugLog(std::string("Markdown exception: ") + e.what());
