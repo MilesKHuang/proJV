@@ -14,9 +14,7 @@ endif()
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
 set(IMGUI_DIR "${EXTERNAL_DIR}/imgui")
-set(IMGUI_MD_DIR "${EXTERNAL_DIR}")
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
-# md4c removed — using custom line-based renderer (src/ui/markdown_render.cpp)
 
 # ── SQLiteCpp ──
 add_subdirectory(
@@ -96,7 +94,7 @@ add_library(proJV_lib STATIC ${COMMON_SOURCES} ${HEADERS})
 target_include_directories(proJV_lib PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
-    ${IMGUI_MD_DIR}
+    ${EXTERNAL_DIR}
     ${SRC_DIR}
     ${SRC_DIR}/client
     ${CURL_INCLUDE_DIR}
@@ -115,7 +113,7 @@ add_executable(proJV WIN32 ${SRC_DIR}/main.cpp)
 target_include_directories(proJV PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
-    ${IMGUI_MD_DIR}
+    ${EXTERNAL_DIR}
     ${SRC_DIR}
     ${SRC_DIR}/client
 )
