@@ -16,7 +16,7 @@ set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
 set(IMGUI_DIR "${EXTERNAL_DIR}/imgui")
 set(IMGUI_MD_DIR "${EXTERNAL_DIR}")
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
-set(MD4C_DIR "${EXTERNAL_DIR}/md4c-master/src")
+# md4c removed — using custom line-based renderer (src/ui/markdown_render.cpp)
 
 # ── SQLiteCpp ──
 add_subdirectory(
@@ -45,9 +45,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/ui/app.cpp
     ${SRC_DIR}/ui/render_chat.cpp
     ${SRC_DIR}/ui/render_settings.cpp
-    ${SRC_DIR}/ui/md4c_imgui_render.cpp
-    ${MD4C_DIR}/md4c.c
-    ${MD4C_DIR}/entity.c
+    ${SRC_DIR}/ui/markdown_render.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -100,7 +98,6 @@ target_include_directories(proJV_lib PRIVATE
     ${IMGUI_DIR}/backends
     ${IMGUI_MD_DIR}
     ${SRC_DIR}
-    ${MD4C_DIR}
     ${SRC_DIR}/client
     ${CURL_INCLUDE_DIR}
 )

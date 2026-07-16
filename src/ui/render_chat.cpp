@@ -7,7 +7,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <imgui.h>
-#include "md4c_imgui_render.h"
+#include "markdown_render.h"
 #include <algorithm>
 #include <format>
 #include <sstream>
@@ -44,65 +44,31 @@ static std::string timestamp() {
     return buf;
 }
 
-// --- md4c link callback ---------------------------------------------------
-static void md4cLinkCallback(const char* url, size_t urlLen, void*) {
-    std::string urlStr(url, urlLen);
-    ShellExecuteA(nullptr, "open", urlStr.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
 
-
-// --- Render text with markdown + code block support -----------------------
-void renderFormattedText(const std::string& text, float bubbleWidth) {
-    // --- Degradation guard: detect unclosed fences / overlong unbroken lines ---
-    {
-        int fenceCount = 0;
-        size_t pos = 0;
-        while ((pos = text.find("```", pos)) != std::string::npos) {
-            ++fenceCount;
-            pos += 3;
-        }
-        bool unclosedFence = (fenceCount % 2 != 0);
-
-        bool overlongLine = false;
-        size_t lineStart = 0;
-        for (size_t i = 0; i < text.size(); ++i) {
-            if (text[i] == '\n') {
-                if (i - lineStart > 3000) { overlongLine = true; break; }
-                lineStart = i + 1;
-            }
-        }
-        if (text.size() - lineStart > 3000) overlongLine = true;
-
-        if (unclosedFence || overlongLine) {
-            debugLogf("[Render] fmt FALLBACK unclosedFence=%d overlongLine=%d len=%zu",
-                      unclosedFence, overlongLine, text.size());
-            size_t maxChars = 8000;
-            std::string display = text;
-            if (display.size() > maxChars)
-                display = display.substr(0, maxChars) + "\n... [truncated for safety]";
-            ImGui::TextUnformatted(display.c_str());
-            debugLog("[Render] fmt EXIT (fallback)");
-            return;
-        }
+// --- Render text with optional markdown support ---------------------------
+void renderFormattedText(const std::string& text, float bubbleWidth,
+                         bool enableMd) {
+    if (!enableMd) {
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + bubbleWidth - 16.0f);
+        ImGui::TextWrapped("%s", text.c_str());
+        ImGui::PopTextWrapPos();
+        return;
     }
 
     try {
-        // [TEST] bypass md4c — isolate crash to parsing/rendering code
-        ImGui::TextWrapped("%s", text.c_str());
-        // md4c_imgui_render(text, bubbleWidth, md4cLinkCallback);
+        renderMarkdown(text, bubbleWidth, [](const std::string& url) {
+            ShellExecuteA(nullptr, "open", url.c_str(),
+                          nullptr, nullptr, SW_SHOWNORMAL);
+        });
     }
     catch (const std::exception& e) {
         debugLog(std::string("Markdown exception: ") + e.what());
-        debugLog("--- snippet (up to 500 chars) ---");
         debugLog(text.substr(0, 500));
-        debugLog("--- end snippet ---");
         ImGui::TextWrapped("%s", text.c_str());
     }
     catch (...) {
         debugLog("Markdown exception: (unknown)");
-        debugLog("--- snippet (up to 500 chars) ---");
         debugLog(text.substr(0, 500));
-        debugLog("--- end snippet ---");
         ImGui::TextWrapped("%s", text.c_str());
     }
 }
@@ -383,7 +349,7 @@ void App::renderChatArea() {
                 ImGui::BeginChild("ai_text", ImVec2(aiWidth, 0),
                     ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
 
-                renderFormattedText(aiText, aiWidth);
+                renderFormattedText(aiText, aiWidth, true);
 
                 ImGui::SameLine(std::max(ImGui::GetCursorPosX(), aiWidth - 38.0f));
                 RenderCopyButton(("C##ai" + std::to_string(bubbleIdx)).c_str(), aiText.c_str());
@@ -424,7 +390,7 @@ void App::renderChatArea() {
                 }
 
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.75f, 1.0f));
-                renderFormattedText(displayContent, bubbleWidth);
+                renderFormattedText(displayContent, bubbleWidth, false);
                 ImGui::PopStyleColor();
             }
 
@@ -534,7 +500,8 @@ void App::renderChatArea() {
                 ImGui::TextUnformatted(disp.c_str());
                 ImGui::PopTextWrapPos();
             } else {
-                renderFormattedText(disp, bubbleWidth);
+                bool isAssistant = (bubble.role == "assistant");
+                renderFormattedText(disp, bubbleWidth, isAssistant);
             }
 
             ImGui::SameLine(std::max(ImGui::GetCursorPosX(), bubbleWidth - 38.0f));
