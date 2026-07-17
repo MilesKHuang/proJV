@@ -34,8 +34,9 @@ Project JV, 意思是 **Just Vibing**
 
 | 功能 | 说明 |
 |------|------|
-| **Agent 自动调用工具** | 读文件、写文件、搜索替换编辑、Shell 执行、文件搜索、Git 操作、网页搜索、网页抓取、TODO 管理 — AI 自主决策调用 |
-| **自定义 System Prompt** | 可编辑系统提示词，自由定义 Agent 行为、工具白名单、输出风格 |
+| **多角色 Prompt 切换** | ComboBox 一键切换 coder / designer / 自定义角色。目录驱动——往 `projv_prompts/` 丢个 `.md` 即自动识别。切换不清空上下文。 |
+| **Designer 工作流** | `designer` 角色：用 `read_file`/`grep_files` 读代码，用 `md_file` 工具产出结构化设计文档。Shell 和源码修改被锁定。设计 → 评审 → 编码。 |
+| **Agent 自动调用工具** | 读文件、写文件、编辑、md_file、Shell 执行、文件搜索、网页搜索/抓取、TODO 管理 — AI 自主决策 |
 | **思考过程展示** | deepseek-reasoner 的 `reasoning_content` 可折叠展示，紫色卡片 |
 | **流式输出** | 实时 SSE 流式渲染，Markdown + 代码块高亮 |
 | **上下文管理** | Token 估算 + 智能裁剪，到达压力阈值自动压缩 |
@@ -101,16 +102,19 @@ proJV/
 │ │ ├── session.h/.cpp       # 对话管理 + Token 估算
 │ │ ├── config.h/.cpp        # TOML 配置加载
 │ │ ├── storage.h/.cpp       # SQLite 持久化
-│ │ └── prompts_loader.cpp   # 系统提示词加载
+│ │ ├── prompts_loader.cpp   # 目录驱动 prompt 预设（coder/designer/compactor）
+│ │ └── prompts.h            # ensureDefaultPrompts() / loadPromptFile()
 │ ├─┬ ui/                    # 用户界面
 │ │ ├── app.h/.cpp           # 主应用 + 窗口管理
-│ │ ├── render_chat.cpp      # 聊天气泡 + Markdown 渲染
-│ │ └── render_settings.cpp  # 设置面板
+│ │ ├── render_chat.cpp      # 聊天气泡 + Markdown 渲染 + Prompt ComboBox
+│ │ ├── render_settings.cpp  # 配置 + 工具审批弹窗
+│ │ └── markdown_render.cpp  # 自研 Markdown 渲染器（代码块、表格、链接）
 │ └─┬ tools/                 # Agent 可调用的工具集
 │   ├── registry.h/.cpp      # 工具注册中心
 │   ├── shell_tool.cpp       # Shell 命令执行
-│   ├── file_tool.cpp        # 文件读写
-│   ├── edit_file_tool.cpp   # 搜索替换
+│   ├── file_tool.cpp        # 文件读写/搜索
+│   ├── edit_file_tool.cpp   # 搜索替换编辑
+│   ├── md_file_tool.cpp     # Markdown 设计文档写入/编辑（designer 专用，仅限 .md）
 │   ├── file_search_tool.cpp # 文件搜索
 │   ├── web_tools.cpp        # 网页搜索 + 抓取
 │   └── todo_tool.cpp        # TODO 管理

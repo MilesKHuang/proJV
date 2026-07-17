@@ -34,8 +34,9 @@ Hope you like it too.
 
 | Feature | Description |
 |---------|-------------|
-| **AI tool orchestration** | read_file, write_file, edit_file, shell, file_search, git, web_search, fetch_url, todo — AI decides what to call and when |
-| **Custom system prompt** | Editable system prompt to define Agent behavior, tool whitelist, and output style |
+| **Multi-role prompt switching** | ComboBox-driven role switching (coder / designer / custom). Directory-driven -- drop a `.md` into `projv_prompts/` and it auto-appears. Switch mid-conversation without clearing context. |
+| **Designer workflow** | `designer` role: read code with `read_file`/`grep_files`, produce structured design docs via `md_file` tool. Shell and source edits locked out. Design → review → implement. |
+| **AI tool orchestration** | read_file, write_file, edit_file, md_file, shell, file_search, web_search, fetch_url, todo — AI decides what to call and when |
 | **Thinking display** | deepseek-reasoner `reasoning_content` rendered as collapsible purple cards |
 | **Streaming output** | Real-time SSE streaming with Markdown + code block rendering |
 | **Context management** | Token estimation + smart pruning, auto-compact at high pressure |
@@ -100,16 +101,19 @@ proJV/
 │ │ ├── session.h/.cpp       # Session management + token estimation
 │ │ ├── config.h/.cpp        # TOML config loader
 │ │ ├── storage.h/.cpp       # SQLite persistence
-│ │ └── prompts_loader.cpp   # System prompt loading
+│ │ ├── prompts_loader.cpp   # Directory-driven prompt presets (coder/designer/compactor)
+│ │ └── prompts.h            # ensureDefaultPrompts() / loadPromptFile()
 │ ├─┬ ui/                    # User interface
 │ │ ├── app.h/.cpp           # Main app + window management
-│ │ ├── render_chat.cpp      # Chat bubbles + Markdown rendering
-│ │ └── render_settings.cpp  # Settings panel
+│ │ ├── render_chat.cpp      # Chat bubbles + Markdown rendering + prompt Combo
+│ │ ├── render_settings.cpp  # Config + Tool Approval dialogs
+│ │ └── markdown_render.cpp  # Custom Markdown renderer (code blocks, tables, links)
 │ └─┬ tools/                 # Agent-callable tools
 │   ├── registry.h/.cpp      # Tool registry
 │   ├── shell_tool.cpp       # Shell command execution
-│   ├── file_tool.cpp        # File read/write
+│   ├── file_tool.cpp        # File read/write/grep
 │   ├── edit_file_tool.cpp   # Search-replace edit
+│   ├── md_file_tool.cpp     # Markdown design doc write/edit (designer-only, .md guarded)
 │   ├── file_search_tool.cpp # File search
 │   ├── web_tools.cpp        # Web search + fetch
 │   └── todo_tool.cpp        # TODO management

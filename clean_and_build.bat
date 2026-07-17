@@ -36,7 +36,7 @@ mkdir "%BUILD_DIR%" 2>nul
 
 echo [3/4] Configuring...
 cd /d "%BUILD_DIR%"
-cmake .. -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=DEBUG
+cmake .. -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=RELEASE
 if errorlevel 1 (
     echo [FAIL] Configure failed
     exit /b 1
