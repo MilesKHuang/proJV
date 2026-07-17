@@ -101,7 +101,12 @@ void from_json(const nlohmann::json& j, ToolCall& tc) {
 
 void to_json(nlohmann::json& j, const Message& msg) {
     j["role"] = sanitizeUTF8(msg.role);
-    if (!msg.content.empty())
+    // Always emit "content" field. Assistant messages with tool_calls
+    // may have empty content; set it to null for API compatibility.
+    // Missing "content" key causes HTTP 400 from DeepSeek API.
+    if (msg.role == "assistant" && !msg.toolCalls.empty() && msg.content.empty())
+        j["content"] = nullptr;
+    else
         j["content"] = sanitizeUTF8(msg.content);
     if (!msg.toolCallId.empty())
         j["tool_call_id"] = sanitizeUTF8(msg.toolCallId);

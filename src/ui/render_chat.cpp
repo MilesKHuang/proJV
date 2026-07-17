@@ -1,13 +1,14 @@
-#define IMGUI_DEFINE_MATH_OPERATORS
+﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "render_chat.h"
+#include "core/prompts.h"
 #include "tools/registry.h"
 #include "json.hpp"
 #include "debug_log.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <imgui.h>
-#include <imgui_markdown.h>
+#include "markdown_render.h"
 #include <algorithm>
 #include <format>
 #include <sstream>
@@ -15,7 +16,7 @@
 #include <exception>
 #include <stdexcept>
 
-// --- Spinner helper (animated processing indicator) — Item 10.1 ------------
+// --- Spinner helper (animated processing indicator)  -- Item 10.1 --------------
 // Draws a rotating arc at current cursor position. Advances ImGui cursor.
 static void renderSpinner(float radius, float thickness, const ImVec4& color) {
     auto drawList = ImGui::GetWindowDrawList();
@@ -44,157 +45,31 @@ static std::string timestamp() {
     return buf;
 }
 
-// --- imgui_markdown config + link/image/format callbacks ------------------
-static void MdLinkCallback(ImGui::MarkdownLinkCallbackData data) {
-    std::string url(data.link, data.linkLength);
-    if (!data.isImage)
-        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-static ImGui::MarkdownImageData MdImageCallback(ImGui::MarkdownLinkCallbackData) {
-    return {false};
-}
 
-static void MdFormatCallback(const ImGui::MarkdownFormatInfo& info, bool start_) {
-    switch (info.type) {
-    case ImGui::MarkdownFormatType::NORMAL_TEXT:
-        break;
-    case ImGui::MarkdownFormatType::EMPHASIS:
-        if (start_) {
-            if (info.level == 1) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 1.0f, 1.0f));
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.35f, 1.0f));
-            }
-        } else {
-            ImGui::PopStyleColor();
-        }
-        break;
-    case ImGui::MarkdownFormatType::HEADING:
-        if (start_) {
-            int idx = (info.level > 3) ? 2 : info.level - 1;
-            ImGui::Dummy(ImVec2(0.0f, 16.0f));
-            if (info.config->headingFormats[idx].font) {
-#ifdef IMGUI_HAS_TEXTURES
-                ImGui::PushFont(info.config->headingFormats[idx].font, 0.0f);
-#else
-                ImGui::PushFont(info.config->headingFormats[idx].font);
-#endif
-            }
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            ImVec2 pos = ImGui::GetCursorScreenPos();
-            float w = ImGui::GetContentRegionAvail().x;
-            float h = ImGui::GetTextLineHeight() + 6.0f;
-            dl->AddRectFilled(ImVec2(pos.x, pos.y),
-                ImVec2(pos.x + w, pos.y + h),
-                IM_COL32(255, 255, 255, 20), 3.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-        } else {
-            ImGui::PopStyleColor();
-            int idx = (info.level > 3) ? 2 : info.level - 1;
-            if (info.config->headingFormats[idx].font) {
-                ImGui::PopFont();
-            }
-            ImGui::Dummy(ImVec2(0.0f, 16.0f));
-        }
-        break;
-    case ImGui::MarkdownFormatType::UNORDERED_LIST:
-        break;
-    case ImGui::MarkdownFormatType::LINK:
-        if (start_) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.8f, 1.0f, 1.0f));
-        } else {
-            ImGui::PopStyleColor();
-            if (info.itemHovered) {
-                ImGui::UnderLine(ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered]);
-            } else {
-                ImGui::UnderLine(ImVec4(0.4f, 0.6f, 0.9f, 1.0f));
-            }
-        }
-        break;
+// --- Render text with optional markdown support ---------------------------
+void renderFormattedText(const std::string& text, float bubbleWidth,
+                         bool enableMd) {
+    if (!enableMd) {
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + bubbleWidth - 16.0f);
+        ImGui::TextWrapped("%s", text.c_str());
+        ImGui::PopTextWrapPos();
+        return;
     }
-}
 
-static ImGui::MarkdownConfig makeMdConfig() {
-    ImGui::MarkdownConfig cfg;
-    for (int i = 0; i < ImGui::MarkdownConfig::NUMHEADINGS; ++i)
-        cfg.headingFormats[i] = {nullptr, 0.0f, true};
-    cfg.linkCallback = MdLinkCallback;
-    cfg.imageCallback = MdImageCallback;
-    cfg.formatCallback = MdFormatCallback;
-    cfg.formatFlags = ImGuiMarkdownFormatFlags_DiscardExtraNewLines
-        | ImGuiMarkdownFormatFlags_NoNewLineBeforeHeading;
-    return cfg;
-}
-
-// --- Render text with markdown + code block support -----------------------
-void renderFormattedText(const std::string& text, float bubbleWidth) {
     try {
-    struct Segment { std::string content; bool isCode; };
-    std::vector<Segment> segs;
-    size_t pos = 0;
-    while (pos < text.size()) {
-        auto cb = text.find("```", pos);
-        if (cb == std::string::npos) { segs.push_back({text.substr(pos), false}); break; }
-        if (cb > pos) segs.push_back({text.substr(pos, cb - pos), false});
-        auto nl = text.find('\n', cb + 3);
-        if (nl == std::string::npos) break;
-        size_t start = nl + 1;
-        auto close = text.find("```", start);
-        if (close == std::string::npos) { segs.push_back({text.substr(start), true}); break; }
-        std::string code = text.substr(start, close - start);
-        if (!code.empty() && (code.back() == '\n' || code.back() == '\r')) code.pop_back();
-        segs.push_back({code, true});
-        pos = close + 3;
-    }
-
-    static ImGui::MarkdownConfig mdCfg = makeMdConfig();
-    int blockIdx = 0;
-    for (auto& seg : segs) {
-        if (seg.isCode) {
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.18f, 0.18f, 0.22f, 1.0f));
-            ImGui::PushID(blockIdx++);
-            // Truncate large code blocks to keep rendering fast.
-            std::string codeText = seg.content;
-            constexpr int kMaxCodeLines = 30;
-            int lineCount = 0; size_t cutoff = 0;
-            for (size_t p = 0; p < codeText.size() && lineCount < kMaxCodeLines; ++p) {
-                if (codeText[p] == '\n') ++lineCount;
-                cutoff = p + 1;
-            }
-            bool truncated = (cutoff < codeText.size());
-            if (truncated) codeText = codeText.substr(0, cutoff) + "\n... [truncated]";
-
-            ImGui::BeginChild("code", ImVec2(bubbleWidth - 16.0f, 0),
-                ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.85f, 0.60f, 1.0f));
-            ImGui::TextUnformatted(codeText.c_str());
-            ImGui::PopStyleColor();
-            ImGui::EndChild();
-            ImGui::PopStyleColor();
-            ImGui::PopStyleVar(2);
-            ImGui::PopID();
-        } else {
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
-            ImGui::MarkdownEx(seg.content.c_str(), seg.content.size(), mdCfg);
-            ImGui::PopStyleVar();
-        }
-    }
+        renderMarkdown(text, bubbleWidth, [](const std::string& url) {
+            ShellExecuteA(nullptr, "open", url.c_str(),
+                          nullptr, nullptr, SW_SHOWNORMAL);
+        });
     }
     catch (const std::exception& e) {
         debugLog(std::string("Markdown exception: ") + e.what());
-        debugLog("--- snippet (up to 500 chars) ---");
         debugLog(text.substr(0, 500));
-        debugLog("--- end snippet ---");
         ImGui::TextWrapped("%s", text.c_str());
     }
     catch (...) {
         debugLog("Markdown exception: (unknown)");
-        debugLog("--- snippet (up to 500 chars) ---");
         debugLog(text.substr(0, 500));
-        debugLog("--- end snippet ---");
         ImGui::TextWrapped("%s", text.c_str());
     }
 }
@@ -209,7 +84,7 @@ void RenderCopyButton(const char* label, const char* text) {
 }
 
 // --- Helper: format a tool message for display ----------------------------
-// Converts Message (role=="tool" or with toolCalls) → (ChatBubble role, content)
+// Converts Message (role=="tool" or with toolCalls)  -> (ChatBubble role, content)
 static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
     if (!msg.toolCalls.empty()) {
         // Compact per-tool display: one line per tool with key arg only
@@ -240,7 +115,7 @@ static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
         }
         return {"tool_call", d};
     }
-    // role == "tool" — compact summary with optional detail toggle
+    // role == "tool"  -- compact summary with optional detail toggle
     {
         std::string d;
         // Compute a brief summary line
@@ -258,7 +133,7 @@ static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
         // Append first line of content for "done X" feel
         std::string firstLine = msg.content.substr(0, msg.content.find('\n'));
         if (firstLine.size() > 80) firstLine = firstLine.substr(0, 77) + "...";
-        if (!firstLine.empty()) d += " — " + firstLine;
+        if (!firstLine.empty()) d += "  -> " + firstLine;
         return {"tool_result", d};
     }
 }
@@ -288,7 +163,7 @@ void App::deriveBubblesFromMessage(const Message& msg) {
         return;
     }
 
-    // Tool messages: assistant with tool_calls → tool_call, role=="tool" → tool_result
+    // Tool messages: assistant with tool_calls  -> tool_call, role=="tool"  -> tool_result
     if (!msg.toolCalls.empty() || msg.role == "tool") {
         auto [role, display] = formatToolMsg(msg);
 
@@ -300,7 +175,7 @@ void App::deriveBubblesFromMessage(const Message& msg) {
             thinkBubble.role = "assistant";
             thinkBubble.hasReasoning = true;
             thinkBubble.reasoningText = msg.reasoningContent;
-            thinkBubble.content.clear();  // no body text — tools come next
+            thinkBubble.content.clear();  // no body text -- tools come next
             chatHistory.push_back(thinkBubble);
         }
 
@@ -348,7 +223,7 @@ void App::buildBubblesFromMessages() {
     lastMessageId_ = 0;
 
     // Read from DB (via getNewMessagesSince), not session.
-    // This keeps the data boundary: UI → DB, session is Agent-internal.
+    // This keeps the data boundary: UI -> DB, session is Agent-internal.
     auto msgs = agent->getNewMessagesSince(0);
     for (const auto& msg : msgs) {
         deriveBubblesFromMessage(msg);
@@ -362,16 +237,16 @@ void App::buildBubblesFromMessages() {
 
 // --- App::syncChatFromAgent -----------------------------------------------
 // Pure DB-driven incremental sync.  Reads new messages from SQLite and
-// derives ChatBubbles.  Single source of truth — no streaming overlay,
+// derives ChatBubbles.  Single source of truth  -- no streaming overlay,
 // no dedup.  Status bar (agent->getStatus()) provides real-time feedback.
 void App::syncChatFromAgent() {
     if (!agent) return;
     auto status = agent->getStatus();
     bool wroteNew = false;
 
-    // Sync new DB messages → chatHistory.
+    // Sync new DB messages  -> chatHistory.
     // Single source of truth: agent->getNewMessagesSince() reads from DB.
-    // No live streaming bubble — the status bar provides real-time feedback.
+    // No live streaming bubble -- the status bar provides real-time feedback.
     auto newMsgs = agent->getNewMessagesSince(lastMessageId_);
     if (!newMsgs.empty()) debugLogf("[Bubble] syncChat: %zu new msgs, lastMsgId=%lld",
         newMsgs.size(), (long long)lastMessageId_);
@@ -391,7 +266,7 @@ void App::syncChatFromAgent() {
     }
 
     // Cap visible bubbles at 200 to bound rendering cost.
-    // Full history is still in DB — start a new chat if you need fresh context.
+    // Full history is still in DB  -- start a new chat if you need fresh context.
     constexpr size_t kMaxBubbles = 200;
     if (chatHistory.size() > kMaxBubbles) {
         size_t excess = chatHistory.size() - kMaxBubbles;
@@ -424,7 +299,7 @@ void App::renderChatArea() {
     if (skipCount > 0) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
         ImGui::TextWrapped(
-            "[ Showing last %d of %d messages — older history hidden ]",
+            "[ Showing last %d of %d messages - older history hidden ]",
             kMaxVisibleBubbles, totalBubbles);
         ImGui::PopStyleColor();
         ImGui::Separator();
@@ -475,7 +350,7 @@ void App::renderChatArea() {
                 ImGui::BeginChild("ai_text", ImVec2(aiWidth, 0),
                     ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
 
-                renderFormattedText(aiText, aiWidth);
+                renderFormattedText(aiText, aiWidth, true);
 
                 ImGui::SameLine(std::max(ImGui::GetCursorPosX(), aiWidth - 38.0f));
                 RenderCopyButton(("C##ai" + std::to_string(bubbleIdx)).c_str(), aiText.c_str());
@@ -516,7 +391,7 @@ void App::renderChatArea() {
                 }
 
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.75f, 1.0f));
-                renderFormattedText(displayContent, bubbleWidth);
+                renderFormattedText(displayContent, bubbleWidth, false);
                 ImGui::PopStyleColor();
             }
 
@@ -597,7 +472,7 @@ void App::renderChatArea() {
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availWidth - bubbleWidth));
             }
 
-            // 10.5: Compacted context marker — special yellow/warning styling
+            // 10.5: Compacted context marker  -- special yellow/warning styling
             bool isCompacted = (bubble.role == "system" &&
                 bubble.content.find("[Context compacted:") != std::string::npos);
             if (isCompacted)
@@ -626,7 +501,8 @@ void App::renderChatArea() {
                 ImGui::TextUnformatted(disp.c_str());
                 ImGui::PopTextWrapPos();
             } else {
-                renderFormattedText(disp, bubbleWidth);
+                bool isAssistant = (bubble.role == "assistant");
+                renderFormattedText(disp, bubbleWidth, isAssistant);
             }
 
             ImGui::SameLine(std::max(ImGui::GetCursorPosX(), bubbleWidth - 38.0f));
@@ -642,47 +518,31 @@ void App::renderChatArea() {
         ++bubbleIdx;
     }
 
-    // -- Execution indicator (non-persistent, not in chatHistory) --------
-    // Item 10.1-10.2: spinner + detailed progress in chat area
+    // -- Agent state machine indicator (non-persistent, not in chatHistory)
+    // Shows the current AgentPhase and round count -- no char count redundancy.
     if (agent) {
         auto st = agent->getStatus();
-        if (st.state == AgentState::Thinking) {
-            bool hasReasoning = !st.reasoningText.empty();
-            bool hasText = !st.streamingText.empty();
-            if (hasReasoning && !hasText) {
-                ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.7f, 1.0f), "[reasoning:");
-                ImGui::SameLine(0, 2);
-                ImGui::TextColored(ImVec4(0.8f, 0.7f, 0.5f, 1.0f), "%zu chars", st.reasoningText.size());
-            } else {
-                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), "[generating:");
-                ImGui::SameLine(0, 2);
-                ImGui::TextColored(ImVec4(0.8f, 0.7f, 0.5f, 1.0f), "%zu chars", st.streamingText.size());
-                if (hasReasoning) {
-                    ImGui::SameLine(0, 4);
-                    ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.7f, 1.0f),
-                        "| reasoning: %zu chars", st.reasoningText.size());
-                }
-            }
-            // Context pressure warning
-            auto pressure = agent->getContextPressure();
-            if (pressure == Session::PressureLevel::High) {
-                ImGui::SameLine(0, 4);
-                ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.1f, 1.0f), "| context: HIGH");
-            } else if (pressure == Session::PressureLevel::Critical) {
-                ImGui::SameLine(0, 4);
-                ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "| context: CRITICAL");
-            }
-            ImGui::SameLine(0, 8);
-            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.55f, 1.0f), "(Press Cancel to stop)");
-        } else if (st.state == AgentState::ExecutingTool) {
-            std::string toolProgress = st.currentToolName
-                + " (" + std::to_string(st.toolProgressCurrent)
-                + "/" + std::to_string(st.toolProgressTotal) + ")";
-            ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.65f, 1.0f),
-                " \xe2\x9a\x99 Running: %s  (Press Cancel to stop)", toolProgress.c_str());
-        } else if (st.state == AgentState::AwaitingApproval) {
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                " \xe2\x9a\xa0 %s", st.statusMessage.c_str());
+        auto phase = agent->getPhase();
+        const char* phaseName = "?";
+        ImVec4 phaseColor(0.5f, 0.5f, 0.55f, 1.0f);
+        switch (phase) {
+            case AgentPhase::Idle:           phaseName = "Idle";           phaseColor = ImVec4(0.5f, 0.5f, 0.6f, 1.0f); break;
+            case AgentPhase::Streaming:      phaseName = "Streaming";      phaseColor = ImVec4(1.0f, 0.9f, 0.3f, 1.0f); break;
+            case AgentPhase::ExecutingTools: phaseName = "ExecutingTools"; phaseColor = ImVec4(0.3f, 0.85f, 0.65f, 1.0f); break;
+            case AgentPhase::AwaitApproval:  phaseName = "AwaitApproval";  phaseColor = ImVec4(1.0f, 0.35f, 0.35f, 1.0f); break;
+            case AgentPhase::Error:          phaseName = "Error";          phaseColor = ImVec4(1.0f, 0.2f, 0.2f, 1.0f); break;
+        }
+        ImGui::TextColored(phaseColor, " [Agent: %s]", phaseName);
+        if (st.state == AgentState::ExecutingTool) {
+            ImGui::SameLine(0, 4);
+            ImGui::TextColored(phaseColor, "| %s (%d/%d)",
+                st.currentToolName.c_str(), st.toolProgressCurrent, st.toolProgressTotal);
+        } else if (phase == AgentPhase::Streaming && !st.streamingText.empty()) {
+            ImGui::SameLine(0, 4);
+            ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.5f, 1.0f), "| receiving SSE data...");
+        } else if (phase == AgentPhase::AwaitApproval) {
+            ImGui::SameLine(0, 4);
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "| %s", st.statusMessage.c_str());
         }
     }
 
@@ -704,7 +564,38 @@ void App::renderInputArea() {
         lastWasWaiting = isWaiting;
     }
 
-    // --- Top of footer: Idle or spinner + status text ---
+    // --- Combo + status on same line ---
+    {
+        float comboWidth = 110.0f;
+        ImGui::SetNextItemWidth(comboWidth);
+        if (ImGui::BeginCombo("##prompt", promptFiles_.empty() ? "..." : promptFiles_[activePromptIndex_].c_str())) {
+            promptFiles_ = ensureDefaultPrompts();
+            // Hide compactor.md from UI (still used by /compress internally)
+            promptFiles_.erase(
+                std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
+                promptFiles_.end());
+            if (activePromptIndex_ >= (int)promptFiles_.size())
+                activePromptIndex_ = 0;
+
+            for (int i = 0; i < (int)promptFiles_.size(); ++i) {
+                bool isSel = (activePromptIndex_ == i);
+                if (ImGui::Selectable(promptFiles_[i].c_str(), isSel)) {
+                    if (i != activePromptIndex_ && isIdle) {
+                        activePromptIndex_ = i;
+                        if (agent) {
+                            std::string content = loadPromptFile(promptFiles_[activePromptIndex_]);
+                            agent->replaceSystemPrompt(content);
+                        }
+                    }
+                }
+                if (isSel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+    }
+
+    // --- Status text ---
     if (isWaiting) {
         switch (opStatus.state) {
             case AgentState::Thinking: {
@@ -750,15 +641,15 @@ void App::renderInputArea() {
     ImGui::Separator();
 
     // --- Input box auto-fills via child with -reserve for status bar ---
-    float sbReserve = ImGui::GetFrameHeightWithSpacing() * 1.2f;  // separator + 1 line of text
+    float sbReserve = ImGui::GetFrameHeightWithSpacing() * 1.2f;
     ImGui::BeginChild("InputFill", ImVec2(0, -sbReserve), false);
 
     ImVec2 avail = ImGui::GetContentRegionAvail();
 
     float buttonWidth = 80.0f;
     float btnHeight = avail.y;
-    float inputAreaWidth = -1.0f;
     float spacing = ImGui::GetStyle().ItemSpacing.x;
+    float inputAreaWidth = -1.0f;
     if (avail.x > buttonWidth + spacing * 2) {
         inputAreaWidth = avail.x - buttonWidth - spacing;
     }
@@ -800,14 +691,15 @@ void App::renderInputArea() {
                 inputBuf[0] = '\0';
             } else {
                 inputBuf[0] = '\0';
-                agent->sendMessage(text);
+                agent->startTurn(text);
+                launchAgentThread();
             }
         }
     }
 
     ImGui::SameLine();
     if (isWaiting) {
-        ImGui::EndDisabled();  // pop outer app-level disable → Cancel stays active
+        ImGui::EndDisabled();  // pop outer app-level disable -> Cancel stays active
         if (ImGui::Button("Cancel", ImVec2(buttonWidth, btnHeight))) {
             if (agent) agent->cancel();
         }
@@ -836,7 +728,8 @@ void App::renderInputArea() {
                     inputBuf[0] = '\0';
                 } else {
                     inputBuf[0] = '\0';
-                    agent->sendMessage(text);
+                    agent->startTurn(text);
+                    launchAgentThread();
                 }
             }
         }

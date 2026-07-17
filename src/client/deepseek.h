@@ -30,7 +30,7 @@ public:
     bool isReady() const { return !config.apiKey.empty(); }
     std::string getModel() const { std::lock_guard<std::mutex> lock(mutex); return config.model; }
 
-    bool startStreaming(const ChatRequest& request, StreamCallbacks callbacks);
+    bool streamBlocking(const ChatRequest& request, StreamCallbacks callbacks);
     void cancel();
 
     ChatResponse sendMessage(const ChatRequest& request, std::string* errorOut = nullptr);
@@ -42,7 +42,6 @@ public:
 
 private:
     AppConfig config;
-    std::thread workerThread;
     std::atomic<bool> cancelFlag{false};
     std::atomic<bool> streaming{false};
     mutable std::mutex mutex;
@@ -52,11 +51,10 @@ private:
     RetryConfig retryConfig_;
 
     static bool isRetryableHttpStatus(unsigned long statusCode);
-    void streamingWorker(const ChatRequest& request, StreamCallbacks callbacks);
 
     // libcurl helpers
     void* createEasyHandle();
-    static void initLibcurl();
+    void initLibcurl();
     std::string buildRequestBody(const ChatRequest& request);
     int postWithRetry(void* curl, const std::string& url, const std::string& body, long* outHttpStatus);
 };

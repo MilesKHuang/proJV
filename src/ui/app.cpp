@@ -5,6 +5,7 @@
 #include "tools/registry.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
+#include "tools/md_file_tool.h"
 #include "tools/web_tools.h"
 
 #include "json.hpp"
@@ -166,11 +167,16 @@ static std::string buildProjectContext(const std::string& workspacePath) {
 
 App::App() {}
 App::~App() {
-    // 1. Stop write queue first -- flushes all pending writes
-    storageWriteQueue.stop();
-    // 2. Delete agent -- cancels background threads (tool worker, streaming)
+    // 1. Cancel agent and join worker thread
+    if (agent) {
+        agent->cancel();
+        joinAgentThread();
+    }
+    // 2. Join fetchModels thread if still running
+    if (fetchModelsThread_.joinable()) fetchModelsThread_.join();
+    // 3. Delete agent
     delete agent;
-    // 3. Storage destructor closes both connections naturally
+    // 4. Storage destructor closes both connections naturally
 }
 
 void App::setupTools() {
@@ -183,6 +189,7 @@ void App::setupTools() {
 
     registerShellTool(tools, ws);
     registerFileTools(tools, ws);
+    registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
     // registerGitTools(tools);  // removed — git commands are covered by shell_tool
     registerFileSearchTool(tools);
@@ -197,11 +204,6 @@ bool App::initialize() {
 
     agent = new Agent(client, tools);
 
-    // -- Start the serialized write queue --------------------------
-    storageWriteQueue.start();
-    agent->enqueueWrite = [this](std::function<void()> fn) {
-        storageWriteQueue.enqueue(std::move(fn));
-    };
     // Token usage callback
     agent->onTokenUsage = [this](int p, int c) {
         totalPromptTokens += p;
@@ -221,15 +223,21 @@ bool App::initialize() {
     configMaxTokens = config.maxTokens;
     configTemperature = static_cast<float>(config.temperature);
 
-    // -- Load system prompt (from projv_prompts/system_prompt.md, or built-in default)
+    // -- Initialize prompt files from projv_prompts/ directory
     {
-        std::string sp = loadSystemPrompt();
-        strncpy_s(systemPromptBuf, sp.c_str(), sizeof(systemPromptBuf) - 1);
-        systemPromptBuf[sizeof(systemPromptBuf) - 1] = '\0';
+        promptFiles_ = ensureDefaultPrompts();
+        activePromptIndex_ = 0;
+        // Find coder.md in the list for initial prompt
+        for (int i = 0; i < (int)promptFiles_.size(); ++i) {
+            if (promptFiles_[i] == "coder.md") { activePromptIndex_ = i; break; }
+        }
     }
 
-    // Pass system prompt to agent so it can parse the allowed-tools whitelist.
-    if (agent) agent->setSystemPrompt(systemPromptBuf);
+    // -- Load initial prompt and set allowed tools whitelist
+    {
+        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        if (agent) agent->setSystemPrompt(sp);
+    }
 
     // -- 准备会话目录（不创建 DB 文件，等用户发第一条消息时再创建）---
     {
@@ -257,8 +265,7 @@ bool App::initialize() {
             // 把已在 session 中的 system 消息写入 DB
             for (const auto& msg : agent->getSession().getContextMessages()) {
                 if (msg.role == "system") {
-                    storageWriteQueue.enqueue(
-                        [this, msg]() { storage.insertMessage(msg); });
+                    storage.insertMessage(msg);
                 }
             }
         } else {
@@ -267,7 +274,7 @@ bool App::initialize() {
     };
 
     // -- Inject system prompt as first session message --------------
-    agent->addPersistedMessage(Message::System(systemPromptBuf));
+    agent->addPersistedMessage(Message::System(loadPromptFile(promptFiles_[activePromptIndex_])));
 
     // -- Inject project context (directory structure) ----------------
     // This tells the LLM where files actually live so it doesn't guess
@@ -290,10 +297,11 @@ bool App::initialize() {
 
     applyTheme(0);
 
-    // -- R1/D: fetchModels 后台化，UI 用默认模型占位 ------------------
+    // -- R1/D: fetchModels managed thread, UI uses default model placeholder
     if (!config.apiKey.empty()) {
         modelsLoading.store(true, std::memory_order_release);
-        std::thread([this]() {
+        if (fetchModelsThread_.joinable()) fetchModelsThread_.join();
+        fetchModelsThread_ = std::thread([this]() {
             std::string err;
             auto models = client.fetchModels(&err);
             {
@@ -310,7 +318,7 @@ bool App::initialize() {
                 }
                 modelsLoading.store(false, std::memory_order_release);
             }
-        }).detach();
+        });
     }
 
     return true;
@@ -405,6 +413,7 @@ void App::render() {
     }
 
     syncChatFromAgent();
+    checkAgentThread();
     checkAgentFlags();
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -459,10 +468,6 @@ void App::render() {
         ImGui::OpenPopup("Configuration");
         showConfigDialog = false;
     }
-    if (showSystemPromptEdit) {
-        ImGui::OpenPopup("System Prompt");
-        showSystemPromptEdit = false;
-    }
 
     if (agent) {
         auto agentStatus = agent->getStatus();
@@ -484,7 +489,6 @@ void App::render() {
     }
 
     renderConfigPopup();
-    renderSystemPromptPopup();
     renderToolApprovalDialog();
 }
 
@@ -506,7 +510,6 @@ void App::renderMainMenuBar() {
         }
         if (ImGui::BeginMenu("Settings")) {
             if (ImGui::MenuItem("Configuration")) showConfigDialog = true;
-            if (ImGui::MenuItem("System Prompt")) showSystemPromptEdit = true;
             ImGui::Separator();
 
             if (ImGui::BeginCombo("Theme", themeNames[selectedThemeIndex])) {
@@ -772,7 +775,7 @@ void App::saveDialogToFile() {
         debugLog("[Dialog] saveDialogToFile: no open database");
         return;
     }
-    storageWriteQueue.flush();
+    
     storage.closeDatabase();
     std::filesystem::copy_file(srcPath, filename,
         std::filesystem::copy_options::overwrite_existing);
@@ -805,7 +808,7 @@ void App::switchToDialog(const std::string& dbPath) {
     if (!agent) return;
     agent->cancel();
 
-    storageWriteQueue.flush();
+    
 
     std::string oldPath = storage.currentPath();
     agent->clearSession();
@@ -831,13 +834,38 @@ void App::switchToDialog(const std::string& dbPath) {
         dbPath.c_str(), chatHistory.size(), agent->getSession().messageCount());
 }
 
+// ---- Agent thread management --------------------------------------------
+void App::launchAgentThread() {
+    if (agentThreadRunning_.load()) return;
+    joinAgentThread();
+    agentThreadRunning_.store(true);
+    agentThread_ = std::thread([this]() {
+        agent->newTurn();
+        agent->run();
+        agentThreadRunning_.store(false);
+    });
+}
+
+void App::joinAgentThread() {
+    if (agentThread_.joinable()) {
+        try { agentThread_.join(); } catch (...) {}
+    }
+}
+
+void App::checkAgentThread() {
+    if (!agentThreadRunning_.load() && agentThread_.joinable()) {
+        joinAgentThread();
+    }
+}
+
 // --- New Chat -------------------------------------------------------------
 
 void App::newChat() {
+
     if (!agent) return;
 
     agent->cancel();
-    storageWriteQueue.flush();
+    
 
     auto now = std::time(nullptr);
     char buf[64];
@@ -854,7 +882,11 @@ void App::newChat() {
     lastMessageId_ = 0;
     totalPromptTokens = totalCompletionTokens = 0;
 
-    agent->addPersistedMessage(Message::System(systemPromptBuf));
+    {
+        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        agent->setSystemPrompt(sp);
+        agent->addPersistedMessage(Message::System(sp));
+    }
 
     // Build bubbles from messages
     buildBubblesFromMessages();

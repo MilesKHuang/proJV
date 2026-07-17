@@ -14,7 +14,7 @@ class App;         // forward decl
 // RenderCopyButton: small inline helper for copying text
 void RenderCopyButton(const char* label, const char* text);
 
-// renderFormattedText: renders markdown + code blocks using imgui_markdown
+// renderFormattedText: renders markdown + code blocks using md4c + ImGui
 void renderFormattedText(const std::string& text, float bubbleWidth);
 
 

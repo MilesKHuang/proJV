@@ -217,7 +217,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow) {
     char exePath[MAX_PATH] = {};
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
     int logArgc = 1;
-    char* logArgv[] = {exePath};
+    char* logArgv[] = {exePath, nullptr};  // argv[argc] must be nullptr per C standard
     loguru::init(logArgc, logArgv);
     std::string logPath = std::string(exePath) + ".log";
     loguru::add_file(logPath.c_str(), loguru::Append, loguru::Verbosity_MAX);

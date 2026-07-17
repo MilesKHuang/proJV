@@ -31,6 +31,16 @@ static constexpr const char* WS_VIOLATION_VALIDATE_MIDDLE =
 
 namespace fs = std::filesystem;
 
+// -- Directories to skip during recursive traversal -----------------
+// Shared by findSimilarFiles and grep_files to avoid crawling huge
+// build-artifact / VCS / dependency directories that would freeze the UI.
+static const std::vector<std::string> kSkipDirs = {
+    ".git", ".vs", ".vscode", "build", "Debug", "Release",
+    "x64", "x86", "bin", "bin64", "obj", "out", "target",
+    "node_modules", "packages", "vendor", "external",
+    "__pycache__", ".pytest_cache"
+};
+
 // -- Path resolution -----------------------------------------------
 // Resolve a path against the workspace: relative paths become absolute
 // under the workspace; absolute paths are normalized. Never resolves
@@ -142,14 +152,7 @@ static std::string findSimilarFiles(const std::string& failedPath,
     int found = 0;
     const int MAX_RESULTS = 6;
 
-    // Directories to skip during search
-    static const std::vector<std::string> skipDirs = {
-        ".git", ".vs", ".vscode", "build", "Debug", "Release",
-        "x64", "x86", "bin", "bin64", "obj", "out", "target",
-        "node_modules", "packages", "vendor", "external",
-        "__pycache__", ".pytest_cache"
-    };
-
+    // Use file-level kSkipDirs defined above
     try {
         for (auto it = fs::recursive_directory_iterator(root,
                 fs::directory_options::skip_permission_denied, ec);
@@ -175,7 +178,7 @@ static std::string findSimilarFiles(const std::string& failedPath,
                 std::string dirName = entry.path().filename().string();
                 bool skip = (dirName.size() > 0 && dirName[0] == '.');
                 if (!skip) {
-                    for (const auto& d : skipDirs) {
+                    for (const auto& d : kSkipDirs) {
                         if (dirName == d) { skip = true; break; }
                     }
                 }
@@ -339,25 +342,44 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 std::regex re(pattern, std::regex::ECMAScript | std::regex::icase);
                 std::ostringstream result;
                 int count = 0;
-                for (const auto& entry : fs::recursive_directory_iterator(resolved,
-                    fs::directory_options::skip_permission_denied))
-                {
-                    if (!entry.is_regular_file()) continue;
-                    auto ext = entry.path().extension().string();
-                    if (ext == ".exe" || ext == ".dll" || ext == ".obj" || ext == ".pdb") continue;
+                int fileCount = 0;
+                static constexpr int kMaxFilesToScan = 5000;  // hard cap to prevent UI freeze
+                std::error_code ec;
+                for (auto it = fs::recursive_directory_iterator(resolved,
+                        fs::directory_options::skip_permission_denied, ec);
+                     it != fs::recursive_directory_iterator(); ) {
+                    if (ec) { ec.clear(); ++it; continue; }
 
-                    std::error_code ec;
-                    auto fsize = entry.file_size(ec);
-                    if (ec || fsize > 512 * 1024) continue;
+                    const auto& entry = *it;
+
+                    // Skip known junk directories
+                    if (entry.is_directory()) {
+                        std::string dirName = entry.path().filename().string();
+                        bool skip = (dirName.size() > 0 && dirName[0] == '.');
+                        if (!skip) {
+                            for (const auto& d : kSkipDirs) {
+                                if (dirName == d) { skip = true; break; }
+                            }
+                        }
+                        if (skip) { it.disable_recursion_pending(); ++it; continue; }
+                    }
+                    if (!entry.is_regular_file()) { ++it; continue; }
+                    auto ext = entry.path().extension().string();
+                    if (ext == ".exe" || ext == ".dll" || ext == ".obj" || ext == ".pdb") { ++it; continue; }
+
+                    std::error_code ec2;
+                    auto fsize = entry.file_size(ec2);
+                    if (ec2 || fsize > 512 * 1024) { ++it; continue; }
 
                     std::string fpath = entry.path().string();
                     std::string ignored;
                     std::string ferr = validateFilePath(fpath, workspacePath, ignored);
-                    if (!ferr.empty()) continue;
+                    if (!ferr.empty()) { ++it; continue; }
 
                     std::ifstream ifs(entry.path());
                     std::string line;
                     int lineNum = 0;
+                    ++fileCount;
                     while (std::getline(ifs, line)) {
                         ++lineNum;
                         if (std::regex_search(line, re)) {
@@ -367,8 +389,13 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                         }
                     }
                     if (count >= 100) break;
+                    if (fileCount >= kMaxFilesToScan) {
+                        result << "\n[grep_files: reached file scan limit (" << kMaxFilesToScan << "). Results may be incomplete.]\n";
+                        break;
+                    }
+                    ++it;
                 }
-                if (count == 0) return "No matches found for pattern: " + pattern;
+                if (result.str().empty()) return "No matches found for pattern: " + pattern;
                 return result.str();
             } catch (const std::exception& e) {
                 return "Error: " + std::string(e.what());

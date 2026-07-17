@@ -2,7 +2,6 @@
 #include "models.h"
 #include "core/config.h"
 #include "core/storage.h"
-#include "core/storage_queue.h"
 #include "client/deepseek.h"
 #include "core/agent.h"
 #include "tools/registry.h"
@@ -36,12 +35,16 @@ public:
     // Dialog management
     void newChat();
 
+    // Agent worker thread management
+    void launchAgentThread();
+    void joinAgentThread();
+    void checkAgentThread();
+
 private:
     AppConfig config;
     DeepSeekClient client;
     ToolRegistry tools;
     Storage storage;
-    StorageWriteQueue storageWriteQueue;
 
     Agent* agent = nullptr;
 
@@ -55,8 +58,8 @@ private:
     char apiKeyBuf[2048] = {};
     bool scrollToBottom = false;
     bool showConfigDialog = false;
-    char systemPromptBuf[8192] = {};
-    bool showSystemPromptEdit = false;
+    std::vector<std::string> promptFiles_;
+    int activePromptIndex_ = 0;
 
     // Config edit buffers
     char baseUrlBuf[512] = {};
@@ -88,7 +91,7 @@ private:
     void renderInputArea();
     void renderConfigPopup();
     void renderStatusBar();
-    void renderSystemPromptPopup();
+
     void renderToolApprovalDialog();
 
     // Per-frame sync: read new messages from agent, derive ChatBubbles
@@ -109,6 +112,11 @@ private:
 
     // Handle save/load flags from agent
     void checkAgentFlags();
+
+    // Agent worker thread (spawned per turn)
+    std::thread agentThread_;
+    std::atomic<bool> agentThreadRunning_{false};
+    std::thread fetchModelsThread_;
 
     // TODO panel
     bool showTodoPanel = true;
