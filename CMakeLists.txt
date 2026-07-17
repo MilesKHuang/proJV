@@ -32,6 +32,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/registry.cpp
     ${SRC_DIR}/tools/shell_tool.cpp
     ${SRC_DIR}/tools/file_tool.cpp
+    ${SRC_DIR}/tools/md_file_tool.cpp
     ${SRC_DIR}/tools/edit_file_tool.cpp
     # git_tool.cpp removed — git commands handled via shell_tool
     ${SRC_DIR}/tools/file_search_tool.cpp

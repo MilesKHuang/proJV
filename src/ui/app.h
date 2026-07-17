@@ -58,8 +58,8 @@ private:
     char apiKeyBuf[2048] = {};
     bool scrollToBottom = false;
     bool showConfigDialog = false;
-    char systemPromptBuf[8192] = {};
-    bool showSystemPromptEdit = false;
+    std::vector<std::string> promptFiles_;
+    int activePromptIndex_ = 0;
 
     // Config edit buffers
     char baseUrlBuf[512] = {};
@@ -91,7 +91,7 @@ private:
     void renderInputArea();
     void renderConfigPopup();
     void renderStatusBar();
-    void renderSystemPromptPopup();
+
     void renderToolApprovalDialog();
 
     // Per-frame sync: read new messages from agent, derive ChatBubbles

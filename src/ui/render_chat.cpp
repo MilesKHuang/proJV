@@ -1,6 +1,7 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "render_chat.h"
+#include "core/prompts.h"
 #include "tools/registry.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -563,7 +564,38 @@ void App::renderInputArea() {
         lastWasWaiting = isWaiting;
     }
 
-    // --- Top of footer: Idle or spinner + status text ---
+    // --- Combo + status on same line ---
+    {
+        float comboWidth = 110.0f;
+        ImGui::SetNextItemWidth(comboWidth);
+        if (ImGui::BeginCombo("##prompt", promptFiles_.empty() ? "..." : promptFiles_[activePromptIndex_].c_str())) {
+            promptFiles_ = ensureDefaultPrompts();
+            // Hide compactor.md from UI (still used by /compress internally)
+            promptFiles_.erase(
+                std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
+                promptFiles_.end());
+            if (activePromptIndex_ >= (int)promptFiles_.size())
+                activePromptIndex_ = 0;
+
+            for (int i = 0; i < (int)promptFiles_.size(); ++i) {
+                bool isSel = (activePromptIndex_ == i);
+                if (ImGui::Selectable(promptFiles_[i].c_str(), isSel)) {
+                    if (i != activePromptIndex_ && isIdle) {
+                        activePromptIndex_ = i;
+                        if (agent) {
+                            std::string content = loadPromptFile(promptFiles_[activePromptIndex_]);
+                            agent->replaceSystemPrompt(content);
+                        }
+                    }
+                }
+                if (isSel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+    }
+
+    // --- Status text ---
     if (isWaiting) {
         switch (opStatus.state) {
             case AgentState::Thinking: {
@@ -609,15 +641,15 @@ void App::renderInputArea() {
     ImGui::Separator();
 
     // --- Input box auto-fills via child with -reserve for status bar ---
-    float sbReserve = ImGui::GetFrameHeightWithSpacing() * 1.2f;  // separator + 1 line of text
+    float sbReserve = ImGui::GetFrameHeightWithSpacing() * 1.2f;
     ImGui::BeginChild("InputFill", ImVec2(0, -sbReserve), false);
 
     ImVec2 avail = ImGui::GetContentRegionAvail();
 
     float buttonWidth = 80.0f;
     float btnHeight = avail.y;
-    float inputAreaWidth = -1.0f;
     float spacing = ImGui::GetStyle().ItemSpacing.x;
+    float inputAreaWidth = -1.0f;
     if (avail.x > buttonWidth + spacing * 2) {
         inputAreaWidth = avail.x - buttonWidth - spacing;
     }

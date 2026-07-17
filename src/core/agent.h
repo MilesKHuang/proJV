@@ -62,6 +62,9 @@ public:
         systemPrompt_ = sp;
         reloadAllowedTools();
     }
+    // Replace the first system message in session with a new prompt.
+    // Keeps all other messages intact -- used for role switching without clearing context.
+    void replaceSystemPrompt(const std::string& newPrompt);
     void setWorkspacePath(const std::string& ws) { workspacePath_ = ws; }
     void setContextWindow(size_t window) {
         configContextWindow = window;

@@ -324,6 +324,23 @@ void Agent::clearSession() {
     }
 }
 
+void Agent::replaceSystemPrompt(const std::string& newPrompt) {
+    systemPrompt_ = newPrompt;
+    reloadAllowedTools();
+
+    auto msgs = session.getContextMessages();
+    for (auto& msg : msgs) {
+        if (msg.role == "system") {
+            msg.content = newPrompt;
+            session.loadMessages(std::move(msgs));
+            contextTokensDirty_ = true;
+            return;
+        }
+    }
+    // No existing system message -- add one (shouldn't normally happen)
+    addPersistedMessage(Message::System(newPrompt));
+}
+
 void Agent::updateSnapshot() {
     std::lock_guard<std::mutex> lk(snapshotMutex_);
     switch (phase_.load()) {
@@ -414,7 +431,7 @@ bool Agent::compactSession() {
     input += session.buildCompactionInput(plan);
     if (input.size() < 200) return false;
     ChatRequest req; req.model = model_;
-    req.messages.push_back(Message::System(loadCompactionPrompt()));
+    req.messages.push_back(Message::System(loadPromptFile("compactor.md")));
     req.messages.push_back(Message::User(input)); req.stream = false;
     req.maxTokens = configMaxTokens; req.temperature = 0.0;
     std::string err; ChatResponse resp = client.sendMessage(req, &err);

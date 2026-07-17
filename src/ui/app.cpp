@@ -5,6 +5,7 @@
 #include "tools/registry.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
+#include "tools/md_file_tool.h"
 #include "tools/web_tools.h"
 
 #include "json.hpp"
@@ -188,6 +189,7 @@ void App::setupTools() {
 
     registerShellTool(tools, ws);
     registerFileTools(tools, ws);
+    registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
     // registerGitTools(tools);  // removed — git commands are covered by shell_tool
     registerFileSearchTool(tools);
@@ -221,15 +223,21 @@ bool App::initialize() {
     configMaxTokens = config.maxTokens;
     configTemperature = static_cast<float>(config.temperature);
 
-    // -- Load system prompt (from projv_prompts/system_prompt.md, or built-in default)
+    // -- Initialize prompt files from projv_prompts/ directory
     {
-        std::string sp = loadSystemPrompt();
-        strncpy_s(systemPromptBuf, sp.c_str(), sizeof(systemPromptBuf) - 1);
-        systemPromptBuf[sizeof(systemPromptBuf) - 1] = '\0';
+        promptFiles_ = ensureDefaultPrompts();
+        activePromptIndex_ = 0;
+        // Find coder.md in the list for initial prompt
+        for (int i = 0; i < (int)promptFiles_.size(); ++i) {
+            if (promptFiles_[i] == "coder.md") { activePromptIndex_ = i; break; }
+        }
     }
 
-    // Pass system prompt to agent so it can parse the allowed-tools whitelist.
-    if (agent) agent->setSystemPrompt(systemPromptBuf);
+    // -- Load initial prompt and set allowed tools whitelist
+    {
+        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        if (agent) agent->setSystemPrompt(sp);
+    }
 
     // -- 准备会话目录（不创建 DB 文件，等用户发第一条消息时再创建）---
     {
@@ -266,7 +274,7 @@ bool App::initialize() {
     };
 
     // -- Inject system prompt as first session message --------------
-    agent->addPersistedMessage(Message::System(systemPromptBuf));
+    agent->addPersistedMessage(Message::System(loadPromptFile(promptFiles_[activePromptIndex_])));
 
     // -- Inject project context (directory structure) ----------------
     // This tells the LLM where files actually live so it doesn't guess
@@ -460,10 +468,6 @@ void App::render() {
         ImGui::OpenPopup("Configuration");
         showConfigDialog = false;
     }
-    if (showSystemPromptEdit) {
-        ImGui::OpenPopup("System Prompt");
-        showSystemPromptEdit = false;
-    }
 
     if (agent) {
         auto agentStatus = agent->getStatus();
@@ -485,7 +489,6 @@ void App::render() {
     }
 
     renderConfigPopup();
-    renderSystemPromptPopup();
     renderToolApprovalDialog();
 }
 
@@ -507,7 +510,6 @@ void App::renderMainMenuBar() {
         }
         if (ImGui::BeginMenu("Settings")) {
             if (ImGui::MenuItem("Configuration")) showConfigDialog = true;
-            if (ImGui::MenuItem("System Prompt")) showSystemPromptEdit = true;
             ImGui::Separator();
 
             if (ImGui::BeginCombo("Theme", themeNames[selectedThemeIndex])) {
@@ -880,7 +882,11 @@ void App::newChat() {
     lastMessageId_ = 0;
     totalPromptTokens = totalCompletionTokens = 0;
 
-    agent->addPersistedMessage(Message::System(systemPromptBuf));
+    {
+        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        agent->setSystemPrompt(sp);
+        agent->addPersistedMessage(Message::System(sp));
+    }
 
     // Build bubbles from messages
     buildBubblesFromMessages();
