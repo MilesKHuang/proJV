@@ -85,7 +85,6 @@ proJV/
 │ └── msyh.ttc              # Microsoft YaHei font (CJK support)
 ├── external/                # Static dependencies, no package manager
 │   ├── imgui/               # Dear ImGui GUI framework
-│   ├── imgui_markdown.h     # Markdown rendering
 │   ├── json.hpp             # JSON parser (nlohmann)
 │   ├── toml.hpp             # TOML parser (toml++)
 │   ├── SQLiteCpp-3.3.3/     # SQLite C++ wrapper
@@ -140,7 +139,6 @@ User input → Agent (think/reason)
 | Library | Purpose | Source |
 |---------|---------|--------|
 | [Dear ImGui](https://github.com/ocornut/imgui) | GUI framework | `external/imgui/` |
-| [imgui_markdown](https://github.com/juliettef/imgui_markdown) | Markdown rendering | Single header |
 | [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) | Database | `external/SQLiteCpp-3.3.3/` |
 | [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/` |
 | [loguru](https://github.com/emilk/loguru) | Logging | `external/loguru.cpp` |
@@ -159,7 +157,6 @@ User input → Agent (think/reason)
 - [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) — Lightweight DB wrapper
 - [libcurl](https://curl.se/) — Reliable HTTP client
 - [loguru](https://github.com/emilk/loguru) — Clean C++ logging
-- [imgui_markdown](https://github.com/juliettef/imgui_markdown) — Markdown rendering
 - All other open-source maintainers
 
 ---

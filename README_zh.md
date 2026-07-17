@@ -86,7 +86,6 @@ proJV/
 │ └── msyh.ttc              # 微软雅黑字体（CJK 支持）
 ├── external/                # 静态依赖，无需包管理器
 │   ├── imgui/               # Dear ImGui GUI 框架
-│   ├── imgui_markdown.h     # Markdown 渲染
 │   ├── json.hpp             # JSON 解析（nlohmann）
 │   ├── toml.hpp             # TOML 解析（toml++）
 │   ├── SQLiteCpp-3.3.3/     # SQLite C++ 封装
@@ -141,7 +140,6 @@ proJV/
 | 库 | 用途 | 来源 |
 |----|------|------|
 | [Dear ImGui](https://github.com/ocornut/imgui) | GUI 框架 | `external/imgui/` |
-| [imgui_markdown](https://github.com/juliettef/imgui_markdown) | Markdown 渲染 | 单头文件 |
 | [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) | 数据库 | `external/SQLiteCpp-3.3.3/` |
 | [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/` |
 | [loguru](https://github.com/emilk/loguru) | 日志 | `external/loguru.cpp` |
@@ -160,7 +158,6 @@ proJV/
 - [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) — 轻量数据库封装
 - [libcurl](https://curl.se/) — 可靠的 HTTP 客户端
 - [loguru](https://github.com/emilk/loguru) — 简洁的 C++ 日志
-- [imgui_markdown](https://github.com/juliettef/imgui_markdown) — Markdown 渲染
 - 所有其他开源依赖的维护者
 
 ---
