@@ -24,38 +24,35 @@ Project JV, 意思是 **Just Vibing** — 一个轻快、精致的 Windows 桌�
 
 proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、编辑文件、搜索网页、管理 TODO — 全在清爽的 GUI 里完成。它甚至能**修改和编译自己**。
 
-这仍然是个业余项目，但已经跨过了自我迭代的门槛，而且越来越好用。
-
 ---
 
 ## 亮点功能
 
-### Designer 工作流
+### 多角色 System Prompt
 
-锁定破坏性工具，让 AI 先产出结构化设计文档再动手写代码。适合架构评审和大规模重构。
-
-<p align="center">
-  <img src="assets/overview.png" alt="Designer workflow" width="800"/>
-</p>
-
-### 自定义 System Prompt
-
-往 `projv_prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。在 coder / designer / 你自己的角色之间随时切换，不丢上下文。
+往 `projv_prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。内置 **coder**（全工具权限）和 **designer**（只读分析模式 — 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档）。切换角色不丢上下文。
 
 <p align="center">
-  <img src="assets/customize_system_prompt.png" alt="Custom system prompts" width="800"/>
+  <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
 </p>
 
 ### 主题系统
 
-7 套精选内置主题 + 完整自定义。菜单一键切换，可视化编辑器逐色微调，JSON 导入/导出，自动保存到 `config.toml`。
+两套内置（Obsidian / Light），外加 5 套精选主题可由 `projv_theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `config.toml`，下次启动即恢复。
+
+| 预览 | 主题 | 风格 |
+|------|------|------|
+| <img src="assets/themes/obsidian.png" width="180"/> | **Obsidian** | 精炼暖紫黑（默认） |
+| <img src="assets/themes/light.png" width="180"/> | **Light** | 干净白色（默认） |
+| <img src="assets/themes/forest.png" width="180"/> | **Forest** | 轻盈森系绿，自然风格 |
+| <img src="assets/themes/artism_warm.png" width="180"/> | **Artism** | 暖调焦糖，咖啡馆文艺感 |
+| <img src="assets/themes/monochrome_dark.png" width="180"/> | **Monochrome Dark** | 全灰度极简，零色彩干扰 |
+| <img src="assets/themes/colorblind_safe.png" width="180"/> | **Colorblind Safe** | 蓝橙调色板，覆盖常见色觉障碍类型 |
+| <img src="assets/themes/vibrant_focus.png" width="180"/> | **Vibrant Focus** | 高饱和霓虹，强视觉分区 |
 
 <p align="center">
-  <img src="assets/themes/obsidian.png" alt="Obsidian theme" width="230"/>
-  <img src="assets/themes/forest.png" alt="Forest theme" width="230"/>
-  <img src="assets/themes/artism_warm.png" alt="Artism theme" width="230"/>
-  <br/>
-  <sub><b>Obsidian</b> · <b>Forest</b> · <b>Artism</b> — 共 7 套主题</sub>
+  <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>
+  <br/><sub>内置可视化编辑器 — 按分类逐色调整，实时预览效果，支持 JSON 导出/导入</sub>
 </p>
 
 ---
@@ -64,12 +61,9 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 | 功能 | 说明 |
 |------|------|
-| **多角色 Prompt** | ComboBox 一键切换 coder / designer / 自定义角色。目录驱动 — 丢 `.md` 进 `projv_prompts/` 即自动识别。 |
-| **Designer 工作流** | 只读代码分析模式：`read_file`/`grep_files` + `md_file` 产出设计文档。Shell 和源码编辑被锁定。 |
 | **AI 自动调用工具** | 读文件、写文件、编辑、md_file、Shell、文件搜索、网页搜索/抓取、TODO — AI 自主决策 |
-| **主题系统** | 7 套内置主题（Obsidian / Light / Forest / Artism / Monochrome / Colorblind Safe / Vibrant Focus）+ 可视化编辑器 + JSON 导入导出 + config.toml 持久化 |
-| **思考过程展示** | deepseek-reasoner `reasoning_content` 可折叠卡片展示 |
-| **流式 Markdown** | 实时 SSE 流式渲染，自研 Markdown 渲染器（代码块、表格、链接、标题） |
+| **思考过程展示** | deepseek-reasoner 推理链可折叠卡片 |
+| **流式 Markdown** | 实时 SSE + 自研渲染器（代码块、表格、链接、标题） |
 | **上下文管理** | Token 估算 + 智能压缩，达到压力阈值自动缩容 |
 | **会话持久化** | SQLite 自动保存，支持新建/保存/加载历史会话 |
 | **实时状态栏** | 模型名、Token 用量（输入+输出）、消息数、工具调用、上下文压力 % |
@@ -81,6 +75,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 ## 快速开始
 
 ### 构建
+
 需要 CMake 和 Visual Studio 2019+（或任何支持 C++20 的编译器）。
 
 ```bash
@@ -92,7 +87,7 @@ cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 ```
 
-项目根目录附带了 `clean_and_build.bat`，可以直接使用。
+项目根目录附带了 `clean_and_build.bat`。
 
 产物：`build/proJV.exe`（~3 MB）
 
@@ -109,53 +104,17 @@ cmake --build .
 ```
 proJV/
 ├── CMakeLists.txt
-├─┬ assets/
-│ ├── msyh.ttc                  # 微软雅黑 CJK 字体
-│ ├── overview.png
-│ ├── customize_system_prompt.png
-│ └─┬ themes/                   # 主题预览图
-│   ├── obsidian.png
-│   ├── forest.png
-│   └── ...
-├─┬ projv_theme/                # 用户可安装的主题 JSON
-│ └── *.json
-├── external/                   # 静态依赖，零包管理器
-│   ├── imgui/                  # Dear ImGui
-│   ├── json.hpp                # nlohmann/json（单头文件）
-│   ├── toml.hpp                # toml++（单头文件）
-│   ├── SQLiteCpp-3.3.3/        # SQLite C++ 封装
-│   ├── curl-8.21.0/            # libcurl
-│   └── loguru.cpp/hpp          # 日志
-├─┬ src/
-│ ├── main.cpp                  # WinMain + D3D11 + ImGui 主循环
-│ ├── debug_log.h
-│ ├─┬ client/                   # DeepSeek API 客户端
-│ │ └── deepseek.h/.cpp         # libcurl HTTP + SSE 流式请求
-│ ├─┬ core/                     # 核心逻辑
-│ │ ├── agent.h/.cpp            # Agent 主循环（思考→工具→回复）
-│ │ ├── session.h/.cpp          # 对话管理 + Token 估算
-│ │ ├── config.h/.cpp           # TOML 配置加载
-│ │ ├── storage.h/.cpp          # SQLite 持久化
-│ │ ├── prompts_loader.cpp      # 目录驱动 prompt 预设
-│ │ └── prompts.h
-│ ├─┬ ui/                       # 用户界面
-│ │ ├── app.h/.cpp              # 主应用 + 窗口管理
-│ │ ├── render_chat.cpp         # 聊天气泡 + Markdown + Prompt ComboBox
-│ │ ├── render_settings.cpp     # 配置 + 工具审批弹窗
-│ │ ├── markdown_render.cpp     # 自研 Markdown 渲染器
-│ │ ├── theme.h/.cpp            # ThemeColors + ThemeManager（65 色体系）
-│ │ └── theme_popup.cpp         # 主题编辑弹窗 + 实时预览
-│ └─┬ tools/                    # Agent 可调用的工具集
-│   ├── registry.h/.cpp         # 工具注册中心
-│   ├── shell_tool.cpp          # Shell 命令执行
-│   ├── file_tool.cpp           # 文件读写/搜索
-│   ├── edit_file_tool.cpp      # 搜索替换编辑
-│   ├── md_file_tool.cpp        # Markdown 设计文档写入（designer 专用）
-│   ├── file_search_tool.cpp    # 文件搜索
-│   ├── web_tools.cpp           # 网页搜索 + 抓取
-│   └── todo_tool.cpp           # TODO 管理
+├── assets/                    # 字体、截图、主题预览图
+├── projv_theme/               # 可安装的主题 JSON
+├── external/                  # 静态依赖：imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
+├── src/
+│   ├── main.cpp               # WinMain + D3D11 + ImGui 主循环
+│   ├── client/deepseek.*      # DeepSeek API（libcurl + SSE）
+│   ├── core/                  # Agent, Session, Config, Storage, Prompts
+│   ├── ui/                    # App, Chat, Settings, Markdown, Theme 系统
+│   └── tools/                 # Shell, file, search, web, md_file, todo
 └── build/
-    └── proJV.exe               # 编译产物（~3 MB）
+    └── proJV.exe              # ~3 MB
 ```
 
 ---

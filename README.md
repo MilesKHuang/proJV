@@ -24,38 +24,35 @@ Most AI coding tools feel bloated — flashy plugins, complex terminals, feature
 
 proJV is that tool. It reads your codebase, runs shell commands, edits files, searches the web, manages TODOs — all through a clean GUI. It can even **modify and compile itself**.
 
-And yes, it's still a weekend project. But it's crossed the self-iteration threshold, and it keeps getting better.
-
 ---
 
 ## Spotlight Features
 
-### Designer Workflow
+### Multi-Role System Prompts
 
-Lock down destructive tools and let the AI produce structured design documents before writing code. Perfect for architecture reviews and large refactors.
-
-<p align="center">
-  <img src="assets/overview.png" alt="Designer workflow" width="800"/>
-</p>
-
-### Custom System Prompts
-
-Drop a `.md` file into `projv_prompts/` — it instantly appears in the role selector. Switch between coder, designer, or your own custom persona mid-conversation without losing context.
+Drop a `.md` file into `projv_prompts/` and it instantly appears in the role selector. Built-in roles include **coder** (full tool access) and **designer** (read-only code analysis — shell and source edits locked out, outputs structured design docs via `md_file`). Switch mid-conversation without losing context.
 
 <p align="center">
-  <img src="assets/customize_system_prompt.png" alt="Custom system prompts" width="800"/>
+  <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
 </p>
 
 ### Theme System
 
-7 curated themes built in, plus full customization. Pick from the menu, tweak every color in the visual editor, export/load JSON themes, and auto-persist your choice to `config.toml`.
+Two built-in presets (Obsidian & Light), plus 5 curated themes installable from `projv_theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `config.toml` and restored on next launch.
+
+| Preview | Theme | Style |
+|---------|-------|-------|
+| <img src="assets/themes/obsidian.png" width="180"/> | **Obsidian** | Refined warm-dark (default) |
+| <img src="assets/themes/light.png" width="180"/> | **Light** | Clean white (default) |
+| <img src="assets/themes/forest.png" width="180"/> | **Forest** | Airy sage green, nature-inspired |
+| <img src="assets/themes/artism_warm.png" width="180"/> | **Artism** | Warm caramel, cozy café aesthetic |
+| <img src="assets/themes/monochrome_dark.png" width="180"/> | **Monochrome Dark** | Pure grayscale, zero color distraction |
+| <img src="assets/themes/colorblind_safe.png" width="180"/> | **Colorblind Safe** | Blue-orange palette, accessible for common CVD types |
+| <img src="assets/themes/vibrant_focus.png" width="180"/> | **Vibrant Focus** | High-contrast neon, strong visual blocks |
 
 <p align="center">
-  <img src="assets/themes/obsidian.png" alt="Obsidian theme" width="230"/>
-  <img src="assets/themes/forest.png" alt="Forest theme" width="230"/>
-  <img src="assets/themes/artism_warm.png" alt="Artism theme" width="230"/>
-  <br/>
-  <sub><b>Obsidian</b> · <b>Forest</b> · <b>Artism</b> — 7 themes total</sub>
+  <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>
+  <br/><sub>The built-in visual editor — edit colors by category, preview changes in real time, and export/import JSON themes</sub>
 </p>
 
 ---
@@ -64,23 +61,21 @@ Drop a `.md` file into `projv_prompts/` — it instantly appears in the role sel
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-role prompts** | ComboBox switching between coder / designer / custom roles. Directory-driven — drop a `.md` into `projv_prompts/` and it auto-appears. |
-| **Designer workflow** | Read-only code analysis mode: `read_file`/`grep_files` + `md_file` for design docs. Shell and source edits locked out. |
 | **AI tool orchestration** | read_file, write_file, edit_file, md_file, shell, file_search, web_search, fetch_url, todo — AI decides what to call and when |
-| **Theme system** | 7 built-in themes (Obsidian, Light, Forest, Artism, Monochrome, Colorblind Safe, Vibrant Focus) + visual editor + JSON import/export + config.toml persistence |
-| **Thinking display** | deepseek-reasoner `reasoning_content` rendered as collapsible cards |
-| **Streaming Markdown** | Real-time SSE streaming with custom Markdown renderer (code blocks, tables, links, headings) |
+| **Thinking display** | deepseek-reasoner chain-of-thought as collapsible cards |
+| **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
 | **Context management** | Token estimation + smart compaction at pressure thresholds |
 | **Session persistence** | SQLite auto-save, new/save/load conversation history |
 | **Live status bar** | Model name, token counts (in+out), message count, tool calls, context pressure % |
 | **Tool approval** | Destructive operations require user confirmation |
-| **TODO panel** | AI-managed task list with real-time sidebar |
+| **TODO panel** | AI-managed task list, real-time sidebar |
 
 ---
 
 ## Quick Start
 
 ### Build
+
 Requires CMake and Visual Studio 2019+ (or any C++20 compiler).
 
 ```bash
@@ -99,7 +94,7 @@ Artifact: `build/proJV.exe` (~3 MB)
 
 1. Get a DeepSeek API Key: [platform.deepseek.com](https://platform.deepseek.com/api_keys)
 2. Double-click `proJV.exe`, enter Key → **Save & Connect**
-3. Start chatting — or drop custom prompts into `projv_prompts/` and themes into `projv_theme/`
+3. Start chatting — drop custom prompts into `projv_prompts/` and themes into `projv_theme/`
 
 ---
 
@@ -108,53 +103,17 @@ Artifact: `build/proJV.exe` (~3 MB)
 ```
 proJV/
 ├── CMakeLists.txt
-├─┬ assets/
-│ ├── msyh.ttc                  # Microsoft YaHei CJK font
-│ ├── overview.png
-│ ├── customize_system_prompt.png
-│ └─┬ themes/                   # Theme preview images
-│   ├── obsidian.png
-│   ├── forest.png
-│   └── ...
-├─┬ projv_theme/                # User-installable theme JSON files
-│ └── *.json
-├── external/                   # Static dependencies, no package manager
-│   ├── imgui/                  # Dear ImGui
-│   ├── json.hpp                # nlohmann/json (single header)
-│   ├── toml.hpp                # toml++ (single header)
-│   ├── SQLiteCpp-3.3.3/        # SQLite C++ wrapper
-│   ├── curl-8.21.0/            # libcurl
-│   └── loguru.cpp/hpp          # Logging
-├─┬ src/
-│ ├── main.cpp                  # WinMain + D3D11 + ImGui loop
-│ ├── debug_log.h
-│ ├─┬ client/                   # DeepSeek API client
-│ │ └── deepseek.h/.cpp         # libcurl HTTP + SSE streaming
-│ ├─┬ core/                     # Core logic
-│ │ ├── agent.h/.cpp            # Agent loop (think → tool → reply)
-│ │ ├── session.h/.cpp          # Session management + token estimation
-│ │ ├── config.h/.cpp           # TOML config loader
-│ │ ├── storage.h/.cpp          # SQLite persistence
-│ │ ├── prompts_loader.cpp      # Directory-driven prompt presets
-│ │ └── prompts.h
-│ ├─┬ ui/                       # User interface
-│ │ ├── app.h/.cpp              # Main app + window management
-│ │ ├── render_chat.cpp         # Chat bubbles + Markdown + prompt combo
-│ │ ├── render_settings.cpp     # Config + tool approval dialogs
-│ │ ├── markdown_render.cpp     # Custom Markdown renderer
-│ │ ├── theme.h/.cpp            # ThemeColors + ThemeManager (65-color system)
-│ │ └── theme_popup.cpp         # Theme editor popup with live preview
-│ └─┬ tools/                    # Agent-callable tools
-│   ├── registry.h/.cpp         # Tool registry
-│   ├── shell_tool.cpp          # Shell command execution
-│   ├── file_tool.cpp           # File read/write/grep
-│   ├── edit_file_tool.cpp      # Search-replace edit
-│   ├── md_file_tool.cpp        # Markdown design doc writer (designer-only)
-│   ├── file_search_tool.cpp    # File search
-│   ├── web_tools.cpp           # Web search + fetch
-│   └── todo_tool.cpp           # TODO management
+├── assets/                    # Fonts, screenshots, theme previews
+├── projv_theme/               # Installable theme JSON files
+├── external/                  # Static deps: imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
+├── src/
+│   ├── main.cpp               # WinMain + D3D11 + ImGui loop
+│   ├── client/deepseek.*      # DeepSeek API (libcurl + SSE)
+│   ├── core/                  # Agent, Session, Config, Storage, Prompts
+│   ├── ui/                    # App, Chat, Settings, Markdown, Theme system
+│   └── tools/                 # Shell, file, search, web, md_file, todo
 └── build/
-    └── proJV.exe               # Built artifact (~3 MB)
+    └── proJV.exe              # ~3 MB
 ```
 
 ---
