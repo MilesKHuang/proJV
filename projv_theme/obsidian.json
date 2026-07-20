@@ -21,29 +21,24 @@
     "headerBg": "#1A1A24",
     "headerHovered": "#28283A",
     "headerActive": "#3A3A55",
-
     "bubbleUserBg": "#1E2840",
     "bubbleAssistantBg": "#1E281E",
     "bubbleSystemBg": "#181820",
     "bubbleDefaultBg": "#14141C",
     "bubbleCompactedBg": "#2A2418",
-
     "toolTitleColor": "#E0A040",
     "toolBg": "#1C1C2A",
     "toolResultText": "#A0A0B8",
-
     "reasoningCardBg": "#181828",
     "reasoningBorder": "#484880",
     "reasoningTextColor": "#A0A0E0",
     "reasoningBodyBg": "#101020",
     "reasoningBodyText": "#9090D0",
-
     "phaseIdle": "#686888",
     "phaseStreaming": "#E0C860",
     "phaseExecutingTools": "#40C8A0",
     "phaseAwaitApproval": "#E06060",
     "phaseError": "#E03040",
-
     "statusTokenInfo": "#686888",
     "statusModelName": "#686888",
     "statusTokenCount": "#484868",
@@ -59,17 +54,14 @@
     "statusError": "#E03040",
     "statusWorkspace": "#383858",
     "statusIdle": "#686888",
-
     "todoTitle": "#E0C860",
     "todoPending": "#A0A0B8",
     "todoDone": "#40C880",
     "todoInProgress": "#E08830",
     "todoOpen": "#686888",
     "todoEmpty": "#383858",
-
     "welcomeError": "#E03040",
     "welcomeHelp": "#585868",
-
     "mdH1": "#E0B840",
     "mdH2": "#E0A840",
     "mdH3": "#D0C070",
