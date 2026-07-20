@@ -1,7 +1,7 @@
-# proJV v0.5.0 Release Notes
+# proJV v0.4.2 Release Notes
 
 > Date: 2026-07-20
-> Compare: `v0.4.0` → `v0.5.0`
+> Compare: `v0.4.0` → `v0.4.2`
 
 ---
 
@@ -33,7 +33,7 @@
 
 ## Architecture Changes
 
-| Area | Before (v0.4.0) | After (v0.5.0) |
+| Area | Before (v0.4.0) | After (v0.4.2) |
 |------|----------------|----------------|
 | Color management | ~50 hardcoded `ImVec4` across 5 files | Single `ThemeColors` struct in `theme.h`, all refs via `ThemeManager::instance().current()` |
 | Theme switching | 2 hardcoded themes in `applyTheme(int)` | Dynamic list: 2 built-ins + N installed + visual editor |
