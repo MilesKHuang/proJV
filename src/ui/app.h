@@ -59,6 +59,7 @@ private:
     char apiKeyBuf[2048] = {};
     bool scrollToBottom = false;
     bool showConfigDialog = false;
+    bool showThemeEditor = false;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;
 
