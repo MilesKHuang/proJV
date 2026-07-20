@@ -66,9 +66,15 @@
 | `src/ui/render_chat.cpp` | All ~35 hardcoded `ImVec4` → `ThemeColors::toVec4(T().xxx)` |
 | `src/ui/render_settings.cpp` | 4 hardcoded colors → theme refs |
 | `src/ui/markdown_render.cpp` | Deleted 14 `static const ImVec4`; all refs → `ThemeManager::instance().current()` |
+| `src/tools/md_file_tool.cpp` | Added `mode` param (`write`/`append`) and chunking for large content |
 | `CMakeLists.txt` | Added `theme.cpp`, `theme_popup.cpp` |
 | `clean_and_build.bat` | Fixed `RELEASE` → `Release` case mismatch |
 | `README.md` / `README_zh.md` | Rewritten with theme table, revised project description |
+
+---
+
+## Bugfixes
+- **md_file_tool mode + chunking**: Added `mode` parameter (`write`/`append`) and large-content chunking support, matching `file_tool.cpp` behavior. Previously the tool only supported overwrite mode and had no size limit handling.
 
 ---
 
