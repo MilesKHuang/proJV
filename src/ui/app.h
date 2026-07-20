@@ -80,8 +80,7 @@ private:
     int selectedModelIndex = 0;
     std::atomic<bool> modelsLoading{false};
 
-    // Theme editor popup
-    bool showThemeEditor = false;
+
 
     // Render functions
     void renderMainMenuBar();

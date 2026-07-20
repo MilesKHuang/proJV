@@ -157,5 +157,5 @@ private:
 // ============================================================================
 // Theme editor popup (defined in theme_popup.cpp)
 // ============================================================================
-void renderThemePopup(bool* pOpen);
+void renderThemePopup();
 

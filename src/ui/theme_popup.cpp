@@ -231,12 +231,9 @@ static void renderMiniPreview(const ThemeColors& tc) {
 // ============================================================================
 // Main theme editor popup
 // ============================================================================
-void renderThemePopup(bool* pOpen) {
-    if (!pOpen || !*pOpen) return;
-
+void renderThemePopup() {
     ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Theme Editor", pOpen)) {
-        ImGui::End();
+    if (!ImGui::BeginPopupModal("Theme Editor", nullptr, ImGuiWindowFlags_NoResize)) {
         return;
     }
 
@@ -348,5 +345,9 @@ void renderThemePopup(bool* pOpen) {
     }
 
     ImGui::EndChild(); // right
-    ImGui::End();
+
+    if (ImGui::Button("Close", ImVec2(100, 0)))
+        ImGui::CloseCurrentPopup();
+
+    ImGui::EndPopup();
 }

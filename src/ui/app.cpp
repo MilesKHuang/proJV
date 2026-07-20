@@ -469,11 +469,7 @@ void App::render() {
 
     renderConfigPopup();
     renderToolApprovalDialog();
-    if (showThemeEditor) {
-        bool open = true;
-        renderThemePopup(&open);
-        if (!open) showThemeEditor = false;
-    }
+    renderThemePopup();
 }
 
 void App::renderMainMenuBar() {
@@ -519,7 +515,7 @@ void App::renderMainMenuBar() {
 
                     ImGui::Separator();
                     if (ImGui::Selectable("Customize...")) {
-                        showThemeEditor = true;
+                        ImGui::OpenPopup("Theme Editor");
                     }
                     ImGui::EndCombo();
                 }
