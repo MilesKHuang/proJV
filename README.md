@@ -38,7 +38,7 @@ Drop a `.md` file into `projv_prompts/` and it instantly appears in the role sel
 
 ### Theme System
 
-Two built-in presets (Obsidian & Light), plus 5 curated themes installable from `projv_theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `config.toml` and restored on next launch.
+Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `config.toml` and restored on next launch.
 
 | Preview | Theme | Style |
 |---------|-------|-------|
@@ -49,6 +49,7 @@ Two built-in presets (Obsidian & Light), plus 5 curated themes installable from 
 | <img src="assets/themes/monochrome_dark.png" width="180"/> | **Monochrome Dark** | Pure grayscale, zero color distraction |
 | <img src="assets/themes/colorblind_safe.png" width="180"/> | **Colorblind Safe** | Blue-orange palette, accessible for common CVD types |
 | <img src="assets/themes/vibrant_focus.png" width="180"/> | **Vibrant Focus** | High-contrast neon, strong visual blocks |
+| <img src="assets/themes/cyber_punk.png" width="180"/> | **Cyber Punk** | Neon yellow/pink/cyan on pure black, Cyberpunk 2077 style |
 
 <p align="center">
   <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>

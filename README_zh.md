@@ -38,7 +38,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 ### 主题系统
 
-两套内置（Obsidian / Light），外加 5 套精选主题可由 `projv_theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `config.toml`，下次启动即恢复。
+两套内置（Obsidian / Light），外加 6 套精选主题可由 `projv_theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `config.toml`，下次启动即恢复。
 
 | 预览 | 主题 | 风格 |
 |------|------|------|
@@ -49,6 +49,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 | <img src="assets/themes/monochrome_dark.png" width="180"/> | **Monochrome Dark** | 全灰度极简，零色彩干扰 |
 | <img src="assets/themes/colorblind_safe.png" width="180"/> | **Colorblind Safe** | 蓝橙调色板，覆盖常见色觉障碍类型 |
 | <img src="assets/themes/vibrant_focus.png" width="180"/> | **Vibrant Focus** | 高饱和霓虹，强视觉分区 |
+| <img src="assets/themes/cyber_punk.png" width="180"/> | **Cyber Punk** | 霓虹黄粉青 + 纯黑底，赛博朋克 2077 风格 |
 
 <p align="center">
   <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>
