@@ -5,28 +5,58 @@
 </p>
 
 <p align="center">
-  <img src="assets/image.png" alt="proJV screenshot" width="1280"/>
+  <img src="assets/overview.png" alt="proJV overview" width="1280"/>
 </p>
 
-Project JV, 意思是 **Just Vibing**
+Project JV, 意思是 **Just Vibing** — 一个轻快、精致的 Windows 桌面 AI Agent，基于 DeepSeek API，全部代码由 AI 自主生成。
 
-基于 **Dear ImGui + DirectX11 + libcurl** 的 DeepSeek AI Agent，C++20 实现。
+基于 **Dear ImGui + DirectX11 + libcurl**，C++20 实现。**零包管理器依赖**，一条 `cmake --build` 搞定。
 
-一个 **vibe coding** 项目——从第一行代码到所有功能，全部由 AI Agent 自主编写，我只负责提需求和点 Approve。
+> 这个项目的每一行代码，都是 AI Agent 写的。我只负责提需求和点 Approve。
 
 ---
 
 ## 为什么有它
 
-图像算法工程师，主力语言 C++，也拿 Python 训 NN。喜欢 PC 能打游戏，喜欢轻量的三方库。
+图像算法工程师，主力 C++，也拿 Python 训 NN。喜欢 PC 能打游戏，喜欢轻量的三方库。
 
-这种背景让我对现有的 TUI 工具和"大厂 Agent"提不起兴趣——我不确定那些花花绿绿的插件、精美的终端、莫名其妙的功能对我有啥实质性帮助。VS Code 我真正装的扩展也就那几个。
+市面上的 AI 编程工具太臃肿了 — 花花绿绿的插件、复杂的终端、永远用不到的功能。我想要的是一个**原生 Windows 桌面应用**：快、干净、真正能帮我干活。
 
-对我而言，做一个有点 UI 的轻量 Windows Agent，是一件理所当然的事情。
+proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、编辑文件、搜索网页、管理 TODO — 全在清爽的 GUI 里完成。它甚至能**修改和编译自己**。
 
-秉持着"能用就好"的原则，业余时间抽空写。这不是一个严谨的项目，更不到产品级别。但幸运的是它已经跨过了"**自我迭代**"这一关——proJV 已经能自己读代码、改代码、编译自己了，而且不会常常崩溃。我也很期待它会变成什么样。
+这仍然是个业余项目，但已经跨过了自我迭代的门槛，而且越来越好用。
 
-希望你也喜欢它。
+---
+
+## 亮点功能
+
+### Designer 工作流
+
+锁定破坏性工具，让 AI 先产出结构化设计文档再动手写代码。适合架构评审和大规模重构。
+
+<p align="center">
+  <img src="assets/overview.png" alt="Designer workflow" width="800"/>
+</p>
+
+### 自定义 System Prompt
+
+往 `projv_prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。在 coder / designer / 你自己的角色之间随时切换，不丢上下文。
+
+<p align="center">
+  <img src="assets/customize_system_prompt.png" alt="Custom system prompts" width="800"/>
+</p>
+
+### 主题系统
+
+7 套精选内置主题 + 完整自定义。菜单一键切换，可视化编辑器逐色微调，JSON 导入/导出，自动保存到 `config.toml`。
+
+<p align="center">
+  <img src="assets/themes/obsidian.png" alt="Obsidian theme" width="230"/>
+  <img src="assets/themes/forest.png" alt="Forest theme" width="230"/>
+  <img src="assets/themes/artism_warm.png" alt="Artism theme" width="230"/>
+  <br/>
+  <sub><b>Obsidian</b> · <b>Forest</b> · <b>Artism</b> — 共 7 套主题</sub>
+</p>
 
 ---
 
@@ -34,24 +64,23 @@ Project JV, 意思是 **Just Vibing**
 
 | 功能 | 说明 |
 |------|------|
-| **多角色 Prompt 切换** | ComboBox 一键切换 coder / designer / 自定义角色。目录驱动——往 `projv_prompts/` 丢个 `.md` 即自动识别。切换不清空上下文。 |
-| **Designer 工作流** | `designer` 角色：用 `read_file`/`grep_files` 读代码，用 `md_file` 工具产出结构化设计文档。Shell 和源码修改被锁定。设计 → 评审 → 编码。 |
-| **Agent 自动调用工具** | 读文件、写文件、编辑、md_file、Shell 执行、文件搜索、网页搜索/抓取、TODO 管理 — AI 自主决策 |
-| **思考过程展示** | deepseek-reasoner 的 `reasoning_content` 可折叠展示，紫色卡片 |
-| **流式输出** | 实时 SSE 流式渲染，Markdown + 代码块高亮 |
-| **上下文管理** | Token 估算 + 智能裁剪，到达压力阈值自动压缩 |
-| **会话持久化** | SQLite 自动保存全部对话，支持新建 / 保存 / 加载历史会话 |
-| **状态栏** | 实时显示模型名、Token 用量（输入+输出）、消息数、工具调用次数、上下文压力百分比 |
-| **工具审批** | 破坏性操作（删除文件等）弹窗确认，通过才放行 |
-| **TODO 管理** | AI 自主创建、追踪、标记任务，侧边栏实时查看 |
-| **主题** | Dark / GitHub Dark 两种配色 |
+| **多角色 Prompt** | ComboBox 一键切换 coder / designer / 自定义角色。目录驱动 — 丢 `.md` 进 `projv_prompts/` 即自动识别。 |
+| **Designer 工作流** | 只读代码分析模式：`read_file`/`grep_files` + `md_file` 产出设计文档。Shell 和源码编辑被锁定。 |
+| **AI 自动调用工具** | 读文件、写文件、编辑、md_file、Shell、文件搜索、网页搜索/抓取、TODO — AI 自主决策 |
+| **主题系统** | 7 套内置主题（Obsidian / Light / Forest / Artism / Monochrome / Colorblind Safe / Vibrant Focus）+ 可视化编辑器 + JSON 导入导出 + config.toml 持久化 |
+| **思考过程展示** | deepseek-reasoner `reasoning_content` 可折叠卡片展示 |
+| **流式 Markdown** | 实时 SSE 流式渲染，自研 Markdown 渲染器（代码块、表格、链接、标题） |
+| **上下文管理** | Token 估算 + 智能压缩，达到压力阈值自动缩容 |
+| **会话持久化** | SQLite 自动保存，支持新建/保存/加载历史会话 |
+| **实时状态栏** | 模型名、Token 用量（输入+输出）、消息数、工具调用、上下文压力 % |
+| **工具审批** | 破坏性操作弹窗确认后放行 |
+| **TODO 面板** | AI 自主管理任务清单，侧边栏实时可见 |
 
 ---
 
 ## 快速开始
 
 ### 构建
-
 需要 CMake 和 Visual Studio 2019+（或任何支持 C++20 的编译器）。
 
 ```bash
@@ -63,17 +92,15 @@ cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 ```
 
-项目根目录也附带了 `clean_and_build.bat`，你可以让 AI Agent 帮你改成你需要的脚本。
+项目根目录附带了 `clean_and_build.bat`，可以直接使用。
 
-产物：`build/proJV.exe`（~3MB，依赖 Windows 系统 DLL + VC 运行时）
+产物：`build/proJV.exe`（~3 MB）
 
 ### 运行
 
 1. 申请 DeepSeek API Key：[platform.deepseek.com](https://platform.deepseek.com/api_keys)
 2. 双击 `proJV.exe`，输入 Key → **Save & Connect**
-3. 开始对话
-
-API Key 保存在同目录 `config.toml`，下次自动加载。
+3. 开始对话 — 也可以往 `projv_prompts/` 丢自定义 prompt，往 `projv_theme/` 丢主题文件
 
 ---
 
@@ -83,54 +110,52 @@ API Key 保存在同目录 `config.toml`，下次自动加载。
 proJV/
 ├── CMakeLists.txt
 ├─┬ assets/
-│ └── msyh.ttc              # 微软雅黑字体（CJK 支持）
-├── external/                # 静态依赖，无需包管理器
-│   ├── imgui/               # Dear ImGui GUI 框架
-│   ├── json.hpp             # JSON 解析（nlohmann）
-│   ├── toml.hpp             # TOML 解析（toml++）
-│   ├── SQLiteCpp-3.3.3/     # SQLite C++ 封装
-│   ├── curl-8.21.0/         # libcurl（HTTP/HTTPS）
-│   └── loguru.cpp/hpp       # 日志
+│ ├── msyh.ttc                  # 微软雅黑 CJK 字体
+│ ├── overview.png
+│ ├── customize_system_prompt.png
+│ └─┬ themes/                   # 主题预览图
+│   ├── obsidian.png
+│   ├── forest.png
+│   └── ...
+├─┬ projv_theme/                # 用户可安装的主题 JSON
+│ └── *.json
+├── external/                   # 静态依赖，零包管理器
+│   ├── imgui/                  # Dear ImGui
+│   ├── json.hpp                # nlohmann/json（单头文件）
+│   ├── toml.hpp                # toml++（单头文件）
+│   ├── SQLiteCpp-3.3.3/        # SQLite C++ 封装
+│   ├── curl-8.21.0/            # libcurl
+│   └── loguru.cpp/hpp          # 日志
 ├─┬ src/
-│ ├── main.cpp               # WinMain + D3D11 + ImGui 主循环
-│ ├── debug_log.h            # 日志宏（Release 自动静默）
-│ ├─┬ client/                # DeepSeek API 客户端
-│ │ └── deepseek.h/.cpp      # libcurl HTTP + SSE 流式请求
-│ ├─┬ core/                  # 核心逻辑
-│ │ ├── agent.h/.cpp         # Agent 主循环（思考→工具→回复）
-│ │ ├── session.h/.cpp       # 对话管理 + Token 估算
-│ │ ├── config.h/.cpp        # TOML 配置加载
-│ │ ├── storage.h/.cpp       # SQLite 持久化
-│ │ ├── prompts_loader.cpp   # 目录驱动 prompt 预设（coder/designer/compactor）
-│ │ └── prompts.h            # ensureDefaultPrompts() / loadPromptFile()
-│ ├─┬ ui/                    # 用户界面
-│ │ ├── app.h/.cpp           # 主应用 + 窗口管理
-│ │ ├── render_chat.cpp      # 聊天气泡 + Markdown 渲染 + Prompt ComboBox
-│ │ ├── render_settings.cpp  # 配置 + 工具审批弹窗
-│ │ └── markdown_render.cpp  # 自研 Markdown 渲染器（代码块、表格、链接）
-│ └─┬ tools/                 # Agent 可调用的工具集
-│   ├── registry.h/.cpp      # 工具注册中心
-│   ├── shell_tool.cpp       # Shell 命令执行
-│   ├── file_tool.cpp        # 文件读写/搜索
-│   ├── edit_file_tool.cpp   # 搜索替换编辑
-│   ├── md_file_tool.cpp     # Markdown 设计文档写入/编辑（designer 专用，仅限 .md）
-│   ├── file_search_tool.cpp # 文件搜索
-│   ├── web_tools.cpp        # 网页搜索 + 抓取
-│   └── todo_tool.cpp        # TODO 管理
+│ ├── main.cpp                  # WinMain + D3D11 + ImGui 主循环
+│ ├── debug_log.h
+│ ├─┬ client/                   # DeepSeek API 客户端
+│ │ └── deepseek.h/.cpp         # libcurl HTTP + SSE 流式请求
+│ ├─┬ core/                     # 核心逻辑
+│ │ ├── agent.h/.cpp            # Agent 主循环（思考→工具→回复）
+│ │ ├── session.h/.cpp          # 对话管理 + Token 估算
+│ │ ├── config.h/.cpp           # TOML 配置加载
+│ │ ├── storage.h/.cpp          # SQLite 持久化
+│ │ ├── prompts_loader.cpp      # 目录驱动 prompt 预设
+│ │ └── prompts.h
+│ ├─┬ ui/                       # 用户界面
+│ │ ├── app.h/.cpp              # 主应用 + 窗口管理
+│ │ ├── render_chat.cpp         # 聊天气泡 + Markdown + Prompt ComboBox
+│ │ ├── render_settings.cpp     # 配置 + 工具审批弹窗
+│ │ ├── markdown_render.cpp     # 自研 Markdown 渲染器
+│ │ ├── theme.h/.cpp            # ThemeColors + ThemeManager（65 色体系）
+│ │ └── theme_popup.cpp         # 主题编辑弹窗 + 实时预览
+│ └─┬ tools/                    # Agent 可调用的工具集
+│   ├── registry.h/.cpp         # 工具注册中心
+│   ├── shell_tool.cpp          # Shell 命令执行
+│   ├── file_tool.cpp           # 文件读写/搜索
+│   ├── edit_file_tool.cpp      # 搜索替换编辑
+│   ├── md_file_tool.cpp        # Markdown 设计文档写入（designer 专用）
+│   ├── file_search_tool.cpp    # 文件搜索
+│   ├── web_tools.cpp           # 网页搜索 + 抓取
+│   └── todo_tool.cpp           # TODO 管理
 └── build/
-    └── proJV.exe            # 编译产物（~3MB）
-```
-
-### 数据流
-
-```
-用户输入 → Agent（思考/推理）
-                ↓
-        需要调工具？ → Agent（Agent 线程同步执行）
-                ↓
-        生成回复 → libcurl SSE 流式接收 → UI 气泡渲染
-                ↓
-         SQLite 异步写入（持久化）
+    └── proJV.exe               # 编译产物（~3 MB）
 ```
 
 ---
@@ -147,18 +172,18 @@ proJV/
 | [toml++](https://github.com/marzer/tomlplusplus) | TOML 解析 | 单头文件 |
 | DirectX 11 | GPU 渲染 | 系统内置 |
 
-**没有 vcpkg / conan / npm / pip。** 全部依赖都是源码级，`cmake --build` 一次完成。
+**没有 vcpkg / conan / npm / pip。**
 
 ---
 
 ## 致谢
 
-- [DeepSeek](https://deepseek.com) — API 和推理能力
-- [Dear ImGui](https://github.com/ocornut/imgui) — 最好的即时模式 GUI
-- [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) — 轻量数据库封装
-- [libcurl](https://curl.se/) — 可靠的 HTTP 客户端
-- [loguru](https://github.com/emilk/loguru) — 简洁的 C++ 日志
-- 所有其他开源依赖的维护者
+- [DeepSeek](https://deepseek.com)
+- [Dear ImGui](https://github.com/ocornut/imgui)
+- [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp)
+- [libcurl](https://curl.se/)
+- [loguru](https://github.com/emilk/loguru)
+- 所有开源依赖的维护者
 
 ---
 
