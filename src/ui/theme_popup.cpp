@@ -232,8 +232,8 @@ static void renderMiniPreview(const ThemeColors& tc) {
 // Main theme editor popup
 // ============================================================================
 void renderThemePopup() {
-    ImGui::SetNextWindowSize(ImVec2(900, 600), ImGuiCond_FirstUseEver);
-    if (!ImGui::BeginPopupModal("Theme Editor", nullptr, ImGuiWindowFlags_NoResize)) {
+    ImGui::SetNextWindowSize(ImVec2(880, 560), ImGuiCond_FirstUseEver);
+    if (!ImGui::BeginPopupModal("Theme Editor", nullptr)) {
         return;
     }
 
@@ -249,8 +249,8 @@ void renderThemePopup() {
     static int catIdx = 0;
     if (catIdx >= (int)categories.size()) catIdx = 0;
 
-    // ---- Top bar: category selector + export ----
-    ImGui::SetNextItemWidth(200);
+    // ---- Top bar ----
+    ImGui::SetNextItemWidth(180);
     if (ImGui::BeginCombo("##cat", categories[catIdx].name)) {
         for (int i = 0; i < (int)categories.size(); ++i) {
             if (ImGui::Selectable(categories[i].name, i == catIdx))
@@ -259,72 +259,65 @@ void renderThemePopup() {
         ImGui::EndCombo();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Export JSON")) {
-        mgr.exportToFile(editCopy.name.empty() ? "custom_theme" : editCopy.name);
-    }
-
-    // ---- Two-column layout: left = color editor, right = preview ----
-    float leftW = 380.0f;
-    ImGui::BeginChild("left", ImVec2(leftW, 0), true);
-
     // Name field
     char nameBuf[128];
     strncpy_s(nameBuf, editCopy.name.c_str(), sizeof(nameBuf) - 1);
-    ImGui::Text("Name:");
-    ImGui::SameLine();
+    ImGui::PushItemWidth(160);
     if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf)))
         editCopy.name = nameBuf;
+    ImGui::PopItemWidth();
+    ImGui::SameLine();
+    if (ImGui::Button("Export JSON"))
+        mgr.exportToFile(editCopy.name.empty() ? "custom_theme" : editCopy.name);
 
     ImGui::Separator();
-    ImGui::BeginChild("slots", ImVec2(0, 0), false);
 
+    // ---- Two-column layout ----
+    float leftW = 370.0f;
+    float rightW = ImGui::GetContentRegionAvail().x - leftW - ImGui::GetStyle().ItemSpacing.x;
+    float footerH = ImGui::GetFrameHeightWithSpacing() + 4.0f;
+
+    // Left: color slots (scrollable if needed)
+    ImGui::BeginChild("left", ImVec2(leftW, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
     for (const auto& slot : categories[catIdx].slots) {
         std::string& hex = editCopy.*(slot.ptr);
         char buf[10];
         strncpy_s(buf, hex.c_str(), sizeof(buf) - 1);
 
         ImGui::Text("%s", slot.label);
-        ImGui::SameLine(120);
-        ImGui::PushItemWidth(90);
-        if (ImGui::InputText(("##hex_" + std::string(slot.label)).c_str(), buf, sizeof(buf))) {
+        ImGui::SameLine(115);
+        ImGui::PushItemWidth(85);
+        if (ImGui::InputText(("##hx" + std::string(slot.label)).c_str(), buf, sizeof(buf))) {
             std::string s(buf);
-            // Basic validation: must start with # and be 7 chars
-            if (s.size() == 7 && s[0] == '#') {
-                hex = s;
-            }
+            if (s.size() == 7 && s[0] == '#') hex = s;
         }
         ImGui::PopItemWidth();
         ImGui::SameLine();
         ImVec4 col = ThemeColors::toVec4(hex);
-        ImGui::ColorButton(("##sw_" + std::string(slot.label)).c_str(), col,
-            ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoTooltip,
-            ImVec2(20, 20));
+        ImGui::ColorButton(("##sw" + std::string(slot.label)).c_str(), col,
+            ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoTooltip, ImVec2(20, 20));
     }
-
-    ImGui::EndChild(); // slots
-    ImGui::EndChild(); // left
+    ImGui::EndChild();
 
     ImGui::SameLine();
 
-    // ---- Right panel: preview ----
-    ImGui::BeginChild("right", ImVec2(0, 0), true);
+    // Right: preview + buttons
+    ImGui::BeginChild("right", ImVec2(rightW, 0), false);
     ImGui::Text("Preview");
     ImGui::Separator();
-    ImGui::BeginChild("preview_area", ImVec2(0, -32), true);
+    ImGui::BeginChild("preview_area", ImVec2(0, -footerH), true);
     renderMiniPreview(editCopy);
-    ImGui::EndChild(); // preview_area
+    ImGui::EndChild();
 
     // Bottom buttons
-    if (ImGui::Button("Apply", ImVec2(100, 0))) {
-        mgr.applyCustom(editCopy);
-    }
+    if (ImGui::Button("Apply", ImVec2(90, 0))) mgr.applyCustom(editCopy);
     ImGui::SameLine();
-    if (ImGui::Button("Save As...", ImVec2(100, 0))) {
+    if (ImGui::Button("Save As...", ImVec2(90, 0))) {
         std::string fname = editCopy.name.empty() ? "custom_theme" : editCopy.name;
         mgr.exportToFile(fname);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Load...", ImVec2(100, 0))) {
+    if (ImGui::Button("Load...", ImVec2(90, 0))) {
         OPENFILENAMEA ofn={};
         char filename[MAX_PATH]={};
         ofn.lStructSize=sizeof(ofn);
@@ -334,20 +327,14 @@ void renderThemePopup() {
         ofn.nMaxFile=MAX_PATH;
         ofn.Flags=OFN_PATHMUSTEXIST|OFN_FILEMUSTEXIST;
         if(GetOpenFileNameA(&ofn)) {
-            if(mgr.loadFromFile(filename)) {
-                editCopy = mgr.current();
-            }
+            if(mgr.loadFromFile(filename)) editCopy = mgr.current();
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Reset", ImVec2(100, 0))) {
-        editCopy = ThemeColors::obsidian();
-    }
-
-    ImGui::EndChild(); // right
-
-    if (ImGui::Button("Close", ImVec2(100, 0)))
-        ImGui::CloseCurrentPopup();
+    if (ImGui::Button("Reset", ImVec2(90, 0))) editCopy = ThemeColors::obsidian();
+    ImGui::SameLine();
+    if (ImGui::Button("Close", ImVec2(90, 0))) ImGui::CloseCurrentPopup();
+    ImGui::EndChild();
 
     ImGui::EndPopup();
 }
