@@ -1,5 +1,6 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
+#include "ui/theme.h"
 #include "core/prompts.h"
 #include "core/config.h"
 #include "tools/registry.h"
@@ -295,7 +296,12 @@ bool App::initialize() {
     else strncpy_s(apiKeyBuf, config.apiKey.c_str(), sizeof(apiKeyBuf) - 1);
     needsConfig = config.apiKey.empty();
 
-    applyTheme(0);
+    // Theme is initialized in main.cpp via ThemeManager::init() after this function returns.
+    // Wire up the theme-changed callback to persist preference to config.toml
+    ThemeManager::instance().onThemeChanged = [this](const std::string& name) {
+        config.themeName = name;
+        saveConfig(config);
+    };
 
     // -- R1/D: fetchModels managed thread, UI uses default model placeholder
     if (!config.apiKey.empty()) {
@@ -334,34 +340,7 @@ int App::getAgentState() const {
     return (int)st.state;
 }
 
-void App::applyTheme(int index) {
-    selectedThemeIndex = index;
-    auto& style = ImGui::GetStyle();
 
-    if (index == 0) {
-        // Dark theme (VS Code-like)
-        ImGui::StyleColorsDark();
-        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.14f, 1.00f);
-        style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.09f, 0.09f, 0.11f, 1.00f);
-        style.Colors[ImGuiCol_FrameBg] = ImVec4(0.18f, 0.18f, 0.20f, 1.00f);
-        style.Colors[ImGuiCol_Text] = ImVec4(0.92f, 0.92f, 0.95f, 1.00f);
-        style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.55f, 1.00f);
-        style.Colors[ImGuiCol_TitleBg] = ImVec4(0.09f, 0.09f, 0.11f, 1.00f);
-        style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.09f, 0.09f, 0.11f, 0.50f);
-        style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.30f, 0.30f, 0.35f, 1.00f);
-    } else {
-        // GitHub Dark theme
-        ImGui::StyleColorsDark();
-        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.09f, 0.10f, 0.13f, 1.00f);
-        style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.07f, 0.08f, 0.11f, 1.00f);
-        style.Colors[ImGuiCol_FrameBg] = ImVec4(0.13f, 0.14f, 0.17f, 1.00f);
-        style.Colors[ImGuiCol_Text] = ImVec4(0.90f, 0.91f, 0.95f, 1.00f);
-        style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.46f, 0.50f, 1.00f);
-        style.Colors[ImGuiCol_TitleBg] = ImVec4(0.06f, 0.07f, 0.09f, 1.00f);
-        style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.06f, 0.07f, 0.09f, 0.50f);
-        style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.27f, 0.31f, 1.00f);
-    }
-}
 
 // --- Agent flag checks -----------------------------------------------------
 void App::checkAgentFlags() {
@@ -490,6 +469,11 @@ void App::render() {
 
     renderConfigPopup();
     renderToolApprovalDialog();
+    if (showThemeEditor) {
+        bool open = true;
+        renderThemePopup(&open);
+        if (!open) showThemeEditor = false;
+    }
 }
 
 void App::renderMainMenuBar() {
@@ -512,12 +496,33 @@ void App::renderMainMenuBar() {
             if (ImGui::MenuItem("Configuration")) showConfigDialog = true;
             ImGui::Separator();
 
-            if (ImGui::BeginCombo("Theme", themeNames[selectedThemeIndex])) {
-                for (int i = 0; i < 2; ++i) {
-                    if (ImGui::Selectable(themeNames[i], selectedThemeIndex == i))
-                        applyTheme(i);
+            {
+                // Dynamic theme combo: builtins + installed + Customize...
+                const auto& curTheme = ThemeManager::instance().current();
+                std::string curName = curTheme.name.empty() ? "Obsidian" : curTheme.name;
+                if (ImGui::BeginCombo("Theme", curName.c_str())) {
+                    // Builtin themes
+                    if (ImGui::Selectable("Obsidian", curName == "Obsidian"))
+                        ThemeManager::instance().switchTo("Obsidian");
+                    if (ImGui::Selectable("Light", curName == "Light"))
+                        ThemeManager::instance().switchTo("Light");
+
+                    // Installed themes
+                    const auto& installed = ThemeManager::instance().installedNames();
+                    if (!installed.empty()) {
+                        ImGui::Separator();
+                        for (const auto& name : installed) {
+                            if (ImGui::Selectable(name.c_str(), curName == name))
+                                ThemeManager::instance().switchTo(name);
+                        }
+                    }
+
+                    ImGui::Separator();
+                    if (ImGui::Selectable("Customize...")) {
+                        showThemeEditor = true;
+                    }
+                    ImGui::EndCombo();
                 }
-                ImGui::EndCombo();
             }
 
             int curSel;
@@ -612,7 +617,7 @@ void App::renderMainMenuBar() {
         } else {
             tokenInfo = std::format(" {}", curModel.label);
         }
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.6f, 1), "%s", tokenInfo.c_str());
+        ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().statusTokenInfo), "%s", tokenInfo.c_str());
 
         ImGui::EndMenuBar();
     }
@@ -631,9 +636,8 @@ void App::renderMainMenuBar() {
 void App::renderStatusBar() {
     ImGui::Separator();
     auto status = agent ? agent->getStatus() : AgentStatus{};
+    const auto& T = ThemeManager::instance().current();
 
-    // Item 10.2: Status bar = model name + token consumption + tool count + context pressure
-    // Detailed progress moved to chat area; operation status moved to input area.
     {
         std::string modelLabel = config.model;
         auto fmtNum = [](int n) -> std::string {
@@ -643,17 +647,17 @@ void App::renderStatusBar() {
         };
 
         // Model name
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.6f, 1), " %s", modelLabel.c_str());
+        ImGui::TextColored(ThemeColors::toVec4(T.statusModelName), " %s", modelLabel.c_str());
 
         // Token consumption
         ImGui::SameLine(0, 8);
-        ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.5f, 1), "tok: %s+%s",
+        ImGui::TextColored(ThemeColors::toVec4(T.statusTokenCount), "tok: %s+%s",
             fmtNum(totalPromptTokens).c_str(),
             fmtNum(totalCompletionTokens).c_str());
 
         // Message count
         ImGui::SameLine(0, 8);
-        ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.5f, 1), "msgs: %zu",
+        ImGui::TextColored(ThemeColors::toVec4(T.statusMsgCount), "msgs: %zu",
             agent ? agent->getSession().messageCount() : 0);
 
         // Tool count (if any tool messages exist)
@@ -663,7 +667,7 @@ void App::renderStatusBar() {
                 if (m.role == "tool") ++toolCount;
             if (toolCount > 0) {
                 ImGui::SameLine(0, 8);
-                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.3f, 1), "tools: %d", toolCount);
+                ImGui::TextColored(ThemeColors::toVec4(T.statusToolCount), "tools: %d", toolCount);
             }
         }
 
@@ -672,13 +676,13 @@ void App::renderStatusBar() {
             auto pressure = agent->getContextPressure();
             ImGui::SameLine(0, 8);
             if (pressure == Session::PressureLevel::High) {
-                ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.1f, 1), "ctx: HIGH");
+                ImGui::TextColored(ThemeColors::toVec4(T.statusCtxHigh), "ctx: HIGH");
             } else if (pressure == Session::PressureLevel::Critical) {
-                ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1), "ctx: CRITICAL");
+                ImGui::TextColored(ThemeColors::toVec4(T.statusCtxCritical), "ctx: CRITICAL");
             } else if (pressure == Session::PressureLevel::Medium) {
-                ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1), "ctx: MEDIUM");
+                ImGui::TextColored(ThemeColors::toVec4(T.statusCtxMedium), "ctx: MEDIUM");
             } else {
-                ImGui::TextColored(ImVec4(0.3f, 0.7f, 0.3f, 1), "ctx: LOW");
+                ImGui::TextColored(ThemeColors::toVec4(T.statusCtxLow), "ctx: LOW");
             }
 
             // Show estimated usage %
@@ -687,28 +691,28 @@ void App::renderStatusBar() {
             if (window > 0) {
                 ImGui::SameLine(0, 2);
                 int pct = (int)(estimated * 100 / window);
-                ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.5f, 1), "(%d%%)", pct);
+                ImGui::TextColored(ThemeColors::toVec4(T.statusCtxPercent), "(%d%%)", pct);
             }
         }
 
         // Thinking state indicator (compact)
         if (status.state == AgentState::ExecutingTool) {
             ImGui::SameLine(0, 8);
-            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.0f, 1), "running: %s (%d/%d)",
+            ImGui::TextColored(ThemeColors::toVec4(T.statusRunning), "running: %s (%d/%d)",
                 status.currentToolName.c_str(),
                 status.toolProgressCurrent,
                 status.toolProgressTotal);
         } else if (status.state == AgentState::AwaitingApproval) {
             ImGui::SameLine(0, 8);
-            ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1), "awaiting approval");
+            ImGui::TextColored(ThemeColors::toVec4(T.statusAwaiting), "awaiting approval");
         } else if (status.state == AgentState::Error) {
             ImGui::SameLine(0, 8);
-            ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1), "error: %s", status.errorMessage.c_str());
+            ImGui::TextColored(ThemeColors::toVec4(T.statusError), "error: %s", status.errorMessage.c_str());
         }
 
         // Workspace path
         ImGui::SameLine(0, 8);
-        ImGui::TextColored(ImVec4(0.35f, 0.35f, 0.40f, 1), "[ws: %s]",
+        ImGui::TextColored(ThemeColors::toVec4(T.statusWorkspace), "[ws: %s]",
             config.workspacePath.empty() ? "exe dir" : config.workspacePath.c_str());
     }
 }
@@ -744,12 +748,12 @@ void App::renderWelcomePage() {
 
     if (!config.loadError.empty()) {
         ImGui::Spacing();
-        ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%s", config.loadError.c_str());
+        ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().welcomeError), "%s", config.loadError.c_str());
     }
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1),
+    ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().welcomeHelp),
         "Commands: /help, /workspace, /doctor, /clear");
     ImGui::EndChild();
 }
@@ -899,9 +903,10 @@ void App::newChat() {
 void App::renderTodoPanel() {
     if (!agent) return;
     auto todo = agent->copyTodoData();
+    const auto& T = ThemeManager::instance().current();
 
     {
-        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "TODO");
+        ImGui::TextColored(ThemeColors::toVec4(T.todoTitle), "TODO");
         ImGui::Separator();
 
         if (!todo.pendingTodo.empty()) {
@@ -917,19 +922,19 @@ void App::renderTodoPanel() {
                 pos = (nl == std::string::npos) ? text.size() : nl + 1;
                 ++lineCount;
 
-                ImVec4 col(0.7f, 0.7f, 0.75f, 1.0f);
+                ImVec4 col = ThemeColors::toVec4(T.todoPending);
                 if (line.find("[x]") != std::string::npos)
-                    col = ImVec4(0.3f, 0.85f, 0.4f, 1.0f);
+                    col = ThemeColors::toVec4(T.todoDone);
                 else if (line.find("[*]") != std::string::npos)
-                    col = ImVec4(1.0f, 0.8f, 0.3f, 1.0f);
+                    col = ThemeColors::toVec4(T.todoInProgress);
                 else if (line.find("[ ]") != std::string::npos)
-                    col = ImVec4(0.5f, 0.5f, 0.6f, 1.0f);
+                    col = ThemeColors::toVec4(T.todoOpen);
                 ImGui::TextColored(col, "%s", line.c_str());
             }
             ImGui::PopTextWrapPos();
         } else {
             ImGui::Dummy(ImVec2(0, 8.0f));
-            ImGui::TextColored(ImVec4(0.35f, 0.35f, 0.40f, 1.0f), "  (No active tasks)");
+            ImGui::TextColored(ThemeColors::toVec4(T.todoEmpty), "  (No active tasks)");
         }
     }
 

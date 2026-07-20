@@ -149,6 +149,10 @@ struct AppConfig {
     // from the model→window mapping in contextWindowForModel().
     size_t contextWindow = 0;
 
+    // Theme name: empty = auto-detect from projv_theme/ (first found).
+    // Otherwise, switch to this theme on startup.  Saved to config.toml [theme].
+    std::string themeName;
+
     bool loaded = false;
     std::string loadError;
 

@@ -1,27 +1,10 @@
 #include "markdown_render.h"
+#include "ui/theme.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <vector>
 #include <cctype>
 #include <cstring>
-
-// ============================================================================
-// Color palette
-// ============================================================================
-static const ImVec4 C_H1      (1.00f, 0.72f, 0.28f, 1.0f);
-static const ImVec4 C_H2      (1.00f, 0.65f, 0.35f, 1.0f);
-static const ImVec4 C_H3      (0.90f, 0.80f, 0.50f, 1.0f);
-static const ImVec4 C_BOLD    (1.00f, 0.82f, 0.35f, 1.0f);
-static const ImVec4 C_ITALIC  (0.55f, 0.80f, 0.95f, 1.0f);
-static const ImVec4 C_CODE    (0.90f, 0.60f, 0.45f, 1.0f);
-static const ImVec4 C_LINK    (0.40f, 0.65f, 1.00f, 1.0f);
-static const ImVec4 C_LINK_UL (0.30f, 0.50f, 0.85f, 1.0f);
-static const ImVec4 C_BULLET  (0.50f, 0.70f, 0.90f, 1.0f);
-static const ImVec4 C_HR      (0.30f, 0.32f, 0.38f, 1.0f);
-static const ImVec4 C_CODE_BG (0.14f, 0.16f, 0.20f, 1.0f);
-static const ImVec4 C_QUOTE   (0.55f, 0.55f, 0.60f, 1.0f);
-static const ImVec4 C_QUOTE_BAR(0.40f, 0.55f, 0.70f, 1.0f);
-static const ImVec4 C_TABLE_HDR(0.22f, 0.24f, 0.30f, 1.0f);
 
 // ============================================================================
 // Internal content padding (inside green bubble)
@@ -72,7 +55,7 @@ static void parseInlineSegs(const char* line, const char* lineEnd,
             while (e < lineEnd && *e != '`') ++e;
             if (e < lineEnd && e > p + 1) {
                 pushNormal(p);
-                out.push_back({std::string(p + 1, e), C_CODE, false, ""});
+                out.push_back({std::string(p + 1, e), ThemeColors::toVec4(ThemeManager::instance().current().mdCode), false, ""});
                 segStart = p = e + 1; continue;
             }
         }
@@ -81,7 +64,7 @@ static void parseInlineSegs(const char* line, const char* lineEnd,
             while (e + 1 < lineEnd && !(*e == '*' && *(e + 1) == '*')) ++e;
             if (e + 1 < lineEnd && e > p + 2) {
                 pushNormal(p);
-                out.push_back({std::string(p + 2, e), C_BOLD, false, ""});
+                out.push_back({std::string(p + 2, e), ThemeColors::toVec4(ThemeManager::instance().current().mdBold), false, ""});
                 segStart = p = e + 2; continue;
             }
         }
@@ -91,7 +74,7 @@ static void parseInlineSegs(const char* line, const char* lineEnd,
             while (e < lineEnd && *e != '*') ++e;
             if (e < lineEnd && e > p + 1) {
                 pushNormal(p);
-                out.push_back({std::string(p + 1, e), C_ITALIC, false, ""});
+                out.push_back({std::string(p + 1, e), ThemeColors::toVec4(ThemeManager::instance().current().mdItalic), false, ""});
                 segStart = p = e + 1; continue;
             }
         }
@@ -104,7 +87,7 @@ static void parseInlineSegs(const char* line, const char* lineEnd,
                 while (rp < lineEnd && *rp != ')') ++rp;
                 if (rp < lineEnd) {
                     pushNormal(p);
-                    out.push_back({std::string(p + 1, rb), C_LINK,
+                    out.push_back({std::string(p + 1, rb), ThemeColors::toVec4(ThemeManager::instance().current().mdLink),
                                    true, std::string(rb + 2, rp)});
                     segStart = p = rp + 1; continue;
                 }
@@ -143,7 +126,7 @@ static float renderInlineWrapped(const std::vector<InlineSeg>& segs,
         if (seg.isLink) {
             dl->AddLine(ImVec2(x, y + fontSz() + 1),
                         ImVec2(x + tw, y + fontSz() + 1),
-                        ImGui::ColorConvertFloat4ToU32(C_LINK_UL));
+                        ImGui::ColorConvertFloat4ToU32(ThemeColors::toVec4(ThemeManager::instance().current().mdLinkUnder)));
             ImGui::SetCursorScreenPos(
                 ImVec2(x, y - ImGui::GetStyle().ItemSpacing.y));
             ImGui::InvisibleButton("##mdlink", ImVec2(tw, fontSz()));
@@ -192,7 +175,7 @@ static void renderCodeBlock(const std::vector<std::string>& lines,
 
     // Background rect
     dl->AddRectFilled(cp, ImVec2(cp.x + blockW, cp.y + blockH),
-                      ImGui::ColorConvertFloat4ToU32(C_CODE_BG), 4.0f);
+                      ImGui::ColorConvertFloat4ToU32(ThemeColors::toVec4(ThemeManager::instance().current().mdCodeBg)), 4.0f);
     // Subtle border
     dl->AddRect(cp, ImVec2(cp.x + blockW, cp.y + blockH),
                 IM_COL32(60, 65, 75, 255), 4.0f);
@@ -202,7 +185,7 @@ static void renderCodeBlock(const std::vector<std::string>& lines,
     for (const auto& ln : lines) {
         dl->AddText(ImGui::GetFont(), fontSz(),
                     ImVec2(cp.x + 6.0f, y),
-                    ImGui::ColorConvertFloat4ToU32(C_CODE),
+                    ImGui::ColorConvertFloat4ToU32(ThemeColors::toVec4(ThemeManager::instance().current().mdCode)),
                     ln.c_str());
         y += lineH();
     }
@@ -496,7 +479,7 @@ void renderMarkdown(const std::string& text, float maxWidth,
                     flushTable();
                     ImGui::SetCursorScreenPos(ImVec2(offsetX,
                         ImGui::GetCursorScreenPos().y + fontSz()*0.2f));
-                    ImGui::PushStyleColor(ImGuiCol_Separator, C_HR);
+                    ImGui::PushStyleColor(ImGuiCol_Separator, ThemeColors::toVec4(ThemeManager::instance().current().mdHR));
                     ImGui::Separator();
                     ImGui::PopStyleColor();
                     ImGui::SetCursorScreenPos(ImVec2(offsetX,
@@ -525,7 +508,7 @@ void renderMarkdown(const std::string& text, float maxWidth,
                 dl->AddRectFilled(cp, ImVec2(cp.x + availW, cp.y + hh),
                                   IM_COL32(255,255,255,15), 3.0f);
 
-                ImVec4 hc = (level==1) ? C_H1 : (level==2) ? C_H2 : C_H3;
+                ImVec4 hc = (level==1) ? ThemeColors::toVec4(ThemeManager::instance().current().mdH1) : (level==2) ? ThemeColors::toVec4(ThemeManager::instance().current().mdH2) : ThemeColors::toVec4(ThemeManager::instance().current().mdH3);
                 ImGui::PushStyleColor(ImGuiCol_Text, hc);
                 ImGui::SetWindowFontScale(scale);
                 ImGui::TextUnformatted(ls, le);
@@ -550,9 +533,9 @@ void renderMarkdown(const std::string& text, float maxWidth,
             ImVec2 cp = ImGui::GetCursorScreenPos();
             dl->AddRectFilled(ImVec2(qx - 4.0f, cp.y),
                 ImVec2(qx - 1.0f, cp.y + lineH()),
-                ImGui::ColorConvertFloat4ToU32(C_QUOTE_BAR));
+                ImGui::ColorConvertFloat4ToU32(ThemeColors::toVec4(ThemeManager::instance().current().mdQuoteBar)));
 
-            ImGui::PushStyleColor(ImGuiCol_Text, C_QUOTE);
+            ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(ThemeManager::instance().current().mdQuote));
             ImGui::SetCursorScreenPos(ImVec2(qx, cp.y));
             float endY = renderLine(ls, le, qx, qw);
             ImGui::PopStyleColor();
@@ -610,7 +593,7 @@ void renderMarkdown(const std::string& text, float maxWidth,
             ImDrawList* dl = ImGui::GetWindowDrawList();
             dl->AddCircleFilled(ImVec2(bx + fontSz()*0.3f,
                 cy + fontSz()*0.45f), fontSz()*0.18f,
-                ImGui::ColorConvertFloat4ToU32(C_BULLET));
+                ImGui::ColorConvertFloat4ToU32(ThemeColors::toVec4(ThemeManager::instance().current().mdBullet)));
 
             ImGui::SetCursorScreenPos(ImVec2(tx, cy));
             float endY = renderLine(ls + 2, le, tx, wx);
@@ -635,7 +618,7 @@ void renderMarkdown(const std::string& text, float maxWidth,
                 float cy = ImGui::GetCursorScreenPos().y;
                 ImDrawList* dl = ImGui::GetWindowDrawList();
                 dl->AddText(ImGui::GetFont(), fontSz(), ImVec2(bx, cy),
-                    ImGui::ColorConvertFloat4ToU32(C_BULLET), num.c_str());
+                    ImGui::ColorConvertFloat4ToU32(ThemeColors::toVec4(ThemeManager::instance().current().mdBullet)), num.c_str());
 
                 ImGui::SetCursorScreenPos(ImVec2(tx, cy));
                 float endY = renderLine(ns + 2, le, tx, wx);

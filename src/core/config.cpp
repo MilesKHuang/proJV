@@ -42,6 +42,7 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         cfg.cppCompilerPath = tbl["cpp_compiler_path"].value_or<std::string>("");
         cfg.pythonPath = tbl["python_path"].value_or<std::string>("");
         cfg.contextWindow = tbl["context_window"].value_or<size_t>(0);
+        cfg.themeName = tbl["theme"].value_or<std::string>("");
 
         // Parse [model_prices] section (optional)
         if (auto* pricesTbl = tbl["model_prices"].as_table()) {
@@ -182,6 +183,8 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("cpp_compiler_path", cfg.cppCompilerPath);
     tbl.insert_or_assign("python_path", cfg.pythonPath);
     tbl.insert_or_assign("context_window", static_cast<int64_t>(cfg.contextWindow));
+    if (!cfg.themeName.empty())
+        tbl.insert_or_assign("theme", cfg.themeName);
 
     std::ofstream ofs(configPath);
     if (!ofs) return false;

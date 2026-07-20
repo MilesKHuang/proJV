@@ -29,6 +29,7 @@ public:
     void render();
     bool hasApiKey() const { return config.loaded && !config.apiKey.empty(); }
     const std::string& configError() const { return config.loadError; }
+    const std::string& getConfigThemeName() const { return config.themeName; }
     void setModel(const std::string& model);
     int getAgentState() const;
     
@@ -79,10 +80,8 @@ private:
     int selectedModelIndex = 0;
     std::atomic<bool> modelsLoading{false};
 
-    // Themes
-    int selectedThemeIndex = 0;
-    const char* themeNames[2] = { "Dark", "GitHub Dark" };
-    void applyTheme(int index);
+    // Theme editor popup
+    bool showThemeEditor = false;
 
     // Render functions
     void renderMainMenuBar();
