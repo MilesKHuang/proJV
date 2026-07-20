@@ -11,7 +11,7 @@ namespace fs = std::filesystem;
 // -- Tool description strings --------------------------------------------
 static constexpr const char* TOOL_MD_FILE_DESC =
     "Write or edit markdown (.md) design documents. "
-    "Actions: write (overwrite/create, max 8KB), edit (SEARCH/REPLACE). "
+    "Actions: write (overwrite/create, max 8KB, supports mode='append' for chunking), edit (SEARCH/REPLACE). "
     "Only .md files are allowed. Use read_file / grep_files to read project code.";
 
 static constexpr size_t MAX_MD_CONTENT_SIZE = 8 * 1024;
@@ -99,6 +99,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
         {"action", "string", "Action: 'write' (overwrite/create, max 8KB) or 'edit' (SEARCH/REPLACE)", true},
         {"path", "string", "Path to the .md file (must end with .md)", true},
         {"content", "string", "Content to write (required for 'write' action)", false},
+        {"mode", "string", "Write mode: 'write' (overwrite, default) or 'append' (add to existing)", false},
         {"search", "string", "Text to search for (required for 'edit' action)", false},
         {"replace", "string", "Replacement text (required for 'edit' action)", false}
     };
@@ -132,9 +133,30 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 }
             }
 
+            // Guard against oversized content — suggest chunking with append
             if (content.size() > MAX_MD_CONTENT_SIZE) {
-                return "Error: Content too large (" + std::to_string(content.size())
-                     + " bytes). Maximum is " + std::to_string(MAX_MD_CONTENT_SIZE) + " bytes.";
+                size_t chunkSize = MAX_MD_CONTENT_SIZE;
+                size_t totalSize = content.size();
+                size_t numChunks = (totalSize + chunkSize - 1) / chunkSize;
+                std::string suggestion =
+                    "Error: Content too large (" + std::to_string(totalSize) + " bytes). "
+                    "md_file write limit is " + std::to_string(MAX_MD_CONTENT_SIZE) + " bytes.\n"
+                    "\n"
+                    "MANDATORY: Split into " + std::to_string(numChunks)
+                    + " md_file calls with mode=\"append\".\n"
+                    "Each chunk must be under " + std::to_string(MAX_MD_CONTENT_SIZE) + " bytes.\n"
+                    "\n"
+                    "Template (chunk 1 overwrites, chunks 2..N append):\n"
+                    "  1. md_file(action=\"write\", path=\"" + path + "\", content=\"<chunk1>\", mode=\"write\")\n";
+                for (size_t i = 1; i < numChunks && i < 5; ++i) {
+                    suggestion += "  " + std::to_string(i + 1)
+                        + ". md_file(action=\"write\", path=\"" + path + "\", content=\"<chunk"
+                        + std::to_string(i + 1) + ">\", mode=\"append\")\n";
+                }
+                if (numChunks > 5) {
+                    suggestion += "  ... (" + std::to_string(numChunks - 5) + " more chunks)\n";
+                }
+                return suggestion;
             }
 
             try {
@@ -142,9 +164,20 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 if (!parent.empty())
                     fs::create_directories(parent);
 
-                std::ofstream ofs(resolved, std::ios::out);
+                // Determine write mode (mirrors file_tool.cpp)
+                std::string mode = extractStringArg(args, "mode", "write");
+                bool appendMode = (mode == "append");
+
+                std::ios::openmode openFlags = std::ios::out;
+                if (appendMode) openFlags |= std::ios::app;
+
+                std::ofstream ofs(resolved, openFlags);
                 if (!ofs) return "Error: Cannot write to: " + resolved;
                 ofs << content;
+
+                if (appendMode) {
+                    return "Appended " + std::to_string(content.size()) + " bytes to " + resolved;
+                }
                 return "Written " + std::to_string(content.size()) + " bytes to " + resolved;
             } catch (const std::exception& e) {
                 return "Error: " + std::string(e.what());
