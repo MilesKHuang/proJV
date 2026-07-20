@@ -29,6 +29,7 @@ public:
     void render();
     bool hasApiKey() const { return config.loaded && !config.apiKey.empty(); }
     const std::string& configError() const { return config.loadError; }
+    const std::string& getConfigThemeName() const { return config.themeName; }
     void setModel(const std::string& model);
     int getAgentState() const;
     
@@ -58,6 +59,7 @@ private:
     char apiKeyBuf[2048] = {};
     bool scrollToBottom = false;
     bool showConfigDialog = false;
+    bool showThemeEditor = false;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;
 
@@ -79,10 +81,7 @@ private:
     int selectedModelIndex = 0;
     std::atomic<bool> modelsLoading{false};
 
-    // Themes
-    int selectedThemeIndex = 0;
-    const char* themeNames[2] = { "Dark", "GitHub Dark" };
-    void applyTheme(int index);
+
 
     // Render functions
     void renderMainMenuBar();

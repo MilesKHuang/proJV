@@ -1,5 +1,6 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
+#include "ui/theme.h"
 #include "render_chat.h"
 #include "core/prompts.h"
 #include "tools/registry.h"
@@ -74,9 +75,11 @@ void renderFormattedText(const std::string& text, float bubbleWidth,
     }
 }
 
+static const ThemeColors& T() { return ThemeManager::instance().current(); }
+
 void RenderCopyButton(const char* label, const char* text) {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.00f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.30f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ThemeColors::toVec4(T().buttonBg));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ThemeColors::toVec4(T().buttonHovered));
     if (ImGui::SmallButton(label)) {
         ImGui::SetClipboardText(text);
     }
@@ -297,7 +300,7 @@ void App::renderChatArea() {
     }
 
     if (skipCount > 0) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T().statusIdle));
         ImGui::TextWrapped(
             "[ Showing last %d of %d messages - older history hidden ]",
             kMaxVisibleBubbles, totalBubbles);
@@ -344,7 +347,7 @@ void App::renderChatArea() {
                 float aiWidth = std::max(100.0f, availWidth * 0.85f);
                 ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(107.0f/255.0f, 142.0f/255.0f, 107.0f/255.0f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, ThemeColors::toVec4(T().bubbleAssistantBg));
                 ImGui::PushID(bubbleIdx * 1000);
 
                 ImGui::BeginChild("ai_text", ImVec2(aiWidth, 0),
@@ -364,13 +367,13 @@ void App::renderChatArea() {
 
             ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.28f, 0.28f, 0.32f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ThemeColors::toVec4(T().toolBg));
             ImGui::PushID(bubbleIdx);
 
             ImGui::BeginChild("bubble", ImVec2(bubbleWidth, 0),
                 ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
 
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T().toolTitleColor));
             ImGui::TextUnformatted(toolTitle.c_str());
             ImGui::PopStyleColor();
             ImGui::Separator();
@@ -390,7 +393,7 @@ void App::renderChatArea() {
                     displayContent = mergedContent.substr(0, pos) + "\n...";
                 }
 
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.75f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T().toolResultText));
                 renderFormattedText(displayContent, bubbleWidth, false);
                 ImGui::PopStyleColor();
             }
@@ -416,8 +419,8 @@ void App::renderChatArea() {
             // Thin purple border card
             ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_ChildBg,  ImVec4(0.10f, 0.06f, 0.16f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_Border,    ImVec4(0.35f, 0.20f, 0.55f, 0.7f));
+            ImGui::PushStyleColor(ImGuiCol_ChildBg,  ThemeColors::toVec4(T().reasoningCardBg));
+            ImGui::PushStyleColor(ImGuiCol_Border,    ThemeColors::toVec4(T().reasoningBorder));
             ImGui::PushID(bubbleIdx);
             ImGui::BeginChild("think_card", ImVec2(availWidth - 24.0f, 0),
                 ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
@@ -425,7 +428,7 @@ void App::renderChatArea() {
             std::string arrow = bubble.reasoningExpanded ? "[-]" : "[+]";
             std::string label = std::format("{} Reasoning ({} chars)",
                 arrow, bubble.reasoningText.size());
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.72f, 0.62f, 0.88f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T().reasoningTextColor));
             if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(0, 0)))
                 bubble.reasoningExpanded = !bubble.reasoningExpanded;
             ImGui::PopStyleColor();
@@ -435,8 +438,8 @@ void App::renderChatArea() {
                 float maxThinkH = ImGui::GetTextLineHeightWithSpacing() * 6.0f;
                 ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
                 ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.04f, 0.12f, 1.0f));
-                ImGui::PushStyleColor(ImGuiCol_Text,    ImVec4(0.68f, 0.58f, 0.85f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, ThemeColors::toVec4(T().reasoningBodyBg));
+                ImGui::PushStyleColor(ImGuiCol_Text,    ThemeColors::toVec4(T().reasoningBodyText));
                 ImGui::BeginChild("think_body", ImVec2(0, maxThinkH),
                     ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar);
@@ -458,10 +461,10 @@ void App::renderChatArea() {
         // -- Normal bubble (user, assistant, system, standalone tool_result) --
         else {
             ImVec4 bgColor;
-            if (bubble.role == "user")         bgColor = ImVec4(95.0f/255.0f, 123.0f/255.0f, 140.0f/255.0f, 1.0f);
-            else if (bubble.role == "assistant") bgColor = ImVec4(107.0f/255.0f, 142.0f/255.0f, 107.0f/255.0f, 1.0f);
-            else if (bubble.role == "system")    bgColor = ImVec4(0.30f, 0.30f, 0.35f, 1.0f);
-            else                                 bgColor = ImVec4(0.22f, 0.22f, 0.24f, 1.0f);
+            if (bubble.role == "user")         bgColor = ThemeColors::toVec4(T().bubbleUserBg);
+            else if (bubble.role == "assistant") bgColor = ThemeColors::toVec4(T().bubbleAssistantBg);
+            else if (bubble.role == "system")    bgColor = ThemeColors::toVec4(T().bubbleSystemBg);
+            else                                 bgColor = ThemeColors::toVec4(T().bubbleDefaultBg);
 
             float availWidth = ImGui::GetContentRegionAvail().x;
             const float padding = 10.0f;
@@ -476,7 +479,7 @@ void App::renderChatArea() {
             bool isCompacted = (bubble.role == "system" &&
                 bubble.content.find("[Context compacted:") != std::string::npos);
             if (isCompacted)
-                bgColor = ImVec4(0.35f, 0.28f, 0.08f, 1.0f);
+                bgColor = ThemeColors::toVec4(T().bubbleCompactedBg);
 
             std::string disp = bubble.content;
 
@@ -490,7 +493,7 @@ void App::renderChatArea() {
 
             // Compacted context: prepend a warning icon label
             if (isCompacted) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T().todoInProgress));
                 ImGui::TextUnformatted("[Context compacted]");
                 ImGui::PopStyleColor();
                 ImGui::Separator();
@@ -524,13 +527,13 @@ void App::renderChatArea() {
         auto st = agent->getStatus();
         auto phase = agent->getPhase();
         const char* phaseName = "?";
-        ImVec4 phaseColor(0.5f, 0.5f, 0.55f, 1.0f);
+        ImVec4 phaseColor = ThemeColors::toVec4(T().phaseIdle);
         switch (phase) {
-            case AgentPhase::Idle:           phaseName = "Idle";           phaseColor = ImVec4(0.5f, 0.5f, 0.6f, 1.0f); break;
-            case AgentPhase::Streaming:      phaseName = "Streaming";      phaseColor = ImVec4(1.0f, 0.9f, 0.3f, 1.0f); break;
-            case AgentPhase::ExecutingTools: phaseName = "ExecutingTools"; phaseColor = ImVec4(0.3f, 0.85f, 0.65f, 1.0f); break;
-            case AgentPhase::AwaitApproval:  phaseName = "AwaitApproval";  phaseColor = ImVec4(1.0f, 0.35f, 0.35f, 1.0f); break;
-            case AgentPhase::Error:          phaseName = "Error";          phaseColor = ImVec4(1.0f, 0.2f, 0.2f, 1.0f); break;
+            case AgentPhase::Idle:           phaseName = "Idle";           phaseColor = ThemeColors::toVec4(T().phaseIdle); break;
+            case AgentPhase::Streaming:      phaseName = "Streaming";      phaseColor = ThemeColors::toVec4(T().phaseStreaming); break;
+            case AgentPhase::ExecutingTools: phaseName = "ExecutingTools"; phaseColor = ThemeColors::toVec4(T().phaseExecutingTools); break;
+            case AgentPhase::AwaitApproval:  phaseName = "AwaitApproval";  phaseColor = ThemeColors::toVec4(T().phaseAwaitApproval); break;
+            case AgentPhase::Error:          phaseName = "Error";          phaseColor = ThemeColors::toVec4(T().phaseError); break;
         }
         ImGui::TextColored(phaseColor, " [Agent: %s]", phaseName);
         if (st.state == AgentState::ExecutingTool) {
@@ -539,10 +542,10 @@ void App::renderChatArea() {
                 st.currentToolName.c_str(), st.toolProgressCurrent, st.toolProgressTotal);
         } else if (phase == AgentPhase::Streaming && !st.streamingText.empty()) {
             ImGui::SameLine(0, 4);
-            ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.5f, 1.0f), "| receiving SSE data...");
+            ImGui::TextColored(ThemeColors::toVec4(T().statusCtxPercent), "| receiving SSE data...");
         } else if (phase == AgentPhase::AwaitApproval) {
             ImGui::SameLine(0, 4);
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "| %s", st.statusMessage.c_str());
+            ImGui::TextColored(ThemeColors::toVec4(T().statusAwaiting), "| %s", st.statusMessage.c_str());
         }
     }
 
@@ -601,24 +604,24 @@ void App::renderInputArea() {
             case AgentState::Thinking: {
                 bool hasReasoning = !opStatus.reasoningText.empty();
                 bool hasText = !opStatus.streamingText.empty();
-                renderSpinner(8.0f, 3.0f, ImVec4(1.0f, 0.9f, 0.3f, 1));
+                renderSpinner(8.0f, 3.0f, ThemeColors::toVec4(T().phaseStreaming));
                 if (hasReasoning && !hasText) {
-                    ImGui::TextColored(ImVec4(0.7f, 0.6f, 0.9f, 1),
+                    ImGui::TextColored(ThemeColors::toVec4(T().reasoningTextColor),
                         "Reasoning... (%zu chars)", opStatus.reasoningText.size());
                 } else {
-                    ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.3f, 1),
+                    ImGui::TextColored(ThemeColors::toVec4(T().phaseStreaming),
                         "Generating... (%zu chars)", opStatus.streamingText.size());
                     if (hasReasoning) {
                         ImGui::SameLine(0, 4);
-                        ImGui::TextColored(ImVec4(0.7f, 0.6f, 0.9f, 1),
+                        ImGui::TextColored(ThemeColors::toVec4(T().reasoningTextColor),
                             "| reasoned %zu chars", opStatus.reasoningText.size());
                     }
                 }
                 break;
             }
             case AgentState::ExecutingTool: {
-                renderSpinner(8.0f, 3.0f, ImVec4(1.0f, 0.6f, 0.0f, 1));
-                ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.0f, 1),
+                renderSpinner(8.0f, 3.0f, ThemeColors::toVec4(T().statusRunning));
+                ImGui::TextColored(ThemeColors::toVec4(T().statusRunning),
                     "Running: %s (%d/%d)",
                     opStatus.currentToolName.c_str(),
                     opStatus.toolProgressCurrent,
@@ -626,15 +629,15 @@ void App::renderInputArea() {
                 break;
             }
             case AgentState::AwaitingApproval:
-                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1),
+                ImGui::TextColored(ThemeColors::toVec4(T().statusAwaiting),
                     " Awaiting approval...");
                 break;
             default:
-                ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1),
+                ImGui::TextColored(ThemeColors::toVec4(T().statusIdle),
                     " %s", opStatus.statusMessage.c_str());
         }
     } else {
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.6f, 1), " Idle");
+        ImGui::TextColored(ThemeColors::toVec4(T().statusIdle), " Idle");
     }
 
     // --- Separator between status line and input ---

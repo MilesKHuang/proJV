@@ -5,28 +5,56 @@
 </p>
 
 <p align="center">
-  <img src="assets/image.png" alt="proJV screenshot" width="1280"/>
+  <img src="assets/overview.png" alt="proJV overview" width="1280"/>
 </p>
 
-Project JV, stands for **Just Vibing**
+Project JV, stands for **Just Vibing** — a sleek, fast, fully AI-built Windows desktop agent for the DeepSeek API.
 
-A DeepSeek AI Agent built with **Dear ImGui + DirectX11 + libcurl**, C++20.
+Built with **Dear ImGui + DirectX11 + libcurl**, C++20. **Zero package managers.** One `cmake --build` does it all.
 
-A **vibe coding** project — from the first line of code to every feature, entirely written by AI Agent. I just filed requests and clicked Approve.
+> Every line of code in this project was written by an AI Agent. I just filed requests and clicked Approve.
 
 ---
 
-## Why
+## Why proJV
 
-I'm an algorithm engineer. Primary language C++, also Python for training neural nets. I like my PC to play games, and I like lightweight libraries.
+I'm an algorithm engineer who writes C++ and Python. I like my PC for gaming, and I like lightweight libraries.
 
-This background never made the existing TUI tools or "big-co AI Agents" click for me — I wasn't sure those flashy plugins, beautiful terminals, and mysterious features would actually help me get work done. Even VS Code, I only install a handful of extensions.
+Most AI coding tools feel bloated — flashy plugins, complex terminals, features I'll never use. I wanted something different: a **native Windows desktop app** that's fast, minimal, and actually helpful.
 
-For me, building a lightweight Windows Agent with a simple UI just felt like the natural thing to do.
+proJV is that tool. It reads your codebase, runs shell commands, edits files, searches the web, manages TODOs — all through a clean GUI. It can even **modify and compile itself**.
 
-Keep-it-simple principle, built in spare time. This is not a rigorous project, far from production quality. But luckily it has crossed the **self-iteration** threshold — proJV can now read its own code, modify itself, compile, and debug. It rarely crashes anymore. I'm genuinely curious what it will grow into.
+---
 
-Hope you like it too.
+## Spotlight Features
+
+### Multi-Role System Prompts
+
+Drop a `.md` file into `projv_prompts/` and it instantly appears in the role selector. Built-in roles include **coder** (full tool access) and **designer** (read-only code analysis — shell and source edits locked out, outputs structured design docs via `md_file`). Switch mid-conversation without losing context.
+
+<p align="center">
+  <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
+</p>
+
+### Theme System
+
+Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `config.toml` and restored on next launch.
+
+| Preview | Theme | Style |
+|---------|-------|-------|
+| <img src="assets/themes/obsidian.png" width="180"/> | **Obsidian** | Refined warm-dark (default) |
+| <img src="assets/themes/light.png" width="180"/> | **Light** | Clean white (default) |
+| <img src="assets/themes/forest.png" width="180"/> | **Forest** | Airy sage green, nature-inspired |
+| <img src="assets/themes/artism_warm.png" width="180"/> | **Artism** | Warm caramel, cozy café aesthetic |
+| <img src="assets/themes/monochrome_dark.png" width="180"/> | **Monochrome Dark** | Pure grayscale, zero color distraction |
+| <img src="assets/themes/colorblind_safe.png" width="180"/> | **Colorblind Safe** | Blue-orange palette, accessible for common CVD types |
+| <img src="assets/themes/vibrant_focus.png" width="180"/> | **Vibrant Focus** | High-contrast neon, strong visual blocks |
+| <img src="assets/themes/cyber_punk.png" width="180"/> | **Cyber Punk** | Neon yellow/pink/cyan on pure black, Cyberpunk 2077 style |
+
+<p align="center">
+  <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>
+  <br/><sub>The built-in visual editor — edit colors by category, preview changes in real time, and export/import JSON themes</sub>
+</p>
 
 ---
 
@@ -34,17 +62,14 @@ Hope you like it too.
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-role prompt switching** | ComboBox-driven role switching (coder / designer / custom). Directory-driven -- drop a `.md` into `projv_prompts/` and it auto-appears. Switch mid-conversation without clearing context. |
-| **Designer workflow** | `designer` role: read code with `read_file`/`grep_files`, produce structured design docs via `md_file` tool. Shell and source edits locked out. Design → review → implement. |
 | **AI tool orchestration** | read_file, write_file, edit_file, md_file, shell, file_search, web_search, fetch_url, todo — AI decides what to call and when |
-| **Thinking display** | deepseek-reasoner `reasoning_content` rendered as collapsible purple cards |
-| **Streaming output** | Real-time SSE streaming with Markdown + code block rendering |
-| **Context management** | Token estimation + smart pruning, auto-compact at high pressure |
-| **Session persistence** | SQLite auto-save, supports new/save/load conversation history |
-| **Status bar** | Live model name, token counts (in+out), message count, tool calls, context pressure % |
-| **Tool approval** | Destructive operations require user confirmation before execution |
-| **TODO management** | AI creates, tracks, and marks tasks; sidebar panel shows real-time status |
-| **Theme** | Dark / GitHub Dark |
+| **Thinking display** | deepseek-reasoner chain-of-thought as collapsible cards |
+| **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
+| **Context management** | Token estimation + smart compaction at pressure thresholds |
+| **Session persistence** | SQLite auto-save, new/save/load conversation history |
+| **Live status bar** | Model name, token counts (in+out), message count, tool calls, context pressure % |
+| **Tool approval** | Destructive operations require user confirmation |
+| **TODO panel** | AI-managed task list, real-time sidebar |
 
 ---
 
@@ -52,7 +77,7 @@ Hope you like it too.
 
 ### Build
 
-Requires CMake and Visual Studio 2019+ (or any C++20-capable compiler).
+Requires CMake and Visual Studio 2019+ (or any C++20 compiler).
 
 ```bash
 # Open x64 Native Tools Command Prompt, then:
@@ -62,17 +87,15 @@ cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 ```
 
-A `clean_and_build.bat` is also provided — feel free to ask your AI Agent to adapt it.
+A `clean_and_build.bat` is also provided.
 
-Artifact: `build/proJV.exe` (~3MB, depends on Windows system DLLs + VC runtime)
+Artifact: `build/proJV.exe` (~3 MB)
 
 ### Run
 
 1. Get a DeepSeek API Key: [platform.deepseek.com](https://platform.deepseek.com/api_keys)
 2. Double-click `proJV.exe`, enter Key → **Save & Connect**
-3. Start chatting
-
-The API key is saved to `config.toml` next to the executable, auto-loaded on restart.
+3. Start chatting — drop custom prompts into `projv_prompts/` and themes into `projv_theme/`
 
 ---
 
@@ -81,55 +104,17 @@ The API key is saved to `config.toml` next to the executable, auto-loaded on res
 ```
 proJV/
 ├── CMakeLists.txt
-├─┬ assets/
-│ └── msyh.ttc              # Microsoft YaHei font (CJK support)
-├── external/                # Static dependencies, no package manager
-│   ├── imgui/               # Dear ImGui GUI framework
-│   ├── json.hpp             # JSON parser (nlohmann)
-│   ├── toml.hpp             # TOML parser (toml++)
-│   ├── SQLiteCpp-3.3.3/     # SQLite C++ wrapper
-│   ├── curl-8.21.0/         # libcurl (HTTP/HTTPS)
-│   └── loguru.cpp/hpp       # Logging
-├─┬ src/
-│ ├── main.cpp               # WinMain + D3D11 + ImGui main loop
-│ ├── debug_log.h            # Log macros (silent in Release builds)
-│ ├─┬ client/                # DeepSeek API client
-│ │ └── deepseek.h/.cpp      # libcurl HTTP + SSE streaming
-│ ├─┬ core/                  # Core logic
-│ │ ├── agent.h/.cpp         # Agent loop (think → tool → reply)
-│ │ ├── session.h/.cpp       # Session management + token estimation
-│ │ ├── config.h/.cpp        # TOML config loader
-│ │ ├── storage.h/.cpp       # SQLite persistence
-│ │ ├── prompts_loader.cpp   # Directory-driven prompt presets (coder/designer/compactor)
-│ │ └── prompts.h            # ensureDefaultPrompts() / loadPromptFile()
-│ ├─┬ ui/                    # User interface
-│ │ ├── app.h/.cpp           # Main app + window management
-│ │ ├── render_chat.cpp      # Chat bubbles + Markdown rendering + prompt Combo
-│ │ ├── render_settings.cpp  # Config + Tool Approval dialogs
-│ │ └── markdown_render.cpp  # Custom Markdown renderer (code blocks, tables, links)
-│ └─┬ tools/                 # Agent-callable tools
-│   ├── registry.h/.cpp      # Tool registry
-│   ├── shell_tool.cpp       # Shell command execution
-│   ├── file_tool.cpp        # File read/write/grep
-│   ├── edit_file_tool.cpp   # Search-replace edit
-│   ├── md_file_tool.cpp     # Markdown design doc write/edit (designer-only, .md guarded)
-│   ├── file_search_tool.cpp # File search
-│   ├── web_tools.cpp        # Web search + fetch
-│   └── todo_tool.cpp        # TODO management
+├── assets/                    # Fonts, screenshots, theme previews
+├── projv_theme/               # Installable theme JSON files
+├── external/                  # Static deps: imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
+├── src/
+│   ├── main.cpp               # WinMain + D3D11 + ImGui loop
+│   ├── client/deepseek.*      # DeepSeek API (libcurl + SSE)
+│   ├── core/                  # Agent, Session, Config, Storage, Prompts
+│   ├── ui/                    # App, Chat, Settings, Markdown, Theme system
+│   └── tools/                 # Shell, file, search, web, md_file, todo
 └── build/
-    └── proJV.exe            # Built artifact (~3MB)
-```
-
-### Data flow
-
-```
-User input → Agent (think/reason)
-                ↓
-        Need tool? → Agent (sync execution on agent thread)
-                ↓
-        Generate reply → libcurl SSE stream → UI bubble render
-                ↓
-        SQLite async write (persistence)
+    └── proJV.exe              # ~3 MB
 ```
 
 ---
@@ -146,18 +131,18 @@ User input → Agent (think/reason)
 | [toml++](https://github.com/marzer/tomlplusplus) | TOML parsing | Single header |
 | DirectX 11 | GPU rendering | System built-in |
 
-**No vcpkg / conan / npm / pip.** All dependencies are source-level; one `cmake --build` does it all.
+**No vcpkg / conan / npm / pip.**
 
 ---
 
 ## Credits
 
-- [DeepSeek](https://deepseek.com) — API and reasoning engine
-- [Dear ImGui](https://github.com/ocornut/imgui) — Best immediate-mode GUI
-- [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) — Lightweight DB wrapper
-- [libcurl](https://curl.se/) — Reliable HTTP client
-- [loguru](https://github.com/emilk/loguru) — Clean C++ logging
-- All other open-source maintainers
+- [DeepSeek](https://deepseek.com)
+- [Dear ImGui](https://github.com/ocornut/imgui)
+- [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp)
+- [libcurl](https://curl.se/)
+- [loguru](https://github.com/emilk/loguru)
+- All open-source maintainers
 
 ---
 

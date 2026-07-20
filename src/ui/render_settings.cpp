@@ -2,6 +2,7 @@
 // Extracted from app.cpp for maintainability.
 
 #include "app.h"
+#include "ui/theme.h"
 #include "core/config.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -41,7 +42,8 @@ void App::renderToolApprovalDialog() {
         ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
 
     for (const auto& call : toolCalls) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+        const auto& T = ThemeManager::instance().current();
+        ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T.statusError));
         ImGui::TextUnformatted(" Command:");
         ImGui::PopStyleColor();
 
@@ -49,12 +51,12 @@ void App::renderToolApprovalDialog() {
         try { cmd = nlohmann::json::parse(call.arguments).value("command", ""); }
         catch (...) { cmd = call.arguments; }
 
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T.todoTitle));
         ImGui::TextWrapped("%s", cmd.c_str());
         ImGui::PopStyleColor();
 
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T.statusRunning));
         ImGui::TextUnformatted(" Files to delete:");
         ImGui::PopStyleColor();
 
@@ -100,7 +102,7 @@ void App::renderToolApprovalDialog() {
         }
 
         if (files.empty())
-            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "  %s", call.arguments.c_str());
+            ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().toolResultText), "  %s", call.arguments.c_str());
         else
             for (const auto& f : files) ImGui::BulletText("%s", f.c_str());
         ImGui::Separator();
@@ -219,7 +221,7 @@ void App::renderConfigPopup() {
     if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
 
     if (!config.loadError.empty())
-        ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%s", config.loadError.c_str());
+        ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().welcomeError), "%s", config.loadError.c_str());
     ImGui::EndPopup();
 }
 

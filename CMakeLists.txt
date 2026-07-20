@@ -45,6 +45,8 @@ set(COMMON_SOURCES
     ${SRC_DIR}/ui/render_chat.cpp
     ${SRC_DIR}/ui/render_settings.cpp
     ${SRC_DIR}/ui/markdown_render.cpp
+    ${SRC_DIR}/ui/theme.cpp
+    ${SRC_DIR}/ui/theme_popup.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 

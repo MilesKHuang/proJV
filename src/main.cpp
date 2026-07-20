@@ -20,6 +20,7 @@
 #include <imgui_impl_dx11.h>
 #include <loguru.hpp>
 #include "ui/app.h"
+#include "ui/theme.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -299,8 +300,12 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow) {
     ImGui_ImplWin32_Init(g_hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
-    // Initialize app
+    // Initialize app (config loaded here)
     g_app.initialize();
+
+    // Initialize theme system AFTER config load so we can use config.themeName
+    std::string exeDirStr = exeDir.string();
+    ThemeManager::instance().init(exeDirStr, g_app.getConfigThemeName());
 
     // Set window title with status
     SetWindowTextW(g_hwnd, g_app.hasApiKey() ? L"proJV - DeepSeek Agent" : L"proJV - [No API Key]");
@@ -346,7 +351,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow) {
             // Rendering
             ImGui::Render();
             auto t3 = std::chrono::steady_clock::now();
-            const float clearColor[4] = { 0.08f, 0.08f, 0.10f, 1.00f };
+            ImVec4 cc = ThemeColors::toVec4(ThemeManager::instance().current().clearColor);
+            const float clearColor[4] = { cc.x, cc.y, cc.z, cc.w };
             g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
             g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clearColor);
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
