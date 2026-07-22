@@ -139,10 +139,13 @@ target_sources(proJV PRIVATE
 )
 target_include_directories(proJV PRIVATE ${IMGUI_DIR}/backends)
 
-# ── Copy assets to build directory ──
+# ── Copy assets + pytools to build directory ──
 add_custom_command(TARGET proJV POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:proJV>/assets"
-    COMMENT "Copying assets to build output"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/projv_pytool"
+        "$<TARGET_FILE_DIR:proJV>/projv_pytool"
+    COMMENT "Copying assets and pytools to build output"
 )

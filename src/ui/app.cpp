@@ -234,7 +234,7 @@ bool App::initialize() {
         activePromptIndex_ = 0;
         // Find coder.md in the list for initial prompt
         for (int i = 0; i < (int)promptFiles_.size(); ++i) {
-            if (promptFiles_[i] == "coder.md") { activePromptIndex_ = i; break; }
+            if (promptFiles_[i] == "supervisor.md") { activePromptIndex_ = i; break; }
         }
     }
 
