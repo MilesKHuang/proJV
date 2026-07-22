@@ -196,6 +196,10 @@ void App::setupTools() {
     registerFileSearchTool(tools);
     registerSearchTool(tools);
     registerFetchTool(tools);
+
+    // Python tools (auto-discovered from projv_pytool/)
+    pytoolMgr_.emplace(config.pythonPath, ws);
+    pytoolMgr_->scanAndRegister(tools);
 }
 
 bool App::initialize() {

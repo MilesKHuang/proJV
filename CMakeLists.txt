@@ -37,6 +37,7 @@ set(COMMON_SOURCES
     # git_tool.cpp removed — git commands handled via shell_tool
     ${SRC_DIR}/tools/file_search_tool.cpp
     ${SRC_DIR}/tools/web_tools.cpp
+    ${SRC_DIR}/tools/python_tool_manager.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
@@ -60,6 +61,7 @@ set(HEADERS
     ${SRC_DIR}/tools/registry.h
     ${SRC_DIR}/tools/shell_tool.h
     ${SRC_DIR}/tools/file_tool.h
+    ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h
 )
 

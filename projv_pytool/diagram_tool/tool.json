@@ -1,0 +1,24 @@
+{
+    "name": "diagram_tool",
+    "description": "Generate diagrams (flowcharts, architecture diagrams, sequence diagrams) from Graphviz DOT language code. Outputs PNG or SVG files.",
+    "parameters": [
+        {
+            "name": "code",
+            "type": "string",
+            "description": "Graphviz DOT language code describing the diagram. Supports digraph/graph, rankdir, shapes (box/diamond/ellipse/record/note), subgraph cluster_*, labels, style/fillcolor/color.",
+            "required": true
+        },
+        {
+            "name": "output",
+            "type": "string",
+            "description": "Output filename without extension. Default: 'diagram'",
+            "required": false
+        },
+        {
+            "name": "format",
+            "type": "string",
+            "description": "Output format: 'png' or 'svg'. Default: 'png'",
+            "required": false
+        }
+    ]
+}
