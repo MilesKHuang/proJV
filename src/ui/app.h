@@ -4,6 +4,9 @@
 #include "core/storage.h"
 #include "client/deepseek.h"
 #include "core/agent.h"
+#include "core/supervisor.h"
+#include "core/sub_agent_manager.h"
+#include "core/agent_registry.h"
 #include "tools/registry.h"
 #include "tools/python_tool_manager.h"
 #include <imgui.h>
@@ -51,6 +54,9 @@ private:
     Storage storage;
 
     Agent* agent = nullptr;
+    std::unique_ptr<Supervisor> supervisor;
+    std::unique_ptr<SubAgentManager> subAgentMgr;
+    AgentRegistry agentRegistry;
 
     // UI state
     char inputBuf[16384] = {};
@@ -65,6 +71,9 @@ private:
     bool showThemeEditor = false;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;
+    std::vector<std::string> workflowFiles_;
+    int activeWorkflowIndex_ = 0;
+
 
     // Config edit buffers
     char baseUrlBuf[512] = {};
@@ -123,4 +132,6 @@ private:
     // TODO panel
     bool showTodoPanel = true;
     void renderTodoPanel();
+
+
 };

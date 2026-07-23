@@ -4,12 +4,12 @@
 class ToolRegistry;
 
 /// Manages discovery, registration, and execution of Python-based tools.
-/// Tools live in {exeDir}/projv_pytool/ -- same convention as projv_prompts/.
+/// Tools live in {exeDir}/projv_files/pytool/ -- same convention as projv_files/prompts/.
 class PythonToolManager {
 public:
     PythonToolManager(std::string pythonPath, std::string workspacePath);
 
-    /// Scan {exeDir}/projv_pytool/ for valid tool directories and register them.
+    /// Scan {exeDir}/projv_files/pytool/ for valid tool directories and register them.
     void scanAndRegister(ToolRegistry& registry);
 
     /// Synchronously execute a Python tool. Returns stdout (or error string).

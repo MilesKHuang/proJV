@@ -1,4 +1,4 @@
-﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "ui/theme.h"
 #include "render_chat.h"
@@ -571,23 +571,28 @@ void App::renderInputArea() {
     {
         float comboWidth = 110.0f;
         ImGui::SetNextItemWidth(comboWidth);
-        if (ImGui::BeginCombo("##prompt", promptFiles_.empty() ? "..." : promptFiles_[activePromptIndex_].c_str())) {
-            promptFiles_ = ensureDefaultPrompts();
-            // Hide compactor.md from UI (still used by /compress internally)
-            promptFiles_.erase(
-                std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
-                promptFiles_.end());
-            if (activePromptIndex_ >= (int)promptFiles_.size())
-                activePromptIndex_ = 0;
-
-            for (int i = 0; i < (int)promptFiles_.size(); ++i) {
-                bool isSel = (activePromptIndex_ == i);
-                if (ImGui::Selectable(promptFiles_[i].c_str(), isSel)) {
-                    if (i != activePromptIndex_ && isIdle) {
-                        activePromptIndex_ = i;
-                        if (agent) {
-                            std::string content = loadPromptFile(promptFiles_[activePromptIndex_]);
-                            agent->replaceSystemPrompt(content);
+        // Workflow selector: shows .json files from projv_files/workflows/
+        std::string curLabel = workflowFiles_.empty() ? "..." : workflowFiles_[activeWorkflowIndex_];
+        if (curLabel.size() > 5 && curLabel.compare(curLabel.size()-5, 5, ".json") == 0)
+            curLabel = curLabel.substr(0, curLabel.size()-5); // strip .json for display
+        if (ImGui::BeginCombo("##prompt", curLabel.c_str())) {
+            for (int i = 0; i < (int)workflowFiles_.size(); ++i) {
+                std::string label = workflowFiles_[i];
+                if (label.size() > 5 && label.compare(label.size()-5, 5, ".json") == 0)
+                    label = label.substr(0, label.size()-5); // strip .json
+                bool isSel = (activeWorkflowIndex_ == i);
+                if (ImGui::Selectable(label.c_str(), isSel)) {
+                    if (i != activeWorkflowIndex_ && isIdle) {
+                        activeWorkflowIndex_ = i;
+                        // Load the selected workflow
+                        std::string configDir = std::filesystem::path(getConfigPath()).parent_path().string();
+                        std::string wfPath = configDir + "/projv_files/workflows/" + workflowFiles_[i];
+                        if (agentRegistry.loadWorkflow(wfPath)) {
+                            auto& mainCfg = agentRegistry.getMainAgentConfig();
+                            std::string sp = mainCfg.promptContent.empty()
+                                ? loadPromptFile("supervisor.md")
+                                : mainCfg.promptContent;
+                            if (agent) agent->replaceSystemPrompt(sp);
                         }
                     }
                 }
@@ -704,7 +709,10 @@ void App::renderInputArea() {
     if (isWaiting) {
         ImGui::EndDisabled();  // pop outer app-level disable -> Cancel stays active
         if (ImGui::Button("Cancel", ImVec2(buttonWidth, btnHeight))) {
-            if (agent) agent->cancel();
+            if (agent) {
+                if (subAgentMgr) subAgentMgr->cancelAll();
+                agent->cancel();
+            }
         }
         ImGui::BeginDisabled();  // re-push app-level disable
     } else {

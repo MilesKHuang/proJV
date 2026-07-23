@@ -1,13 +1,16 @@
-﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "ui/theme.h"
+#include "ui/render_subagents.h"
 #include "core/prompts.h"
 #include "core/config.h"
+#include "core/agent_registry.h"
 #include "tools/registry.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
 #include "tools/md_file_tool.h"
 #include "tools/web_tools.h"
+#include "tools/delegate_tool.h"
 
 #include "json.hpp"
 #include "debug_log.h"
@@ -168,16 +171,22 @@ static std::string buildProjectContext(const std::string& workspacePath) {
 
 App::App() {}
 App::~App() {
-    // 1. Cancel agent and join worker thread
+    // 1. Cancel all sub-agents first
+    if (subAgentMgr) subAgentMgr->cancelAll();
+    // 2. Cancel agent and join worker thread
     if (agent) {
         agent->cancel();
         joinAgentThread();
     }
-    // 2. Join fetchModels thread if still running
+    // 3. Join fetchModels thread if still running
     if (fetchModelsThread_.joinable()) fetchModelsThread_.join();
-    // 3. Delete agent
+    // 4. Delete supervisor (holds refs)
+    supervisor.reset();
+    // 5. Delete subAgentMgr before agent
+    subAgentMgr.reset();
+    // 6. Delete agent
     delete agent;
-    // 4. Storage destructor closes both connections naturally
+    // 7. Storage destructor closes both connections naturally
 }
 
 void App::setupTools() {
@@ -197,9 +206,11 @@ void App::setupTools() {
     registerSearchTool(tools);
     registerFetchTool(tools);
 
-    // Python tools (auto-discovered from projv_pytool/)
+    // Python tools (auto-discovered from projv_files/pytool/)
     pytoolMgr_.emplace(config.pythonPath, ws);
     pytoolMgr_->scanAndRegister(tools);
+
+    // delegate_task tool is registered after SubAgentManager is created in initialize()
 }
 
 bool App::initialize() {
@@ -208,6 +219,10 @@ bool App::initialize() {
     setupTools();
 
     agent = new Agent(client, tools);
+
+    // Create shared cancel flag for Agent
+    auto cancelFlag = std::make_shared<std::atomic<bool>>(false);
+    agent->setCancelFlag(cancelFlag);
 
     // Token usage callback
     agent->onTokenUsage = [this](int p, int c) {
@@ -228,26 +243,56 @@ bool App::initialize() {
     configMaxTokens = config.maxTokens;
     configTemperature = static_cast<float>(config.temperature);
 
-    // -- Initialize prompt files from projv_prompts/ directory
+    // -- Initialize prompt files from projv_files/prompts/ directory
     {
         promptFiles_ = ensureDefaultPrompts();
         activePromptIndex_ = 0;
-        // Find coder.md in the list for initial prompt
         for (int i = 0; i < (int)promptFiles_.size(); ++i) {
             if (promptFiles_[i] == "supervisor.md") { activePromptIndex_ = i; break; }
         }
     }
 
-    // -- Load initial prompt and set allowed tools whitelist
+    // -- Initialize workflow files from projv_files/workflows/ directory
     {
-        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        std::string configDir = std::filesystem::path(getConfigPath()).parent_path().string();
+        workflowFiles_ = scanWorkflows(configDir);
+        activeWorkflowIndex_ = 0;
+        // Default to first workflow
+    }
+
+    // -- Load initial workflow for AgentRegistry
+    if (!workflowFiles_.empty()) {
+        std::string configDir = std::filesystem::path(getConfigPath()).parent_path().string();
+        std::string wfPath = configDir + "/projv_files/workflows/" + workflowFiles_[activeWorkflowIndex_];
+        agentRegistry.loadWorkflow(wfPath);
+    }
+
+    // -- Create SubAgentManager (App-level lifecycle)
+    subAgentMgr = std::make_unique<SubAgentManager>(agent->getCancelFlag(), agentRegistry,
+                                                     config.workspacePath.empty()
+                                                         ? std::filesystem::absolute(std::filesystem::path(getConfigPath()).parent_path()).string()
+                                                         : config.workspacePath);
+    subAgentMgr->setClientConfig(config);  // pass API key / base URL to SubAgent clients
+
+    // -- Create Supervisor
+    supervisor = std::make_unique<Supervisor>(*agent, *subAgentMgr);
+
+    // -- Register delegate_task tool (depends on SubAgentManager)
+    registerDelegateTaskTool(tools, *subAgentMgr);
+
+    // -- Load initial prompt from workflow's main_agent
+    {
+        auto& mainCfg = agentRegistry.getMainAgentConfig();
+        std::string sp = mainCfg.promptContent.empty()
+            ? loadPromptFile("supervisor.md")
+            : mainCfg.promptContent;
         if (agent) agent->setSystemPrompt(sp);
     }
 
     // -- 准备会话目录（不创建 DB 文件，等用户发第一条消息时再创建）---
     {
         std::string exeDir = std::filesystem::path(getConfigPath()).parent_path().string();
-        sessionsDir_ = exeDir + "/projv_sessions";
+        sessionsDir_ = exeDir + "/projv_files/sessions";
         std::error_code ec;
         std::filesystem::create_directories(sessionsDir_, ec);
         if (ec) {
@@ -278,8 +323,22 @@ bool App::initialize() {
         }
     };
 
-    // -- Inject system prompt as first session message --------------
-    agent->addPersistedMessage(Message::System(loadPromptFile(promptFiles_[activePromptIndex_])));
+    // -- Inject system prompt from workflow's main_agent
+    {
+        auto& mainCfg = agentRegistry.getMainAgentConfig();
+        std::string sp = mainCfg.promptContent.empty()
+            ? loadPromptFile("supervisor.md")
+            : mainCfg.promptContent;
+        agent->addPersistedMessage(Message::System(sp));
+    }
+
+    // -- Inject available sub-agent types for Supervisor
+    {
+        std::string saMsg = agentRegistry.buildAvailableSubAgentsMessage();
+        if (!saMsg.empty()) {
+            agent->addPersistedMessage(Message::System(saMsg));
+        }
+    }
 
     // -- Inject project context (directory structure) ----------------
     // This tells the LLM where files actually live so it doesn't guess
@@ -428,9 +487,15 @@ void App::render() {
             renderChatArea();
             ImGui::EndChild();
             ImGui::SameLine();
-            ImGui::BeginChild("TodoPanel", ImVec2(280.0f, 0), true,
+            ImGui::BeginChild("RightPanel", ImVec2(280.0f, 0), false);
+            // TODO section (upper)
+            float todoHeight = ImGui::GetContentRegionAvail().y * 0.55f;
+            ImGui::BeginChild("TodoPanel", ImVec2(0, todoHeight), true,
                 ImGuiWindowFlags_AlwaysVerticalScrollbar);
             renderTodoPanel();
+            ImGui::EndChild();
+            // SubAgent section (lower, inline)
+            renderSubAgentPanelInline(subAgentMgr.get());
             ImGui::EndChild();
         } else {
             renderChatArea();
@@ -478,6 +543,8 @@ void App::render() {
     renderConfigPopup();
     renderToolApprovalDialog();
     renderThemePopup();
+
+
 }
 
 void App::renderMainMenuBar() {
@@ -499,6 +566,8 @@ void App::renderMainMenuBar() {
         if (ImGui::BeginMenu("Settings")) {
             if (ImGui::MenuItem("Configuration")) showConfigDialog = true;
             ImGui::Separator();
+
+
 
             {
                 // Dynamic theme combo: builtins + installed + Customize...
@@ -575,7 +644,7 @@ void App::renderMainMenuBar() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
-            ImGui::MenuItem("TODO Panel", "Ctrl+T", &showTodoPanel);
+            ImGui::MenuItem("Panel", "Ctrl+P", &showTodoPanel);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help")) {
@@ -815,8 +884,7 @@ void App::loadDialogFromFile() {
 void App::switchToDialog(const std::string& dbPath) {
     if (!agent) return;
     agent->cancel();
-
-    
+    if (subAgentMgr) subAgentMgr->cancelAll();
 
     std::string oldPath = storage.currentPath();
     agent->clearSession();
@@ -873,7 +941,7 @@ void App::newChat() {
     if (!agent) return;
 
     agent->cancel();
-    
+    if (subAgentMgr) subAgentMgr->cancelAll();
 
     auto now = std::time(nullptr);
     char buf[64];
@@ -891,7 +959,10 @@ void App::newChat() {
     totalPromptTokens = totalCompletionTokens = 0;
 
     {
-        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        auto& mainCfg = agentRegistry.getMainAgentConfig();
+        std::string sp = mainCfg.promptContent.empty()
+            ? loadPromptFile("supervisor.md")
+            : mainCfg.promptContent;
         agent->setSystemPrompt(sp);
         agent->addPersistedMessage(Message::System(sp));
     }
@@ -943,3 +1014,5 @@ void App::renderTodoPanel() {
     }
 
 }
+
+

@@ -23,7 +23,11 @@ enum class AgentPhase {
 
 class Agent {
 public:
-    Agent(DeepSeekClient& client, ToolRegistry& tools);
+    // cancelFlag: shared cancel flag across all agents. If nullptr, creates own.
+    // isSubAgent: if true, skips todo tool registration and disables approval.
+    Agent(DeepSeekClient& client, ToolRegistry& tools,
+          std::shared_ptr<std::atomic<bool>> cancelFlag = nullptr,
+          bool isSubAgent = false);
     ~Agent();
 
     void setStorage(Storage* s) { storage = s; }
@@ -37,6 +41,9 @@ public:
 
     void approveTool(int action);
     void cancel();
+    void setCancelFlag(std::shared_ptr<std::atomic<bool>> cf) { cancelFlag_ = cf; }
+    std::shared_ptr<std::atomic<bool>> getCancelFlag() const { return cancelFlag_; }
+    void setAutoApprove(bool v) { autoApprove_ = v; }
     AgentStatus getStatus() const;
     AgentPhase getPhase() const { return phase_.load(); }
     const Session& getSession() const { return session; }
@@ -139,7 +146,8 @@ private:
     mutable size_t cachedContextTokens_ = 0;
     mutable bool contextTokensDirty_ = true;
 
-    std::atomic<bool> cancelRequested_{false};
+    std::shared_ptr<std::atomic<bool>> cancelFlag_;
+    bool autoApprove_ = false;  // skip approval dialogs (SubAgent mode)
 
     bool saveRequested = false;
     bool loadRequested = false;

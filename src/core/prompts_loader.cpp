@@ -1,4 +1,4 @@
-﻿#include "prompts.h"
+#include "prompts.h"
 #include "config.h"
 #include "debug_log.h"
 #include <fstream>
@@ -190,16 +190,16 @@ static constexpr const char* PROMPT_DEFAULT_TESTER =
     "\n";
 
 // ============================================================================
-// Helper: get the projv_prompts directory path
+// Helper: get the projv_files/prompts directory path
 // ============================================================================
 static std::string promptsDir() {
     std::string configPath = getConfigPath();
     auto parent = std::filesystem::path(configPath).parent_path();
-    return (parent / "projv_prompts").string();
+    return (parent / "projv_files/prompts").string();
 }
 
 // ============================================================================
-// ensureDefaultPrompts - scan projv_prompts/*.md, create presets if missing
+// ensureDefaultPrompts - scan projv_files/prompts/*.md, create presets if missing
 // ============================================================================
 std::vector<std::string> ensureDefaultPrompts() {
     std::string dir = promptsDir();
@@ -266,5 +266,120 @@ std::string loadPromptFile(const std::string& filename) {
     } else {
         debugLogf("[Prompts] Loaded %s (%zu chars)", path.c_str(), content.size());
     }
+    return content;
+}
+
+// ============================================================================
+// Workflow file scanning (projv_files/workflows/)
+// ============================================================================
+
+// Helper: get projv_files/workflows directory path
+static std::string workflowsDir() {
+    std::string configPath = getConfigPath();
+    auto parent = std::filesystem::path(configPath).parent_path();
+    return (parent / "projv_files/workflows").string();
+}
+
+// Built-in preset coding.json content
+static constexpr const char* PRESET_CODING_JSON =
+R"({
+  "version": "1.0",
+  "description": "Default coding workflow -- full development cycle with analysis, design, implementation, and testing",
+
+  "main_agent": {
+    "prompt_file": "supervisor.md",
+    "model": ""
+  },
+
+  "subagents": [
+    {
+      "name": "coder",
+      "display": "Coder",
+      "prompt_file": "coder.md",
+      "description": "Code implementation, compilation, debugging",
+      "model": "deepseek-v4-flash",
+      "visible": true
+    },
+    {
+      "name": "designer",
+      "display": "Designer",
+      "prompt_file": "designer.md",
+      "description": "Architecture design documents",
+      "model": "deepseek-v4-flash",
+      "visible": true
+    },
+    {
+      "name": "analyzer",
+      "display": "Analyzer",
+      "prompt_file": "analyzer.md",
+      "description": "Code analysis, call tracing, diagram generation",
+      "model": "deepseek-v4-flash",
+      "visible": true
+    },
+    {
+      "name": "tester",
+      "display": "Tester",
+      "prompt_file": "tester.md",
+      "description": "Test writing, compilation, execution, reporting",
+      "model": "deepseek-v4-flash",
+      "visible": true
+    }
+  ]
+})";
+
+std::vector<std::string> scanWorkflows(const std::string& configDir) {
+    namespace fs = std::filesystem;
+    std::string dir = configDir + "/projv_files/workflows";
+    std::error_code ec;
+    bool dirExists = fs::is_directory(dir, ec);
+
+    if (!dirExists || ec) {
+        // Create directory and generate preset
+        fs::create_directories(dir, ec);
+        if (ec) {
+            debugLogf("[Workflows] Failed to create dir: %s", dir.c_str());
+            return {};
+        }
+    }
+
+    // Check if directory has any .json files
+    std::vector<std::string> files;
+    for (auto& entry : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (entry.is_regular_file()) {
+            std::string name = entry.path().filename().string();
+            if (name.size() >= 5) {
+                std::string ext = name.substr(name.size() - 5);
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".json")
+                    files.push_back(name);
+            }
+        }
+    }
+
+    if (files.empty()) {
+        // Generate preset coding.json
+        std::string presetPath = dir + "/coding.json";
+        std::ofstream ofs(presetPath);
+        if (ofs) {
+            ofs << PRESET_CODING_JSON;
+            files.push_back("coding.json");
+            debugLogf("[Workflows] Generated preset: %s", presetPath.c_str());
+        } else {
+            debugLogf("[Workflows] Failed to create preset: %s", presetPath.c_str());
+        }
+    }
+
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+std::string loadWorkflowJson(const std::string& jsonPath) {
+    std::ifstream ifs(jsonPath);
+    if (!ifs) {
+        debugLogf("[Workflows] Cannot open: %s", jsonPath.c_str());
+        return {};
+    }
+    std::string content((std::istreambuf_iterator<char>(ifs)), {});
     return content;
 }

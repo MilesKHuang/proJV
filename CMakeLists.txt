@@ -39,12 +39,18 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/web_tools.cpp
     ${SRC_DIR}/tools/python_tool_manager.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
+    ${SRC_DIR}/tools/delegate_tool.cpp
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
+    ${SRC_DIR}/core/agent_registry.cpp
+    ${SRC_DIR}/core/sub_agent.cpp
+    ${SRC_DIR}/core/sub_agent_manager.cpp
+    ${SRC_DIR}/core/supervisor.cpp
     ${SRC_DIR}/ui/app.cpp
     ${SRC_DIR}/ui/render_chat.cpp
     ${SRC_DIR}/ui/render_settings.cpp
+    ${SRC_DIR}/ui/render_subagents.cpp
     ${SRC_DIR}/ui/markdown_render.cpp
     ${SRC_DIR}/ui/theme.cpp
     ${SRC_DIR}/ui/theme_popup.cpp
@@ -58,11 +64,18 @@ set(HEADERS
     ${SRC_DIR}/core/agent.h
     ${SRC_DIR}/core/session.h
     ${SRC_DIR}/core/storage.h
+    ${SRC_DIR}/core/agent_registry.h
+    ${SRC_DIR}/core/sub_agent.h
+    ${SRC_DIR}/core/sub_agent_manager.h
+    ${SRC_DIR}/core/supervisor.h
+    ${SRC_DIR}/core/prompts.h
     ${SRC_DIR}/tools/registry.h
     ${SRC_DIR}/tools/shell_tool.h
     ${SRC_DIR}/tools/file_tool.h
     ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h
+    ${SRC_DIR}/tools/delegate_tool.h
+    ${SRC_DIR}/ui/render_subagents.h
 )
 
 # ── libcurl (from source) ──
@@ -139,13 +152,13 @@ target_sources(proJV PRIVATE
 )
 target_include_directories(proJV PRIVATE ${IMGUI_DIR}/backends)
 
-# ── Copy assets + pytools to build directory ──
+# ── Copy assets + projv_files subdirs to build directory ──
 add_custom_command(TARGET proJV POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:proJV>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/projv_pytool"
-        "$<TARGET_FILE_DIR:proJV>/projv_pytool"
-    COMMENT "Copying assets and pytools to build output"
+        "${CMAKE_SOURCE_DIR}/projv_files"
+        "$<TARGET_FILE_DIR:proJV>/projv_files"
+    COMMENT "Copying assets and projv_files to build output"
 )

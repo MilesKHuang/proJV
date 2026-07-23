@@ -1,4 +1,4 @@
-﻿#include "agent.h"
+#include "agent.h"
 #include "prompts.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -53,10 +53,16 @@ static std::string buildToolPathsMessage(const std::string& cpp, const std::stri
 // Agent
 // ============================================================================
 
-Agent::Agent(DeepSeekClient& client, ToolRegistry& tools)
+Agent::Agent(DeepSeekClient& client, ToolRegistry& tools,
+             std::shared_ptr<std::atomic<bool>> cancelFlag, bool isSubAgent)
     : client(client), toolRegistry(tools)
 {
-    registerTodoTool(tools, &todoData, &todoMutex);
+    if (cancelFlag) cancelFlag_ = cancelFlag;
+    else cancelFlag_ = std::make_shared<std::atomic<bool>>(false);
+    autoApprove_ = isSubAgent;
+    if (!isSubAgent) {
+        registerTodoTool(tools, &todoData, &todoMutex);
+    }
     contextBudget = Session::computeContextBudget(effectiveContextWindow(), configMaxTokens);
 }
 
@@ -86,7 +92,7 @@ void Agent::startTurn(const std::string& text) {
     if (phase_.load() != AgentPhase::Idle) { cancel(); std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
     if (ensureStorage) ensureStorage();
     { std::lock_guard<std::mutex> lk(todoMutex); todoData.incomingUserPrompt = text; }
-    cancelRequested_.store(false, std::memory_order_release);
+    cancelFlag_->store(false, std::memory_order_release);
     hasUserInput_ = true;
     queuedUserText_ = text;
     approvalDone_ = false;
@@ -101,7 +107,7 @@ void Agent::run() {
     phase_ = AgentPhase::Streaming;
     updateSnapshot();
 
-    while (phase_ != AgentPhase::Idle && !cancelRequested_.load()) {
+    while (phase_ != AgentPhase::Idle && !cancelFlag_->load()) {
         switch (phase_.load()) {
 
         case AgentPhase::Streaming: {
@@ -113,7 +119,7 @@ void Agent::run() {
             streamPromptTokens_ = streamCompletionTokens_ = 0;
 
             bool ok = client.streamBlocking(req, makeCallbacks());
-            if (cancelRequested_.load()) break;
+            if (cancelFlag_->load()) break;
 
             if (!ok || streamError_) {
                 std::string err = streamError_ ? streamErrorMsg_ : "stream failed";
@@ -139,12 +145,12 @@ void Agent::run() {
                         streamError_ = false; streamErrorMsg_.clear();
                         streamPromptTokens_ = streamCompletionTokens_ = 0;
                         ok = client.streamBlocking(req, makeCallbacks());
-                        if (cancelRequested_.load()) break;
+                        if (cancelFlag_->load()) break;
                         if (ok && !streamError_) break;
                         err = streamError_ ? streamErrorMsg_ : "stream failed";
                         if (err.find("HTTP 4") == std::string::npos) break;
                     }
-                    if (cancelRequested_.load()) break; // bail out cleanly on cancel
+                    if (cancelFlag_->load()) break; // bail out cleanly on cancel
                     if (!ok || streamError_) {
                         session.popLastAssistant();
                         addPersistedMessage(Message::Assistant(
@@ -157,7 +163,7 @@ void Agent::run() {
                     break;
                 }
             }
-            if (cancelRequested_.load()) break;
+            if (cancelFlag_->load()) break;
 
             if (streamPromptTokens_ > 0 || streamCompletionTokens_ > 0) {
                 if (onTokenUsage) onTokenUsage(streamPromptTokens_, streamCompletionTokens_);
@@ -176,12 +182,12 @@ void Agent::run() {
                 bool hasD = false;
                 for (auto& c : pendingToolCalls_) if (hasDestructiveCommand(c)) { hasD = true; break; }
 
-                if (hasD && !destructiveApproved_.load()) {
+                if (hasD && !destructiveApproved_.load() && !autoApprove_) {
                     pendingApprovalCalls_ = pendingToolCalls_;
                     phase_ = AgentPhase::AwaitApproval; updateSnapshot();
                     std::unique_lock<std::mutex> lk(approvalMutex_);
-                    approvalCv_.wait(lk, [this]() { return approvalDone_ || cancelRequested_.load(); });
-                    if (cancelRequested_.load()) break;
+                    approvalCv_.wait(lk, [this]() { return approvalDone_ || cancelFlag_->load(); });
+                    if (cancelFlag_->load()) break;
                     if (!approvalGranted_) {
                         session.clearLastToolCalls(USER_REJECTED_PREFIX);
                         phase_ = AgentPhase::Streaming; updateSnapshot(); break;
@@ -202,7 +208,7 @@ void Agent::run() {
         case AgentPhase::ExecutingTools: {
             updateSnapshot();
             while (toolIndex_ < (int)pendingToolCalls_.size()) {
-                if (cancelRequested_.load()) break;
+                if (cancelFlag_->load()) break;
                 auto& call = pendingToolCalls_[toolIndex_];
                 {
                     std::lock_guard<std::mutex> lk(snapshotMutex_);
@@ -214,7 +220,7 @@ void Agent::run() {
                 toolResults_.push_back(executeTool(call));
                 ++toolIndex_;
             }
-            if (cancelRequested_.load()) break;
+            if (cancelFlag_->load()) break;
             // Add results to session
             bool hasWV = false; std::string wvDetails;
             for (auto& r : toolResults_) {
@@ -290,14 +296,14 @@ void Agent::approveTool(int action) {
 }
 
 void Agent::cancel() {
-    cancelRequested_.store(true, std::memory_order_release);
+    cancelFlag_->store(true, std::memory_order_release);
     client.cancel();
     { std::lock_guard<std::mutex> lk(approvalMutex_); approvalDone_ = true; approvalGranted_ = false; }
     approvalCv_.notify_one();
 }
 
 void Agent::newTurn() {
-    cancelRequested_.store(false, std::memory_order_release);
+    cancelFlag_->store(false, std::memory_order_release);
     approvalDone_ = false;
     currentToolCalls_.clear();
     pendingToolCalls_.clear();
@@ -403,7 +409,7 @@ StreamCallbacks Agent::makeCallbacks() {
 
 // ========== Compaction ==========
 
-void Agent::doCompaction() { if (!cancelRequested_.load()) if (!compactSession()) session.pruneForContext(effectiveContextWindow()); }
+void Agent::doCompaction() { if (!cancelFlag_->load()) if (!compactSession()) session.pruneForContext(effectiveContextWindow()); }
 
 void Agent::checkContextWarning() {
     auto msgs = session.getContextMessages(); size_t total = 0;
@@ -416,7 +422,7 @@ void Agent::checkContextWarning() {
 }
 
 bool Agent::compactSession() {
-    if (cancelRequested_.load() || session.messageCount() < 8) return false;
+    if (cancelFlag_->load() || session.messageCount() < 8) return false;
     auto msgs = session.getContextMessages();
     size_t est = 0;
     for (auto& m : msgs) est += Session::estimateTokens(m.content) + Session::estimateTokens(m.reasoningContent);

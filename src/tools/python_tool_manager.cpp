@@ -12,12 +12,12 @@
 namespace fs = std::filesystem;
 
 // ============================================================================
-// Helper: get projv_pytool directory (exe-relative, same as projv_prompts)
+// Helper: get projv_files/pytool directory (exe-relative, same as projv_prompts)
 // ============================================================================
 std::string PythonToolManager::pytoolDir() {
     std::string configPath = getConfigPath();
     auto parent = fs::path(configPath).parent_path();
-    return (parent / "projv_pytool").string();
+    return (parent / "projv_files/pytool").string();
 }
 
 // ============================================================================
@@ -75,7 +75,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry) {
 
     std::error_code ec;
     if (!fs::is_directory(dir, ec) || ec) {
-        debugLog("[PyTool] projv_pytool/ not found, skipping");
+        debugLog("[PyTool] projv_files/pytool/ not found, skipping");
         return;
     }
 

@@ -199,7 +199,7 @@ ThemeManager& ThemeManager::instance() { static ThemeManager mgr; return mgr; }
 
 void ThemeManager::init(const std::string& exeDir, const std::string& preferredName) {
     current_=ThemeColors::obsidian();
-    themeDir_=exeDir+"/projv_theme";
+    themeDir_=exeDir+"/projv_files/themes";
     std::error_code ec;
     fs::create_directories(themeDir_, ec);
     if(ec) themeDir_.clear();
