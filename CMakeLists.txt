@@ -37,6 +37,7 @@ set(COMMON_SOURCES
     # git_tool.cpp removed — git commands handled via shell_tool
     ${SRC_DIR}/tools/file_search_tool.cpp
     ${SRC_DIR}/tools/web_tools.cpp
+    ${SRC_DIR}/tools/python_tool_manager.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
@@ -60,6 +61,7 @@ set(HEADERS
     ${SRC_DIR}/tools/registry.h
     ${SRC_DIR}/tools/shell_tool.h
     ${SRC_DIR}/tools/file_tool.h
+    ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h
 )
 
@@ -137,10 +139,13 @@ target_sources(proJV PRIVATE
 )
 target_include_directories(proJV PRIVATE ${IMGUI_DIR}/backends)
 
-# ── Copy assets to build directory ──
+# ── Copy assets + pytools to build directory ──
 add_custom_command(TARGET proJV POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:proJV>/assets"
-    COMMENT "Copying assets to build output"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/projv_pytool"
+        "$<TARGET_FILE_DIR:proJV>/projv_pytool"
+    COMMENT "Copying assets and pytools to build output"
 )

@@ -5,12 +5,14 @@
 #include "client/deepseek.h"
 #include "core/agent.h"
 #include "tools/registry.h"
+#include "tools/python_tool_manager.h"
 #include <imgui.h>
 #include <string>
 #include <vector>
 #include <deque>
 #include <mutex>
 #include <atomic>
+#include <optional>
 
 struct ChatBubble {
     std::string role;  // "user", "assistant", "system", "tool_call", "tool_result"
@@ -45,6 +47,7 @@ private:
     AppConfig config;
     DeepSeekClient client;
     ToolRegistry tools;
+    std::optional<PythonToolManager> pytoolMgr_;
     Storage storage;
 
     Agent* agent = nullptr;

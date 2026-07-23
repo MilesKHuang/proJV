@@ -37,3 +37,4 @@ config.toml
 # OS
 .DS_Store
 Thumbs.db
+__pycache__/  

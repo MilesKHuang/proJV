@@ -168,7 +168,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 std::string mode = extractStringArg(args, "mode", "write");
                 bool appendMode = (mode == "append");
 
-                std::ios::openmode openFlags = std::ios::out;
+                std::ios::openmode openFlags = std::ios::out | std::ios::binary;
                 if (appendMode) openFlags |= std::ios::app;
 
                 std::ofstream ofs(resolved, openFlags);
@@ -235,7 +235,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                     }
                     size_t origLen = origEnd - origPos;
                     content.replace(origPos, origLen, replace);
-                    std::ofstream ofs(resolved, std::ios::out | std::ios::trunc);
+                    std::ofstream ofs(resolved, std::ios::out | std::ios::trunc | std::ios::binary);
                     if (!ofs) return "Error: Cannot write to: " + resolved;
                     ofs << content;
                     return "Edited " + resolved + " (match found after LF normalization)";
@@ -257,7 +257,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
             }
 
             content.replace(pos, search.size(), replace);
-            std::ofstream ofs(resolved, std::ios::out | std::ios::trunc);
+            std::ofstream ofs(resolved, std::ios::out | std::ios::trunc | std::ios::binary);
             if (!ofs) return "Error: Cannot write to: " + resolved;
             ofs << content;
             return "Edited " + resolved;
