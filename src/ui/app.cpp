@@ -458,6 +458,23 @@ void App::render() {
     checkAgentThread();
     checkAgentFlags();
 
+    // Auto-notify: if a SubAgent completed while Supervisor is idle,
+    // inject its result and auto-launch a new turn so the Supervisor reacts.
+    if (subAgentMgr && subAgentMgr->hasCompleted() && agent
+        && !agentThreadRunning_.load() && agent->getPhase() == AgentPhase::Idle) {
+        auto results = subAgentMgr->drainCompletedResults();
+        for (auto& r : results) {
+            std::string msg = "[SUB-AGENT RESULT] " + r.agentId
+                + " completed (" + std::to_string(r.elapsedMs / 1000) + "s, "
+                + std::to_string(r.toolCalls) + " tool calls):\n" + r.finalReply;
+            agent->addPersistedMessage(Message::System(msg));
+            debugLogf("[App] Auto-injected sub-agent result: %s", r.agentId.c_str());
+        }
+        if (!results.empty()) {
+            launchAgentThread();
+        }
+    }
+
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->Pos);
     ImGui::SetNextWindowSize(viewport->Size);
@@ -914,6 +931,22 @@ void App::switchToDialog(const std::string& dbPath) {
 void App::launchAgentThread() {
     if (agentThreadRunning_.load()) return;
     joinAgentThread();
+
+    // Drain completed SubAgent results before starting the turn.
+    // This injects any finished sub-agent output as system messages
+    // so the Supervisor sees them at the start of the next turn.
+    if (subAgentMgr && agent) {
+        auto results = subAgentMgr->drainCompletedResults();
+        for (auto& r : results) {
+            std::string msg = "[SUB-AGENT RESULT] " + r.agentId
+                + " completed (" + std::to_string(r.elapsedMs / 1000) + "s, "
+                + std::to_string(r.toolCalls) + " tool calls):\n" + r.finalReply;
+            agent->addPersistedMessage(Message::System(msg));
+            debugLogf("[App] Injected sub-agent result: %s (%lld ms, %d tools)",
+                r.agentId.c_str(), (long long)r.elapsedMs, r.toolCalls);
+        }
+    }
+
     agentThreadRunning_.store(true);
     agentThread_ = std::thread([this]() {
         agent->newTurn();
