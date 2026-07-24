@@ -1,4 +1,4 @@
-# proJV — Windows DeepSeek GUI Agent
+# proJV -- Windows DeepSeek GUI Agent
 
 <p align="center">
   <a href="README_zh.md">简体中文</a> | <strong>English</strong>
@@ -8,7 +8,7 @@
   <img src="assets/overview.png" alt="proJV overview" width="1280"/>
 </p>
 
-Project JV, stands for **Just Vibing** — a sleek, fast, fully AI-built Windows desktop agent for the DeepSeek API.
+Project JV, stands for **Just Vibing** -- a sleek, fast, fully AI-built Windows desktop agent for the DeepSeek API.
 
 Built with **Dear ImGui + DirectX11 + libcurl**, C++20. **Zero package managers.** One `cmake --build` does it all.
 
@@ -20,9 +20,9 @@ Built with **Dear ImGui + DirectX11 + libcurl**, C++20. **Zero package managers.
 
 I'm an algorithm engineer who writes C++ and Python. I like my PC for gaming, and I like lightweight libraries.
 
-Most AI coding tools feel bloated — flashy plugins, complex terminals, features I'll never use. I wanted something different: a **native Windows desktop app** that's fast, minimal, and actually helpful.
+Most AI coding tools feel bloated -- flashy plugins, complex terminals, features I'll never use. I wanted something different: a **native Windows desktop app** that's fast, minimal, and actually helpful.
 
-proJV is that tool. It reads your codebase, runs shell commands, edits files, searches the web, manages TODOs — all through a clean GUI. It can even **modify and compile itself**.
+proJV is that tool. It reads your codebase, runs shell commands, edits files, searches the web, manages TODOs -- all through a clean GUI. It can even **modify and compile itself**.
 
 ---
 
@@ -30,7 +30,7 @@ proJV is that tool. It reads your codebase, runs shell commands, edits files, se
 
 ### Multi-Role System Prompts
 
-Drop a `.md` file into `projv_prompts/` and it instantly appears in the role selector. Built-in roles include **coder** (full tool access) and **designer** (read-only code analysis — shell and source edits locked out, outputs structured design docs via `md_file`). Switch mid-conversation without losing context.
+Drop a `.md` file into `projv_files/prompts/` and it instantly appears in the role selector. Built-in roles include **coder** (full 11-tool access, default), **designer** (read-only analysis -- shell and source edits locked out, outputs structured design docs via `md_file`), and **analyzer** (code analysis with `diagram_tool` support). Switch mid-conversation without losing context.
 
 <p align="center">
   <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
@@ -38,14 +38,14 @@ Drop a `.md` file into `projv_prompts/` and it instantly appears in the role sel
 
 ### Theme System
 
-Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `config.toml` and restored on next launch.
+Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_files/theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `projv_files/config.toml` and restored on next launch.
 
 | Preview | Theme | Style |
 |---------|-------|-------|
 | <img src="assets/themes/obsidian.png" width="180"/> | **Obsidian** | Refined warm-dark (default) |
 | <img src="assets/themes/light.png" width="180"/> | **Light** | Clean white (default) |
 | <img src="assets/themes/forest.png" width="180"/> | **Forest** | Airy sage green, nature-inspired |
-| <img src="assets/themes/artism_warm.png" width="180"/> | **Artism** | Warm caramel, cozy café aesthetic |
+| <img src="assets/themes/artism_warm.png" width="180"/> | **Artism** | Warm caramel, cozy cafe aesthetic |
 | <img src="assets/themes/monochrome_dark.png" width="180"/> | **Monochrome Dark** | Pure grayscale, zero color distraction |
 | <img src="assets/themes/colorblind_safe.png" width="180"/> | **Colorblind Safe** | Blue-orange palette, accessible for common CVD types |
 | <img src="assets/themes/vibrant_focus.png" width="180"/> | **Vibrant Focus** | High-contrast neon, strong visual blocks |
@@ -53,7 +53,7 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 
 <p align="center">
   <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>
-  <br/><sub>The built-in visual editor — edit colors by category, preview changes in real time, and export/import JSON themes</sub>
+  <br/><sub>The built-in visual editor -- edit colors by category, preview changes in real time, and export/import JSON themes</sub>
 </p>
 
 ---
@@ -62,7 +62,7 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 
 | Feature | Description |
 |---------|-------------|
-| **AI tool orchestration** | read_file, write_file, edit_file, md_file, shell, file_search, web_search, fetch_url, todo — AI decides what to call and when |
+| **AI tool orchestration** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool -- AI decides what to call and when |
 | **Thinking display** | deepseek-reasoner chain-of-thought as collapsible cards |
 | **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
 | **Context management** | Token estimation + smart compaction at pressure thresholds |
@@ -94,8 +94,8 @@ Artifact: `build/proJV.exe` (~3 MB)
 ### Run
 
 1. Get a DeepSeek API Key: [platform.deepseek.com](https://platform.deepseek.com/api_keys)
-2. Double-click `proJV.exe`, enter Key → **Save & Connect**
-3. Start chatting — drop custom prompts into `projv_prompts/` and themes into `projv_theme/`
+2. Double-click `proJV.exe`, enter Key -> **Save & Connect**
+3. Start chatting -- drop custom prompts into `projv_files/prompts/` and themes into `projv_files/theme/`
 
 ---
 
@@ -105,7 +105,12 @@ Artifact: `build/proJV.exe` (~3 MB)
 proJV/
 ├── CMakeLists.txt
 ├── assets/                    # Fonts, screenshots, theme previews
-├── projv_theme/               # Installable theme JSON files
+├── projv_files/               # Runtime data directory
+│   ├── config.toml            # Configuration (auto-created on first save)
+│   ├── prompts/               # System prompt .md files
+│   ├── theme/                 # Installable theme JSON files
+│   ├── pytool/                # Python tools (diagram_tool, etc.)
+│   └── sessions/              # SQLite session databases
 ├── external/                  # Static deps: imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
 ├── src/
 │   ├── main.cpp               # WinMain + D3D11 + ImGui loop
@@ -148,7 +153,7 @@ proJV/
 
 ## Buy me a coffee
 
-If proJV saves you time or brings you joy — I'd appreciate a coffee ☕
+If proJV saves you time or brings you joy -- I'd appreciate a coffee
 *(China / WeChat only)*
 
 <p align="left">
