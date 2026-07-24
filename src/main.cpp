@@ -21,6 +21,7 @@
 #include <loguru.hpp>
 #include "ui/app.h"
 #include "ui/theme.h"
+#include "core/config.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -304,8 +305,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nCmdShow) {
     g_app.initialize();
 
     // Initialize theme system AFTER config load so we can use config.themeName
-    std::string exeDirStr = exeDir.string();
-    ThemeManager::instance().init(exeDirStr, g_app.getConfigThemeName());
+    ThemeManager::instance().init(getThemeDir(), g_app.getConfigThemeName());
 
     // Set window title with status
     SetWindowTextW(g_hwnd, g_app.hasApiKey() ? L"proJV - DeepSeek Agent" : L"proJV - [No API Key]");

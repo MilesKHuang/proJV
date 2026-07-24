@@ -15,9 +15,7 @@ namespace fs = std::filesystem;
 // Helper: get projv_pytool directory (exe-relative, same as projv_prompts)
 // ============================================================================
 std::string PythonToolManager::pytoolDir() {
-    std::string configPath = getConfigPath();
-    auto parent = fs::path(configPath).parent_path();
-    return (parent / "projv_pytool").string();
+    return getPytoolDir();
 }
 
 // ============================================================================

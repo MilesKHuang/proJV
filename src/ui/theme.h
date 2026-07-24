@@ -129,7 +129,7 @@ class ThemeManager {
 public:
     static ThemeManager& instance();
 
-    void init(const std::string& exeDir, const std::string& preferredName = "");
+    void init(const std::string& themeDir, const std::string& preferredName = "");
     const ThemeColors& current() const { return current_; }
     bool switchTo(const std::string& name);
     void applyCustom(const ThemeColors& tc);

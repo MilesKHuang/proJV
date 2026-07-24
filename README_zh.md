@@ -1,4 +1,4 @@
-# proJV — Windows DeepSeek GUI Agent
+# proJV -- Windows DeepSeek GUI Agent
 
 <p align="center">
   <strong>简体中文</strong> | <a href="README.md">English</a>
@@ -8,7 +8,7 @@
   <img src="assets/overview.png" alt="proJV overview" width="1280"/>
 </p>
 
-Project JV, 意思是 **Just Vibing** — 一个轻快、精致的 Windows 桌面 AI Agent，基于 DeepSeek API，全部代码由 AI 自主生成。
+Project JV, 意思是 **Just Vibing** -- 一个轻快、精致的 Windows 桌面 AI Agent，基于 DeepSeek API，全部代码由 AI 自主生成。
 
 基于 **Dear ImGui + DirectX11 + libcurl**，C++20 实现。**零包管理器依赖**，一条 `cmake --build` 搞定。
 
@@ -20,9 +20,9 @@ Project JV, 意思是 **Just Vibing** — 一个轻快、精致的 Windows 桌�
 
 图像算法工程师，主力 C++，也拿 Python 训 NN。喜欢 PC 能打游戏，喜欢轻量的三方库。
 
-市面上的 AI 编程工具太臃肿了 — 花花绿绿的插件、复杂的终端、永远用不到的功能。我想要的是一个**原生 Windows 桌面应用**：快、干净、真正能帮我干活。
+市面上的 AI 编程工具太臃肿了 -- 花花绿绿的插件、复杂的终端、永远用不到的功能。我想要的是一个**原生 Windows 桌面应用**：快、干净、真正能帮我干活。
 
-proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、编辑文件、搜索网页、管理 TODO — 全在清爽的 GUI 里完成。它甚至能**修改和编译自己**。
+proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、编辑文件、搜索网页、管理 TODO -- 全在清爽的 GUI 里完成。它甚至能**修改和编译自己**。
 
 ---
 
@@ -30,7 +30,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 ### 多角色 System Prompt
 
-往 `projv_prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。内置 **coder**（全工具权限）和 **designer**（只读分析模式 — 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档）。切换角色不丢上下文。
+往 `projv_files/prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。内置 **coder**（全 11 工具，默认）、**designer**（只读分析模式 -- 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档）和 **analyzer**（代码分析 + `diagram_tool` 架构图）。切换角色不丢上下文。
 
 <p align="center">
   <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
@@ -38,7 +38,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 ### 主题系统
 
-两套内置（Obsidian / Light），外加 6 套精选主题可由 `projv_theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `config.toml`，下次启动即恢复。
+两套内置（Obsidian / Light），外加 6 套精选主题可由 `projv_files/theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `projv_files/config.toml`，下次启动即恢复。
 
 | 预览 | 主题 | 风格 |
 |------|------|------|
@@ -53,7 +53,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 <p align="center">
   <img src="assets/customize_theme_color.png" alt="Theme editor" width="720"/>
-  <br/><sub>内置可视化编辑器 — 按分类逐色调整，实时预览效果，支持 JSON 导出/导入</sub>
+  <br/><sub>内置可视化编辑器 -- 按分类逐色调整，实时预览效果，支持 JSON 导出/导入</sub>
 </p>
 
 ---
@@ -62,7 +62,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 | 功能 | 说明 |
 |------|------|
-| **AI 自动调用工具** | 读文件、写文件、编辑、md_file、Shell、文件搜索、网页搜索/抓取、TODO — AI 自主决策 |
+| **AI 自动调用工具** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool -- AI 自主决策 |
 | **思考过程展示** | deepseek-reasoner 推理链可折叠卡片 |
 | **流式 Markdown** | 实时 SSE + 自研渲染器（代码块、表格、链接、标题） |
 | **上下文管理** | Token 估算 + 智能压缩，达到压力阈值自动缩容 |
@@ -95,8 +95,8 @@ cmake --build .
 ### 运行
 
 1. 申请 DeepSeek API Key：[platform.deepseek.com](https://platform.deepseek.com/api_keys)
-2. 双击 `proJV.exe`，输入 Key → **Save & Connect**
-3. 开始对话 — 也可以往 `projv_prompts/` 丢自定义 prompt，往 `projv_theme/` 丢主题文件
+2. 双击 `proJV.exe`，输入 Key -> **Save & Connect**
+3. 开始对话 -- 也可以往 `projv_files/prompts/` 丢自定义 prompt，往 `projv_files/theme/` 丢主题文件
 
 ---
 
@@ -106,7 +106,12 @@ cmake --build .
 proJV/
 ├── CMakeLists.txt
 ├── assets/                    # 字体、截图、主题预览图
-├── projv_theme/               # 可安装的主题 JSON
+├── projv_files/               # 运行时数据目录
+│   ├── config.toml            # 配置文件（首次保存时自动创建）
+│   ├── prompts/               # System Prompt .md 文件
+│   ├── theme/                 # 可安装的主题 JSON
+│   ├── pytool/                # Python 工具（diagram_tool 等）
+│   └── sessions/              # SQLite 会话数据库
 ├── external/                  # 静态依赖：imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
 ├── src/
 │   ├── main.cpp               # WinMain + D3D11 + ImGui 主循环
@@ -149,7 +154,7 @@ proJV/
 
 ## 请我喝咖啡
 
-如果 proJV 为你节省了时间或带来了乐趣，欢迎请我喝杯咖啡 ☕
+如果 proJV 为你节省了时间或带来了乐趣，欢迎请我喝杯咖啡
 *（仅支持中国大陆 / 微信赞赏）*
 
 <p align="left">

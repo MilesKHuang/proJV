@@ -3,6 +3,7 @@
 #include "ui/theme.h"
 #include "render_chat.h"
 #include "core/prompts.h"
+#include "core/config.h"
 #include "tools/registry.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -681,7 +682,7 @@ void App::renderInputArea() {
             if (text == "/workspace") {
                 std::string ws = config.workspacePath.empty()
                     ? std::filesystem::absolute(
-                          std::filesystem::path(getConfigPath()).parent_path()
+                          std::filesystem::path(getExeDir())
                       ).string()
                     : config.workspacePath;
                 ChatBubble cb;
@@ -718,7 +719,7 @@ void App::renderInputArea() {
                 if (text == "/workspace") {
                     std::string ws = config.workspacePath.empty()
                         ? std::filesystem::absolute(
-                              std::filesystem::path(getConfigPath()).parent_path()
+                              std::filesystem::path(getExeDir())
                           ).string()
                         : config.workspacePath;
                     ChatBubble cb;

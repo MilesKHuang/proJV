@@ -39,6 +39,7 @@ struct ToolResult {
     std::string name;
     std::string content;  // result text
     bool isError = false;
+    bool isCancelled = false;
 };
 
 // --- Message --------------------------------------------------------
