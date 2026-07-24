@@ -184,7 +184,7 @@ void App::setupTools() {
     std::string ws = config.workspacePath;
     if (ws.empty()) {
         ws = std::filesystem::absolute(
-            std::filesystem::path(getConfigPath()).parent_path()
+            std::filesystem::path(getExeDir())
         ).string();
     }
 
@@ -234,7 +234,7 @@ bool App::initialize() {
         activePromptIndex_ = 0;
         // Find coder.md in the list for initial prompt
         for (int i = 0; i < (int)promptFiles_.size(); ++i) {
-            if (promptFiles_[i] == "supervisor.md") { activePromptIndex_ = i; break; }
+            if (promptFiles_[i] == "coder.md") { activePromptIndex_ = i; break; }
         }
     }
 
@@ -246,8 +246,7 @@ bool App::initialize() {
 
     // -- 准备会话目录（不创建 DB 文件，等用户发第一条消息时再创建）---
     {
-        std::string exeDir = std::filesystem::path(getConfigPath()).parent_path().string();
-        sessionsDir_ = exeDir + "/projv_sessions";
+        sessionsDir_ = getSessionsDir();
         std::error_code ec;
         std::filesystem::create_directories(sessionsDir_, ec);
         if (ec) {

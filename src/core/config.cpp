@@ -9,12 +9,38 @@
 
 namespace fs = std::filesystem;
 
-// Config lives next to the executable
+// Config lives under projv_files/ subdirectory next to the executable
 std::string getConfigPath() {
     char exePath[MAX_PATH];
     GetModuleFileNameA(nullptr, exePath, MAX_PATH);
     fs::path p(exePath);
-    return (p.parent_path() / "config.toml").string();
+    return (p.parent_path() / "projv_files" / "config.toml").string();
+}
+
+std::string getExeDir() {
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+    return fs::path(exePath).parent_path().string();
+}
+
+std::string getProjvDir() {
+    return (fs::path(getExeDir()) / "projv_files").string();
+}
+
+std::string getThemeDir() {
+    return (fs::path(getExeDir()) / "projv_files" / "theme").string();
+}
+
+std::string getPromptsDir() {
+    return (fs::path(getExeDir()) / "projv_files" / "prompts").string();
+}
+
+std::string getPytoolDir() {
+    return (fs::path(getExeDir()) / "projv_files" / "pytool").string();
+}
+
+std::string getSessionsDir() {
+    return (fs::path(getExeDir()) / "projv_files" / "sessions").string();
 }
 
 bool loadTomlConfig(AppConfig& cfg, const std::string& path) {

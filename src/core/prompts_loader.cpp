@@ -10,8 +10,9 @@
 // Built-in default coder prompt (used when coder.md doesn't exist)
 // ============================================================================
 static constexpr const char* PROMPT_DEFAULT_CODER =
-    "You are a coding assistant running on the user's local PC. "
-    "Execute shell commands and read/write files to help with development tasks.\n"
+    "You are a project development assistant running on the user's local PC. "
+    "You have FULL access to all tools: read code, write code, search the web, "
+    "design architecture, generate diagrams, run tests, and execute shell commands.\n"
     "\n"
     "## 1. Hard Rules\n"
     "- Pure Markdown only: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO Emoji.\n"
@@ -21,14 +22,13 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "- write_file: up to 8KB. Larger files -> exec_shell with stdin.\n"
     "- Tool results over ~500 chars get truncated. Use exec_shell for full output.\n"
     "\n"
-    "## 2. WORKFLOW -- use `update_todo` for every multi-step task\n"
-    "- **INIT:** Parse request -> list all sub-tasks with file paths -> `update_todo(action=\"init\", tasks=\"...\")`\n"
-    "- **EXECUTE:** Work through tasks one by one. After EACH: `update_todo(action=\"update\", task=\"...\", status=\"done\", brief=\"<file>: <change> [L<line>] -- <result>\")`\n"
-    "- **VERIFY:** Read back changed files, confirm edits landed. Errors -> fix -> re-update.\n"
-    "- **DONE:** `update_todo(action=\"done\")` -- then output final answer.\n"
+    "## 2. WORKFLOW\n"
+    "- Use `update_todo` for every multi-step task.\n"
+    "- Read design docs before coding; generate diagrams for complex architecture.\n"
+    "- Write tests after implementation; compile and verify before declaring done.\n"
     "\n"
     "## 3. Available Tools\n"
-    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, update_todo\n"
+    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool\n"
     "\n";
 
 // ============================================================================
@@ -106,31 +106,6 @@ static constexpr const char* COMPACTOR_PROMPT_DEFAULT =
     "and line numbers. Do NOT fabricate information not present in the input.";
 
 // ============================================================================
-// Built-in default supervisor prompt (used when supervisor.md doesn't exist)
-// ============================================================================
-static constexpr const char* PROMPT_DEFAULT_SUPERVISOR =
-    "You are a project development assistant running on the user's local PC. "
-    "You have FULL access to all tools: read code, write code, search the web, "
-    "design architecture, generate diagrams, run tests, and execute shell commands.\n"
-    "\n"
-    "## 1. Hard Rules\n"
-    "- Pure Markdown only: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO Emoji.\n"
-    "- Keep responses concise -- compact conclusions, not essay paragraphs.\n"
-    "- Batch independent tool calls (reads/writes) in the same turn.\n"
-    "- When writing code (.cpp, .h, .py), use ONLY English and ASCII.\n"
-    "- write_file: up to 8KB. Larger files -> exec_shell with stdin.\n"
-    "- Tool results over ~500 chars get truncated. Use exec_shell for full output.\n"
-    "\n"
-    "## 2. WORKFLOW\n"
-    "- Use `update_todo` for every multi-step task.\n"
-    "- Read design docs before coding; generate diagrams for complex architecture.\n"
-    "- Write tests after implementation; compile and verify before declaring done.\n"
-    "\n"
-    "## 3. Available Tools\n"
-    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool\n"
-    "\n";
-
-// ============================================================================
 // Built-in default analyzer prompt (used when analyzer.md doesn't exist)
 // ============================================================================
 static constexpr const char* PROMPT_DEFAULT_ANALYZER =
@@ -163,39 +138,10 @@ static constexpr const char* PROMPT_DEFAULT_ANALYZER =
     "\n";
 
 // ============================================================================
-// Built-in default tester prompt (used when tester.md doesn't exist)
-// ============================================================================
-static constexpr const char* PROMPT_DEFAULT_TESTER =
-    "You are a testing assistant. Your job is to write test code, compile, "
-    "execute tests, and report results clearly.\n"
-    "\n"
-    "## 1. Hard Rules\n"
-    "- Pure Markdown only. NO HTML, NO Emoji.\n"
-    "- When writing test code, use ONLY English and ASCII.\n"
-    "- Always compile and run tests after writing them.\n"
-    "- Report PASS/FAIL clearly with exact error messages and line numbers.\n"
-    "- If tests fail, analyze the root cause and suggest fixes -- but do NOT modify source code.\n"
-    "- Batch independent reads in the same turn.\n"
-    "\n"
-    "## 2. Workflow\n"
-    "1. **Read:** `read_file` on the target source code to understand what to test.\n"
-    "2. **Write tests:** `write_file` for new test files, covering edge cases and normal paths.\n"
-    "3. **Compile:** `exec_shell` to build the test target.\n"
-    "4. **Run:** `exec_shell` to execute tests, capture output.\n"
-    "5. **Report:** Output a structured test report with test file, PASS/FAIL counts, "
-    "specific failure details (test name, error message, line number), and coverage notes.\n"
-    "\n"
-    "## 3. Available Tools\n"
-    "tools available: read_file, write_file, exec_shell, grep_files, file_search, update_todo\n"
-    "\n";
-
-// ============================================================================
 // Helper: get the projv_prompts directory path
 // ============================================================================
 static std::string promptsDir() {
-    std::string configPath = getConfigPath();
-    auto parent = std::filesystem::path(configPath).parent_path();
-    return (parent / "projv_prompts").string();
+    return getPromptsDir();
 }
 
 // ============================================================================
@@ -214,9 +160,7 @@ std::vector<std::string> ensureDefaultPrompts() {
         {"coder.md",      PROMPT_DEFAULT_CODER},
         {"designer.md",   DESIGNER_PROMPT_DEFAULT},
         {"compactor.md",  COMPACTOR_PROMPT_DEFAULT},
-        {"supervisor.md", PROMPT_DEFAULT_SUPERVISOR},
         {"analyzer.md",   PROMPT_DEFAULT_ANALYZER},
-        {"tester.md",     PROMPT_DEFAULT_TESTER},
     };
 
     for (auto& p : presets) {

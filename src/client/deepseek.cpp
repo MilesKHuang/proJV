@@ -25,7 +25,7 @@ static constexpr int TOOL_CALL_MARKER_COUNT = 4;
 // -- Timeouts ----------------------------------------------------------------
 static constexpr int  kStreamTotalTimeoutSec  = 900;   // 15 min hard cap
 static constexpr int  kStreamLowSpeedLimit    = 1;     // bytes/sec (very low — tolerate API pauses)
-static constexpr int  kStreamLowSpeedTime     = 120;   // 2 min below limit → timeout
+static constexpr int  kStreamLowSpeedTime     = 300;   // 5 min below limit → timeout (was 120s; give reasoner more time)
 static constexpr int  kConnectTimeoutSec      = 30;
 static constexpr int  kSendTimeoutSec         = 60;    // sending large POST body
 
@@ -248,7 +248,7 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
     int transparentRetries = 0;
     int transparentRetryAfterContent = 0;
     static constexpr int MAX_RETRIES = 3;
-    static constexpr int MAX_RETRIES_AFTER_CONTENT = 1;
+    static constexpr int MAX_RETRIES_AFTER_CONTENT = 2;
 
     bool success = false;
     while (true) {

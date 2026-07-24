@@ -20,6 +20,7 @@ static constexpr const char* TOOL_PARAM_STDIN =
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -28,8 +29,8 @@ static constexpr const char* TOOL_PARAM_STDIN =
 namespace fs = std::filesystem;
 
 // -- R4 超时常量 -----------------------------------------------------------
-static constexpr int kPollIntervalMs = 3000;
-static constexpr int kMaxIdlePolls = 10;
+static constexpr int kPollIntervalMs = 100;
+static constexpr int kMaxIdleMs = 30000;
 
 static bool isPathWithinWorkspace(const std::string& path, const std::string& workspace) {
     if (workspace.empty()) return true;  // no restriction
@@ -44,7 +45,8 @@ static bool isPathWithinWorkspace(const std::string& path, const std::string& wo
 }
 
 static std::string execCommand(const std::string& cmd, const std::string& workspacePath,
-                                const std::string& stdinContent = "") {
+                                const std::string& stdinContent,
+                                ToolRegistry* registry) {
 #ifdef _WIN32
     // -- 构建最终命令：注入 Git 环境变量阻断交互式凭据提示 ----------------
     // GIT_TERMINAL_PROMPT=0   → 禁止 Git 弹出终端凭据提示
@@ -167,58 +169,91 @@ static std::string execCommand(const std::string& cmd, const std::string& worksp
         readerDone.store(true, std::memory_order_release);
     });
 
-    // -- 等待子进程：每 3s 检查一次，连续 kMaxIdlePolls 次无进展则终止 --
-    bool forcedKill = false;
-    int idlePolls = 0;
-    size_t lastOutputSize = 0;
+    // -- Register process handle with registry for cancel support --
+    if (registry) {
+        std::lock_guard<std::mutex> lk(registry->activeProcessMutex_);
+        registry->activeProcessHandle_ = pi.hProcess;
+    }
 
-    while (idlePolls < kMaxIdlePolls) {
+    // -- 等待子进程：每 100ms 轮询，check cancel + 30s idle timeout --
+    bool forcedKill = false;
+    size_t lastOutputSize = 0;
+    auto lastOutputTime = std::chrono::steady_clock::now();
+
+    while (true) {
         DWORD waitResult = WaitForSingleObject(pi.hProcess, kPollIntervalMs);
         if (waitResult == WAIT_OBJECT_0) {
-            // 进程自然退出
+            // Process exited naturally
             break;
         }
-        // 超时：检查 reader 是否有进展
+        // Check cancel flag
+        if (registry && registry->isCancelled()) {
+            if (hJob) {
+                TerminateJobObject(hJob, 1);
+            } else {
+                TerminateProcess(pi.hProcess, 1);
+            }
+            forcedKill = true;
+            break;
+        }
+        // Check reader progress
         {
             std::lock_guard<std::mutex> lock(outputMutex);
             if (output.size() > lastOutputSize) {
-                // 有新输出 → 进程仍在工作，清零空闲计数
                 lastOutputSize = output.size();
-                idlePolls = 0;
+                lastOutputTime = std::chrono::steady_clock::now();
                 continue;
             }
         }
-        // reader 已完成但进程未退出 → 管道已关，等待进程退出即可
+        // Reader done but process still alive -- give a short grace period
         if (readerDone.load(std::memory_order_acquire)) {
-            // 再给进程一次短等待
-            DWORD w2 = WaitForSingleObject(pi.hProcess, kPollIntervalMs);
+            DWORD w2 = WaitForSingleObject(pi.hProcess, 2000);
             if (w2 == WAIT_OBJECT_0) break;
-            // 仍未退出 → 强制终止
-            idlePolls = kMaxIdlePolls;
+            if (hJob) {
+                TerminateJobObject(hJob, 1);
+            } else {
+                TerminateProcess(pi.hProcess, 1);
+            }
+            forcedKill = true;
             break;
         }
-        idlePolls++;
-    }
-
-    if (idlePolls >= kMaxIdlePolls) {
-        // 超时：TerminateJobObject 终止整棵进程树
-        if (hJob) {
-            TerminateJobObject(hJob, 1);
-        } else {
-            TerminateProcess(pi.hProcess, 1);
+        // Idle timeout check (30s with no new output)
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastOutputTime).count() > kMaxIdleMs) {
+            if (hJob) {
+                TerminateJobObject(hJob, 1);
+            } else {
+                TerminateProcess(pi.hProcess, 1);
+            }
+            forcedKill = true;
+            break;
         }
-        forcedKill = true;
     }
 
-    // 等待 reader 线程结束
+    // -- Clean up active process handle --
+    if (registry) {
+        std::lock_guard<std::mutex> lk(registry->activeProcessMutex_);
+        if (registry->activeProcessHandle_ == pi.hProcess) {
+            registry->activeProcessHandle_ = nullptr;
+        }
+    }
+
+    // For forced kill (cancel/timeout): close read handle first to force
+    // ReadFile() to return immediately, preventing reader.join() deadlock.
+    // For normal exit: let reader finish consuming pipe buffer first.
+    if (forcedKill) {
+        CloseHandle(hStdoutRd);
+    }
     reader.join();
-    CloseHandle(hStdoutRd);
+    if (!forcedKill) {
+        CloseHandle(hStdoutRd);
+    }
     CloseHandle(pi.hThread);
 
     if (forcedKill) {
         std::lock_guard<std::mutex> lock(outputMutex);
         output += "\n[Command timed out after "
-               + std::to_string(kMaxIdlePolls * kPollIntervalMs / 1000)
+               + std::to_string(kMaxIdleMs / 1000)
                + " seconds and was terminated]";
     }
 
@@ -268,10 +303,10 @@ void registerShellTool(ToolRegistry& registry, const std::string& workspacePath)
         {"command", "string", TOOL_PARAM_COMMAND, true},
         {"stdin", "string", TOOL_PARAM_STDIN, false}
     };
-    registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+    registry.registerTool(def, [&registry, workspacePath](const std::string& args) -> std::string {
         std::string cmd = extractStringArg(args, "command");
         std::string stdinContent = extractStringArg(args, "stdin");
         if (cmd.empty()) return "Error: Missing 'command' argument";
-        return execCommand(cmd, workspacePath, stdinContent);
+        return execCommand(cmd, workspacePath, stdinContent, &registry);
     });
 }

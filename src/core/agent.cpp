@@ -193,6 +193,15 @@ void Agent::run() {
                 asst.reasoningContent = currentReasoning_;
                 addPersistedMessage(asst);
                 phase_ = AgentPhase::Idle; updateSnapshot();
+            } else if (!currentReasoning_.empty()) {
+                // Stream finished with reasoning but no content.
+                // Save reasoning so the user can see what happened,
+                // and add a visible placeholder so the UI doesn't
+                // silently jump to Idle.
+                Message asst = Message::Assistant("[Stream ended after reasoning — no response generated]");
+                asst.reasoningContent = currentReasoning_;
+                addPersistedMessage(asst);
+                phase_ = AgentPhase::Idle; updateSnapshot();
             } else {
                 phase_ = AgentPhase::Idle; updateSnapshot();
             }
@@ -201,8 +210,9 @@ void Agent::run() {
 
         case AgentPhase::ExecutingTools: {
             updateSnapshot();
+            bool wasCancelled = false;
             while (toolIndex_ < (int)pendingToolCalls_.size()) {
-                if (cancelRequested_.load()) break;
+                if (cancelRequested_.load()) { wasCancelled = true; break; }
                 auto& call = pendingToolCalls_[toolIndex_];
                 {
                     std::lock_guard<std::mutex> lk(snapshotMutex_);
@@ -211,10 +221,15 @@ void Agent::run() {
                     status_.currentToolName = call.name;
                     status_.state = AgentState::ExecutingTool;
                 }
-                toolResults_.push_back(executeTool(call));
+                ToolResult r = executeTool(call);
+                toolResults_.push_back(r);
                 ++toolIndex_;
+                if (r.isCancelled) { wasCancelled = true; break; }
             }
-            if (cancelRequested_.load()) break;
+            if (cancelRequested_.load() || wasCancelled) {
+                session.stripOrphanedToolCalls();
+                break;
+            }
             // Add results to session
             bool hasWV = false; std::string wvDetails;
             for (auto& r : toolResults_) {
@@ -292,12 +307,14 @@ void Agent::approveTool(int action) {
 void Agent::cancel() {
     cancelRequested_.store(true, std::memory_order_release);
     client.cancel();
+    toolRegistry.cancelAll();
     { std::lock_guard<std::mutex> lk(approvalMutex_); approvalDone_ = true; approvalGranted_ = false; }
     approvalCv_.notify_one();
 }
 
 void Agent::newTurn() {
     cancelRequested_.store(false, std::memory_order_release);
+    toolRegistry.resetCancel();
     approvalDone_ = false;
     currentToolCalls_.clear();
     pendingToolCalls_.clear();
@@ -449,7 +466,9 @@ ToolResult Agent::executeTool(const ToolCall& call) {
         r.content = "Error: Tool '" + call.name + "' not allowed."; r.isError = true; return r;
     }
     r.content = toolRegistry.execute(call.name, call.arguments);
-    r.isError = (r.content.compare(0,6,"Error:") == 0); return r;
+    r.isError = (r.content.compare(0,6,"Error:") == 0);
+    if (toolRegistry.isCancelled()) r.isCancelled = true;
+    return r;
 }
 
 bool Agent::hasDestructiveCommand(const ToolCall& call) const {
