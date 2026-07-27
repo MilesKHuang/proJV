@@ -463,3 +463,48 @@
 | 字体 | `C:\Windows\Fonts\msyh.ttc` | `/usr/share/fonts/` 搜索 |
 | 编译器 | MSVC | GCC / Clang |
 | 链接库 | `opengl32 glfw3 curl ...` | `GL glfw curl pthread dl` |
+
+## 14. 代码比对结果（2026-07-27）
+
+> 按照第 10 节 21 项改动清单逐项验证。
+
+### 14.1 已完成（18 项）
+
+| # | 文件 | 说明 |
+|---|------|------|
+| 1 | `src/gui_backend.cpp/.h` | GUI 后端统一实现，调用 ISystemUtil::GetExeDir/GetSystemFontPath |
+| 2 | `src/platform/iprocess_runner.h` | 进程抽象接口 |
+| 3 | `src/platform/process_runner_win.cpp` | Windows CreateProcess+JobObject |
+| 4 | `src/platform/process_runner_linux.cpp` | Linux fork/exec+killpg |
+| 5 | `src/platform/isystem_util.h` | 系统工具接口 |
+| 6 | `src/platform/system_util_win.cpp` | Win: GetExeDir, CrashHandler, OpenUrl, GetSystemFontPath |
+| 7 | `src/platform/system_util_linux.cpp` | Linux: /proc/self/exe, sigaction+backtrace, xdg-open, font search |
+| 8 | `src/main.cpp` | GuiBackend + main(), WinMain/D3D11 全部移除, crash handler 已迁移到 SystemUtilWin |
+| 9 | `src/tools/web_tools.cpp` | WinHTTP 全部移除, libcurl + Bing search |
+| 10 | `src/tools/shell_tool.cpp` | 已通过 IProcessRunner 接口调用 |
+| 12 | `src/core/config.cpp` | GetModuleFileNameA 移除, ISystemUtil::GetExeDir/GetUserConfigDir |
+| 16 | `src/ui/render_settings.cpp` | `#include <windows.h>` 已用 `#ifdef _WIN32` 包裹 |
+| 17 | `src/tools/registry.cpp` | `#include <windows.h>` 已移除 |
+| 18 | `src/client/deepseek.cpp` | 6处 `Sleep()` 已替换为 `std::this_thread::sleep_for()` |
+| 19 | `CMakeLists.txt` | 双平台 `if(WIN32)`/`if(UNIX)` 分支, platform/ 文件条件编译 |
+| 20 | `external/imgui/backends/` | imgui_impl_glfw.* + imgui_impl_opengl3.* 已加入 |
+| 21 | `external/imgui/backends/` | imgui_impl_win32.cpp + imgui_impl_dx11.cpp 已移除 |
+
+### 14.2 未完成（3 项功能 + 3 处 Linux 空壳）
+
+| # | 文件 | 问题 | 影响 |
+|---|------|------|------|
+| **11** | `src/tools/python_tool_manager.cpp` | `executePyTool()` 仍直接使用 `CreateProcessW` / `_popen`，未通过 IProcessRunner | **Linux diagram_tool 不可用** |
+| **13** | `src/ui/render_chat.cpp` | `ShellExecuteA` 已在 S5 移除，但未接入 `SystemUtil::Instance().OpenUrl()`——链接点击功能丢失 | **双平台链接都点不开** |
+| **14** | `src/ui/app.cpp::saveDialogToFile/loadDialogFromFile` | `#ifdef _WIN32` 存在，但 `#else` 分支仅 `(void)agent;` | **Linux Open Chat / Save As 不可用** |
+| **14** | `src/ui/app.cpp` | `PostQuitMessage(0)` 已替换为 `glfwSetWindowShouldClose`，但未引入 `#include <GLFW/glfw3.h>` | Windows 上编译 OK（通过 gui_backend.h 间接包含），但耦合脆弱 |
+| **15** | `src/ui/theme_popup.cpp` | "Load..." 按钮的 `#ifdef _WIN32` 存在，`#else` 分支仅注释 `// S5: Linux file dialog via zenity`，无实现 | **Linux 主题导入不可用** |
+
+### 14.3 已实现但需注意
+
+| 项 | 说明 |
+|----|------|
+| Crash handler | `system_util_win.cpp` 已实现 `InstallCrashHandler()`（SEH+MiniDump），`main.cpp` 已调用。Linux 侧 `sigaction+backtrace` 也已实现。 |
+| Font 加载 | `gui_backend.cpp` 通过 `SystemUtil::Instance().GetSystemFontPath()` 三层 fallback：bundled → system → builtin。 |
+| Path separator | `python_tool_manager.cpp` L196 已改为 `fs::path(toolDir) / "main.py"`。 |
+| 双平台编译 | Windows MSVC + Linux GCC 11.4 (WSL) 均编译通过，零错误。 |
