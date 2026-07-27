@@ -22,8 +22,16 @@ add_subdirectory(
     "${CMAKE_BINARY_DIR}/SQLiteCpp"
 )
 
+# ── GLFW (statically linked, from source) ──
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+add_subdirectory(${EXTERNAL_DIR}/glfw)
+
 # ── Common sources ──
 set(COMMON_SOURCES
+    ${SRC_DIR}/gui_backend.cpp
     ${SRC_DIR}/client/models.cpp
     ${SRC_DIR}/client/deepseek.cpp
     ${SRC_DIR}/core/config.cpp
@@ -34,7 +42,6 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/file_tool.cpp
     ${SRC_DIR}/tools/md_file_tool.cpp
     ${SRC_DIR}/tools/edit_file_tool.cpp
-    # git_tool.cpp removed — git commands handled via shell_tool
     ${SRC_DIR}/tools/file_search_tool.cpp
     ${SRC_DIR}/tools/web_tools.cpp
     ${SRC_DIR}/tools/python_tool_manager.cpp
@@ -52,6 +59,7 @@ set(COMMON_SOURCES
 )
 
 set(HEADERS
+    ${SRC_DIR}/gui_backend.h
     ${SRC_DIR}/client/models.h
     ${SRC_DIR}/client/deepseek.h
     ${SRC_DIR}/core/config.h
@@ -103,9 +111,11 @@ target_include_directories(proJV_lib PRIVATE
     ${SRC_DIR}
     ${SRC_DIR}/client
     ${CURL_INCLUDE_DIR}
+    ${EXTERNAL_DIR}/glfw/include   # for GLFW/glfw3.h
 )
 target_link_libraries(proJV_lib PRIVATE
-    d3d11 dxgi crypt32 ole32 shell32 comctl32 comdlg32 gdi32 user32 dbghelp advapi32
+    opengl32
+    crypt32 ole32 shell32 comctl32 comdlg32 gdi32 user32 dbghelp advapi32
     libcurl
     SQLiteCpp
 )
@@ -114,6 +124,8 @@ target_compile_definitions(proJV_lib PRIVATE
 )
 
 # ── GUI executable ──
+# WIN32 = /SUBSYSTEM:WINDOWS (no console window)
+# /ENTRY:mainCRTStartup tells MSVC to call main() instead of WinMain()
 add_executable(proJV WIN32 ${SRC_DIR}/main.cpp)
 target_include_directories(proJV PRIVATE
     ${IMGUI_DIR}
@@ -121,21 +133,31 @@ target_include_directories(proJV PRIVATE
     ${EXTERNAL_DIR}
     ${SRC_DIR}
     ${SRC_DIR}/client
+    ${EXTERNAL_DIR}/glfw/include
 )
-target_link_libraries(proJV PRIVATE proJV_lib)
+target_link_libraries(proJV PRIVATE
+    proJV_lib
+    glfw
+)
 target_compile_definitions(proJV PRIVATE
     UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
 )
+# Override entry point: WIN32 subsystem defaults to WinMain, but we use main()
+if(MSVC)
+    set_target_properties(proJV PROPERTIES
+        LINK_FLAGS "/ENTRY:mainCRTStartup"
+    )
+endif()
 
-# ── imgui sources ──
+# ── imgui sources (S1: OpenGL3 + GLFW backends) ──
 target_sources(proJV PRIVATE
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 target_include_directories(proJV PRIVATE ${IMGUI_DIR}/backends)
 
