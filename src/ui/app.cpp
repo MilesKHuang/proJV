@@ -204,7 +204,7 @@ void App::setupTools() {
     registerFileTools(tools, ws);
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
-    // registerGitTools(tools);  // removed �� git commands are covered by shell_tool
+    // registerGitTools(tools);  // removed -- git commands are covered by shell_tool
     registerFileSearchTool(tools);
     registerSearchTool(tools);
     registerFetchTool(tools);
@@ -257,7 +257,7 @@ bool App::initialize(IProcessRunner* procRunner) {
         if (agent) agent->setSystemPrompt(sp);
     }
 
-    // -- ׼���ỰĿ¼�������� DB �ļ������û�����һ����Ϣʱ�ٴ�����---
+    // -- Prepare sessions dir (lazy-create DB on first message) ---
     {
         sessionsDir_ = getSessionsDir();
         std::error_code ec;
@@ -267,7 +267,7 @@ bool App::initialize(IProcessRunner* procRunner) {
                 sessionsDir_.c_str(), ec.message().c_str());
         }
     }
-    // ��������ʼ���ص����û�����һ����Ϣʱ���� DB ��д������ system ��Ϣ
+    // Lazy-init: create DB + write existing system messages
     agent->ensureStorage = [this]() {
         if (storage.isOpen()) return;
         auto now = std::time(nullptr);
@@ -283,7 +283,7 @@ bool App::initialize(IProcessRunner* procRunner) {
         if (storage.createDatabase(dbPath)) {
             agent->setStorage(&storage);
             debugLogf("[Storage] Lazy-created database: %s", dbPath.c_str());
-            // ������ session �е� system ��Ϣд�� DB
+            // Write existing session system msgs to DB
             for (const auto& msg : agent->getSession().getContextMessages()) {
                 if (msg.role == "system") {
                     storage.insertMessage(msg);
@@ -615,14 +615,15 @@ void App::renderMainMenuBar() {
         double estimatedCost = (double)totalPromptTokens * inputPrice +
                                (double)totalCompletionTokens * outputPrice;
         auto fmtNum = [](int n) -> std::string {
-            if (n >= 1000000) return ([](double v){ char b[32]; snprintf(b,32,"%.2fM",v); return std::string(b); })(n/1000000.0);
-            else if (n >= 1000) return ([](double v){ char b[32]; snprintf(b,32,"%.2fK",v); return std::string(b); })(n/1000.0);
-            else if (n > 0) return std_format("{}", n);
-            else return std::string();
+            char b[32];
+            if (n >= 1000000) { snprintf(b, 32, "%.2fM", n/1000000.0); return b; }
+            else if (n >= 1000) { snprintf(b, 32, "%.2fK", n/1000.0); return b; }
+            else if (n > 0) { snprintf(b, 32, "%d", n); return b; }
+            return {};
         };
         auto fmtCost = [](double v) -> std::string {
-            if (v < 0.005) return std::string();
-            return ([](double v){ char b[32]; snprintf(b,32,"\`$%.2f",v); return std::string(b); })(v);
+            if (v < 0.005) return {};
+            char b[32]; snprintf(b, 32, "$%.2f", v); return b;
         };
         std::string pStr = fmtNum(totalPromptTokens);
         std::string coStr = fmtNum(totalCompletionTokens);
@@ -630,13 +631,15 @@ void App::renderMainMenuBar() {
         bool hasData = !pStr.empty() || !coStr.empty();
         std::string tokenInfo;
         if (hasData) {
-            tokenInfo = std_format(" {} | {}+{} tok{}{}",
-                curModel.label,
-                pStr, coStr,
+            char tb[256];
+            snprintf(tb, sizeof(tb), " %s | %s+%s tok%s%s",
+                curModel.label.c_str(),
+                pStr.c_str(), coStr.c_str(),
                 costStr.empty() ? "" : " | ~",
-                costStr);
+                costStr.c_str());
+            tokenInfo = tb;
         } else {
-            tokenInfo = std_format(" {}", curModel.label);
+            tokenInfo = " " + curModel.label;
         }
         ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().statusTokenInfo), "%s", tokenInfo.c_str());
 
@@ -662,9 +665,10 @@ void App::renderStatusBar() {
     {
         std::string modelLabel = config.model;
         auto fmtNum = [](int n) -> std::string {
-            if (n >= 1000000) return std_format("{:.2f}M", n / 1000000.0);
-            if (n >= 1000)    return std_format("{:.2f}K", n / 1000.0);
-            return std_format("{}", n);
+            char b[32];
+            if (n >= 1000000) { snprintf(b, 32, "%.2fM", n/1000000.0); return b; }
+            if (n >= 1000)    { snprintf(b, 32, "%.2fK", n/1000.0); return b; }
+            snprintf(b, 32, "%d", n); return b;
         };
 
         // Model name
