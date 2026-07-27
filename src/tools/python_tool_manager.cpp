@@ -193,7 +193,7 @@ std::string PythonToolManager::executePyTool(
     if (pythonPath.empty()) return "[PyTool Error] Python not configured";
 
 #ifdef _WIN32
-    std::string mainPy = toolDir + "\\main.py";
+    std::string mainPy = (fs::path(toolDir) / "main.py").string();
     std::string cmdLine = "\"" + pythonPath + "\" \"" + mainPy + "\"";
 
     // Create pipes

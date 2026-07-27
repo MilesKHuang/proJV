@@ -12,6 +12,8 @@
 #include "json.hpp"
 #include "debug_log.h"
 #include "platform_compat.h"
+#include "platform/isystem_util.h"
+#include <GLFW/glfw3.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
@@ -198,7 +200,7 @@ void App::setupTools() {
         ).string();
     }
 
-    registerShellTool(tools, ws);
+    registerShellTool(tools, ws, procRunner_);
     registerFileTools(tools, ws);
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
@@ -212,7 +214,8 @@ void App::setupTools() {
     pytoolMgr_->scanAndRegister(tools);
 }
 
-bool App::initialize() {
+bool App::initialize(IProcessRunner* procRunner) {
+    procRunner_ = procRunner;
     loadTomlConfig(config, "");
     client.setConfig(config);
     setupTools();
@@ -507,11 +510,7 @@ void App::renderMainMenuBar() {
             if (ImGui::MenuItem("Open Chat...", "Ctrl+O")) loadDialogFromFile();
             ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4"))
-#ifdef _WIN32
-                PostQuitMessage(0);
-#else
-                {}  // S5: ISystemUtil::RequestClose()
-#endif
+                glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Settings")) {

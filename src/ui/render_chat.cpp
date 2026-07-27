@@ -8,10 +8,7 @@
 #include "json.hpp"
 #include "debug_log.h"
 #include "platform_compat.h"
-#ifdef _WIN32
-#include <windows.h>
-#include <shellapi.h>
-#endif
+#include "platform/isystem_util.h"
 #include <imgui.h>
 #include "markdown_render.h"
 #include <algorithm>
@@ -70,12 +67,7 @@ void renderFormattedText(const std::string& text, float bubbleWidth,
 
     try {
         renderMarkdown(text, bubbleWidth, [](const std::string& url) {
-#ifdef _WIN32
-            ShellExecuteA(nullptr, "open", url.c_str(),
-                          nullptr, nullptr, SW_SHOWNORMAL);
-#else
-            (void)url; // S5: ISystemUtil::OpenUrl()
-#endif
+            SystemUtil::Instance().OpenUrl(url);
         });
     }
     catch (const std::exception& e) {

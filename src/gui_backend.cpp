@@ -1,7 +1,8 @@
 // proJV -- GUI backend implementation: OpenGL 3.3 + GLFW + ImGui
 #include "gui_backend.h"
+#include "platform/isystem_util.h"
 
-#include <GLFW/glfw3.h>               // must be included before imgui backends
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -9,34 +10,6 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
-
-// --- Platform-specific for S1 (Windows only; will use ISystemUtil in S5) ---
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#else
-#include <unistd.h>   // readlink
-#endif
-
-// --- Helpers ---------------------------------------------------------------
-
-static std::string getExeDir_S1() {
-#ifdef _WIN32
-    char buf[MAX_PATH] = {};
-    GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    return std::filesystem::path(buf).parent_path().string();
-#else
-    // Linux: read /proc/self/exe symlink
-    char buf[4096] = {};
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len > 0) {
-        buf[len] = '\0';
-        return std::filesystem::path(buf).parent_path().string();
-    }
-    return ".";
-#endif
-}
 
 // --- GuiBackend ------------------------------------------------------------
 
@@ -84,7 +57,7 @@ bool GuiBackend::Init(int width, int height, const char* title) {
     io.IniFilename = nullptr;   // no .ini file
 
     // ---- 3. Load fonts -----------------------------------------------------
-    if (!loadFonts(getExeDir_S1(), dpiScale)) {
+    if (!loadFonts(SystemUtil::Instance().GetExeDir(), dpiScale)) {
         fprintf(stderr, "[GuiBackend] Font loading failed, using builtin\n");
     }
 
@@ -176,47 +149,24 @@ bool GuiBackend::loadFonts(const std::string& exeDir, float dpiScale) {
     ImGuiIO& io = ImGui::GetIO();
 
     // --- Strategy: bundled font -> system font -> builtin fallback ----------
-    // (1) Try assets/msyh.ttc next to the executable
+    // (1) Try bundled font
     std::string bundled = exeDir + "/assets/msyh.ttc";
     ImFontConfig cfg;
     float fontSize = 17.0f * dpiScale;
     cfg.SizePixels = fontSize;
-
     if (std::filesystem::exists(bundled) &&
-        io.Fonts->AddFontFromFileTTF(
-            bundled.c_str(), fontSize, &cfg,
-            io.Fonts->GetGlyphRangesChineseSimplifiedCommon())) {
+        io.Fonts->AddFontFromFileTTF(bundled.c_str(), fontSize, &cfg,
+            io.Fonts->GetGlyphRangesChineseSimplifiedCommon()))
         return true;
-    }
 
-    // (2) Try system font directory
-#ifdef _WIN32
-    std::string sysFont = "C:\\Windows\\Fonts\\msyh.ttc";
-    if (std::filesystem::exists(sysFont) &&
-        io.Fonts->AddFontFromFileTTF(
-            sysFont.c_str(), fontSize, &cfg,
-            io.Fonts->GetGlyphRangesChineseSimplifiedCommon())) {
+    // (2) Try system font via ISystemUtil
+    std::string sysPath = SystemUtil::Instance().GetSystemFontPath("msyh.ttc");
+    if (!sysPath.empty() && std::filesystem::exists(sysPath) &&
+        io.Fonts->AddFontFromFileTTF(sysPath.c_str(), fontSize, &cfg,
+            io.Fonts->GetGlyphRangesChineseSimplifiedCommon()))
         return true;
-    }
-#else
-    // Linux: try common CJK font paths (will be expanded in S5)
-    const char* linuxFonts[] = {
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        nullptr
-    };
-    for (const char** pf = linuxFonts; *pf; ++pf) {
-        if (std::filesystem::exists(*pf) &&
-            io.Fonts->AddFontFromFileTTF(
-                *pf, fontSize, &cfg,
-                io.Fonts->GetGlyphRangesChineseSimplifiedCommon())) {
-            return true;
-        }
-    }
-#endif
 
-    // (3) Fallback: ImGui builtin font (no CJK support, ASCII only)
+    // (3) Fallback: ImGui builtin font
     cfg.SizePixels = 16.0f * dpiScale;
     io.Fonts->AddFontDefault(&cfg);
     return false;

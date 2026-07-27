@@ -38,6 +38,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/file_search_tool.cpp
     ${SRC_DIR}/tools/web_tools.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
+    ${SRC_DIR}/platform/isystem_util.cpp
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
@@ -69,13 +70,15 @@ if(WIN32)
     set(PLATFORM_SOURCES
         ${SRC_DIR}/tools/shell_tool.cpp
         ${SRC_DIR}/tools/python_tool_manager.cpp
+        ${SRC_DIR}/platform/process_runner_win.cpp
+        ${SRC_DIR}/platform/system_util_win.cpp
     )
 else()
-    # S4 will add process_runner_linux.cpp, system_util_linux.cpp here.
-    # For now shell_tool.cpp's #else branch (popen) provides basic Linux support.
     set(PLATFORM_SOURCES
         ${SRC_DIR}/tools/shell_tool.cpp
         ${SRC_DIR}/tools/python_tool_manager.cpp
+        ${SRC_DIR}/platform/process_runner_linux.cpp
+        ${SRC_DIR}/platform/system_util_linux.cpp
     )
 endif()
 
