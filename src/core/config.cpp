@@ -5,22 +5,35 @@
 #include <sstream>
 #include <filesystem>
 #include <cstdlib>
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
 // Config lives under projv_files/ subdirectory next to the executable
+static std::string resolveExePath() {
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    return buf;
+#else
+    char buf[4096] = {};
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len > 0) { buf[len] = '\0'; return buf; }
+    return std::filesystem::current_path().string() + "/proJV";
+#endif
+}
+
 std::string getConfigPath() {
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    fs::path p(exePath);
+    fs::path p(resolveExePath());
     return (p.parent_path() / "projv_files" / "config.toml").string();
 }
 
 std::string getExeDir() {
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    return fs::path(exePath).parent_path().string();
+    return fs::path(resolveExePath()).parent_path().string();
 }
 
 std::string getProjvDir() {

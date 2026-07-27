@@ -21,13 +21,12 @@
 #include "ui/theme.h"
 #include "core/config.h"
 
-// --- Windows-only dependencies for S1 (removed in S5) ----------------------
+// --- Windows-only dependencies (SEH crash handler; removed in S5) ----------
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 #include <dbghelp.h>
-#include <commdlg.h>
 #endif
 
 // --- Global state ----------------------------------------------------------
@@ -122,7 +121,7 @@ static LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* pExp) {
 // --- main ------------------------------------------------------------------
 
 int main(int argc, char** argv) {
-    (void)argc; (void)argv;  // unused for now; argv kept for loguru init below
+    (void)argc; (void)argv;
 
     // Install crash handler (Windows SEH)
 #ifdef _WIN32
@@ -136,7 +135,11 @@ int main(int argc, char** argv) {
         int logArgc = 1;
         char* logArgv[] = { const_cast<char*>("proJV"), nullptr };
         loguru::init(logArgc, logArgv);
+#ifdef _WIN32
         std::string logPath = std::string(crashExePath) + ".log";
+#else
+        std::string logPath = "proJV.log";
+#endif
         loguru::add_file(logPath.c_str(), loguru::Append, loguru::Verbosity_MAX);
         LOG_F(INFO, "=== proJV started (OpenGL+GLFW) ===");
     }

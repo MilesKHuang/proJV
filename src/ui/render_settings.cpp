@@ -6,9 +6,12 @@
 #include "core/config.h"
 #include "json.hpp"
 #include "debug_log.h"
+#include "platform_compat.h"
+#ifdef _WIN32
 #include <windows.h>
-#include <imgui.h>
 #include <commdlg.h>
+#endif
+#include <imgui.h>
 #include <fstream>
 #include <filesystem>
 

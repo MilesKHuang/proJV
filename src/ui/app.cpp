@@ -1,4 +1,4 @@
-﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "ui/theme.h"
 #include "core/prompts.h"
@@ -11,9 +11,19 @@
 
 #include "json.hpp"
 #include "debug_log.h"
+#include "platform_compat.h"
+#ifdef _WIN32
 #include <windows.h>
-#include <format>
 #include <commdlg.h>
+#endif
+#ifdef _MSC_VER
+#include <format>
+#define std_format std::format
+#else
+#include <cstdio>
+#include "format_compat.h"
+#define std_format projv::fmt
+#endif
 #include <imgui.h>
 #include <algorithm>
 #include <filesystem>
@@ -192,7 +202,7 @@ void App::setupTools() {
     registerFileTools(tools, ws);
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
-    // registerGitTools(tools);  // removed — git commands are covered by shell_tool
+    // registerGitTools(tools);  // removed �� git commands are covered by shell_tool
     registerFileSearchTool(tools);
     registerSearchTool(tools);
     registerFetchTool(tools);
@@ -221,10 +231,10 @@ bool App::initialize() {
     agent->setContextWindow(config.contextWindow);
 
     // -- Initialize config edit buffers from loaded config ----------
-    strncpy_s(baseUrlBuf, config.baseUrl.c_str(), sizeof(baseUrlBuf) - 1);
-    strncpy_s(cppCompilerPathBuf, config.cppCompilerPath.c_str(), sizeof(cppCompilerPathBuf) - 1);
-    strncpy_s(pythonPathBuf, config.pythonPath.c_str(), sizeof(pythonPathBuf) - 1);
-    strncpy_s(workspacePathBuf, config.workspacePath.c_str(), sizeof(workspacePathBuf) - 1);
+    strncpy(baseUrlBuf, config.baseUrl.c_str(), sizeof(baseUrlBuf) - 1);
+    strncpy(cppCompilerPathBuf, config.cppCompilerPath.c_str(), sizeof(cppCompilerPathBuf) - 1);
+    strncpy(pythonPathBuf, config.pythonPath.c_str(), sizeof(pythonPathBuf) - 1);
+    strncpy(workspacePathBuf, config.workspacePath.c_str(), sizeof(workspacePathBuf) - 1);
     configMaxTokens = config.maxTokens;
     configTemperature = static_cast<float>(config.temperature);
 
@@ -244,7 +254,7 @@ bool App::initialize() {
         if (agent) agent->setSystemPrompt(sp);
     }
 
-    // -- 准备会话目录（不创建 DB 文件，等用户发第一条消息时再创建）---
+    // -- ׼���ỰĿ¼�������� DB �ļ������û�����һ����Ϣʱ�ٴ�����---
     {
         sessionsDir_ = getSessionsDir();
         std::error_code ec;
@@ -254,19 +264,23 @@ bool App::initialize() {
                 sessionsDir_.c_str(), ec.message().c_str());
         }
     }
-    // 设置懒初始化回调：用户发第一条消息时创建 DB 并写入已有 system 消息
+    // ��������ʼ���ص����û�����һ����Ϣʱ���� DB ��д������ system ��Ϣ
     agent->ensureStorage = [this]() {
         if (storage.isOpen()) return;
         auto now = std::time(nullptr);
         char tsBuf[64];
         tm local;
+#ifdef _MSC_VER
         localtime_s(&local, &now);
+#else
+        localtime_r(&now, &local);
+#endif
         strftime(tsBuf, sizeof(tsBuf), "%Y%m%d_%H%M%S", &local);
         std::string dbPath = sessionsDir_ + "/session_" + tsBuf + ".db";
         if (storage.createDatabase(dbPath)) {
             agent->setStorage(&storage);
             debugLogf("[Storage] Lazy-created database: %s", dbPath.c_str());
-            // 把已在 session 中的 system 消息写入 DB
+            // ������ session �е� system ��Ϣд�� DB
             for (const auto& msg : agent->getSession().getContextMessages()) {
                 if (msg.role == "system") {
                     storage.insertMessage(msg);
@@ -295,8 +309,8 @@ bool App::initialize() {
     buildBubblesFromMessages();
 
     const char* envKey = std::getenv("DEEPSEEK_API_KEY");
-    if (envKey) strncpy_s(apiKeyBuf, envKey, sizeof(apiKeyBuf) - 1);
-    else strncpy_s(apiKeyBuf, config.apiKey.c_str(), sizeof(apiKeyBuf) - 1);
+    if (envKey) strncpy(apiKeyBuf, envKey, sizeof(apiKeyBuf) - 1);
+    else strncpy(apiKeyBuf, config.apiKey.c_str(), sizeof(apiKeyBuf) - 1);
     needsConfig = config.apiKey.empty();
 
     // Theme is initialized in main.cpp via ThemeManager::init() after this function returns.
@@ -492,7 +506,12 @@ void App::renderMainMenuBar() {
             if (ImGui::MenuItem("Save As...", "Ctrl+S")) saveDialogToFile();
             if (ImGui::MenuItem("Open Chat...", "Ctrl+O")) loadDialogFromFile();
             ImGui::Separator();
-            if (ImGui::MenuItem("Exit", "Alt+F4")) PostQuitMessage(0);
+            if (ImGui::MenuItem("Exit", "Alt+F4"))
+#ifdef _WIN32
+                PostQuitMessage(0);
+#else
+                {}  // S5: ISystemUtil::RequestClose()
+#endif
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Settings")) {
@@ -597,14 +616,14 @@ void App::renderMainMenuBar() {
         double estimatedCost = (double)totalPromptTokens * inputPrice +
                                (double)totalCompletionTokens * outputPrice;
         auto fmtNum = [](int n) -> std::string {
-            if (n >= 1000000) return std::format("{:.2f}M", n/1000000.0);
-            else if (n >= 1000) return std::format("{:.2f}K", n/1000.0);
-            else if (n > 0) return std::format("{}", n);
+            if (n >= 1000000) return ([](double v){ char b[32]; snprintf(b,32,"%.2fM",v); return std::string(b); })(n/1000000.0);
+            else if (n >= 1000) return ([](double v){ char b[32]; snprintf(b,32,"%.2fK",v); return std::string(b); })(n/1000.0);
+            else if (n > 0) return std_format("{}", n);
             else return std::string();
         };
         auto fmtCost = [](double v) -> std::string {
             if (v < 0.005) return std::string();
-            return std::format("${:.2f}", v);
+            return ([](double v){ char b[32]; snprintf(b,32,"\`$%.2f",v); return std::string(b); })(v);
         };
         std::string pStr = fmtNum(totalPromptTokens);
         std::string coStr = fmtNum(totalCompletionTokens);
@@ -612,13 +631,13 @@ void App::renderMainMenuBar() {
         bool hasData = !pStr.empty() || !coStr.empty();
         std::string tokenInfo;
         if (hasData) {
-            tokenInfo = std::format(" {} | {}+{} tok{}{}",
+            tokenInfo = std_format(" {} | {}+{} tok{}{}",
                 curModel.label,
                 pStr, coStr,
                 costStr.empty() ? "" : " | ~",
                 costStr);
         } else {
-            tokenInfo = std::format(" {}", curModel.label);
+            tokenInfo = std_format(" {}", curModel.label);
         }
         ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().statusTokenInfo), "%s", tokenInfo.c_str());
 
@@ -644,9 +663,9 @@ void App::renderStatusBar() {
     {
         std::string modelLabel = config.model;
         auto fmtNum = [](int n) -> std::string {
-            if (n >= 1000000) return std::format("{:.2f}M", n / 1000000.0);
-            if (n >= 1000)    return std::format("{:.2f}K", n / 1000.0);
-            return std::format("{}", n);
+            if (n >= 1000000) return std_format("{:.2f}M", n / 1000000.0);
+            if (n >= 1000)    return std_format("{:.2f}K", n / 1000.0);
+            return std_format("{}", n);
         };
 
         // Model name
@@ -764,6 +783,7 @@ void App::renderWelcomePage() {
 // --- Save / Load -----------------------------------------------------------
 
 void App::saveDialogToFile() {
+#ifdef _WIN32
     if (!agent) return;
 
     char filename[MAX_PATH] = {};
@@ -793,9 +813,13 @@ void App::saveDialogToFile() {
     debugLogf("[Dialog] Saved copy to: %s", filename);
     SetWindowTextA(GetActiveWindow(),
         (std::string("proJV - Saved: ") + filename).c_str());
+#else
+    (void)agent; // S5: Linux file dialog
+#endif
 }
 
 void App::loadDialogFromFile() {
+#ifdef _WIN32
     if (!agent) return;
     char filename[MAX_PATH] = {};
     OPENFILENAMEA ofn = {};
@@ -809,6 +833,9 @@ void App::loadDialogFromFile() {
     if (!GetOpenFileNameA(&ofn)) return;
 
     switchToDialog(filename);
+#else
+    (void)agent; // S5: Linux file dialog
+#endif
 }
 
 void App::switchToDialog(const std::string& dbPath) {

@@ -15,6 +15,8 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <unistd.h>   // readlink
 #endif
 
 // --- Helpers ---------------------------------------------------------------
@@ -25,7 +27,13 @@ static std::string getExeDir_S1() {
     GetModuleFileNameA(nullptr, buf, MAX_PATH);
     return std::filesystem::path(buf).parent_path().string();
 #else
-    // Linux stub (to be filled in S5)
+    // Linux: read /proc/self/exe symlink
+    char buf[4096] = {};
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len > 0) {
+        buf[len] = '\0';
+        return std::filesystem::path(buf).parent_path().string();
+    }
     return ".";
 #endif
 }

@@ -5,7 +5,11 @@
 #include "json.hpp"
 #include <filesystem>
 #include <fstream>
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
+#endif
 #include <cstdio>
 #include <array>
 
@@ -22,16 +26,29 @@ std::string PythonToolManager::pytoolDir() {
 // Helper: try 'where <candidate>' to find Python
 // ============================================================================
 static std::string tryWhere(const std::string& name) {
-    std::string cmd = "where " + name + " 2>nul";
+    std::string cmd = 
+#ifdef _WIN32
+        "where " + name + " 2>nul";
+#else
+        "which " + name + " 2>/dev/null";
+#endif
     std::array<char, 512> buf;
     std::string result;
+#ifdef _MSC_VER
     FILE* pipe = _popen(cmd.c_str(), "r");
+#else
+    FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (!pipe) return "";
     while (fgets(buf.data(), (int)buf.size(), pipe) != nullptr) {
         result += buf.data();
         if (!result.empty() && result.back() == '\n') break;
     }
+#ifdef _MSC_VER
     _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
         result.pop_back();
     return result;
@@ -175,6 +192,7 @@ std::string PythonToolManager::executePyTool(
 {
     if (pythonPath.empty()) return "[PyTool Error] Python not configured";
 
+#ifdef _WIN32
     std::string mainPy = toolDir + "\\main.py";
     std::string cmdLine = "\"" + pythonPath + "\" \"" + mainPy + "\"";
 
@@ -306,4 +324,8 @@ std::string PythonToolManager::executePyTool(
     }
 
     return out;
+#else
+    (void)toolDir; (void)pythonPath; (void)workspacePath; (void)args;
+    return "[PyTool Error] Not implemented on Linux (S4)";
+#endif
 }

@@ -13,7 +13,11 @@ static constexpr const char* TOOL_PARAM_STDIN =
     "Optional: content to pipe to the command's stdin. "
     "Use with PowerShell: powershell -Command \"$input | Set-Content -Path 'file.cpp' -Encoding UTF8\"";
 #include <array>
+#ifdef _MSC_VER
 #include <format>
+#else
+#include <cstdio>
+#endif
 #include <string>
 #include <sstream>
 #include <filesystem>
@@ -133,7 +137,9 @@ static std::string execCommand(const std::string& cmd, const std::string& worksp
         CloseHandle(hStdoutRd);
         if (hasStdin) CloseHandle(hStdinWr);
         if (hJob) CloseHandle(hJob);
-        return std::format("Error: CreateProcess failed ({})", GetLastError());
+        char errBuf[64];
+        snprintf(errBuf, sizeof(errBuf), "Error: CreateProcess failed (%lu)", GetLastError());
+        return std::string(errBuf);
     }
 
     // 将主进程纳入 Job Object（子进程创建的子进程也会自动纳入）
