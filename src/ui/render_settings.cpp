@@ -117,17 +117,17 @@ void App::renderToolApprovalDialog() {
     ImGui::TextUnformatted("Approve this delete operation?");
     ImGui::Spacing();
 
-    if (ImGui::Button("YES \u2014 Execute Once", ImVec2(200, 32))) {
+    if (ImGui::Button("YES -- Execute Once", ImVec2(200, 32))) {
         agent->approveTool(1);
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("ALWAYS \u2014 Allow This Session", ImVec2(240, 32))) {
+    if (ImGui::Button("ALWAYS -- Allow This Session", ImVec2(240, 32))) {
         agent->approveTool(2);
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
-    if (ImGui::Button("NO \u2014 Cancel", ImVec2(160, 32))) {
+    if (ImGui::Button("NO -- Cancel", ImVec2(160, 32))) {
         agent->approveTool(0);
         ImGui::CloseCurrentPopup();
     }

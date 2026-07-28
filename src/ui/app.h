@@ -124,6 +124,12 @@ private:
     // IProcessRunner for shell tools
     class IProcessRunner* procRunner_ = nullptr;
 
+    // Deferred file dialogs (Linux: avoid blocking inside ImGui callbacks)
+#ifndef _WIN32
+    bool pendingOpenChat_ = false;
+    bool pendingSaveChat_ = false;
+#endif
+
     // TODO panel
     bool showTodoPanel = true;
     void renderTodoPanel();

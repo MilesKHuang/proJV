@@ -334,7 +334,25 @@ void renderThemePopup() {
             if(mgr.loadFromFile(filename)) editCopy = mgr.current();
         }
 #else
-        // S5: Linux file dialog via zenity
+        // Linux: use zenity file open dialog
+        {
+            std::string cmd = "zenity --file-selection --file-filter='*.json' "
+                              "--title='Load Theme' 2>/dev/null";
+            FILE* f = popen(cmd.c_str(), "r");
+            if (f) {
+                char buf[1024];
+                std::string filename;
+                if (fgets(buf, sizeof(buf), f)) {
+                    filename = buf;
+                    while (!filename.empty() && (filename.back() == '\n' || filename.back() == '\r'))
+                        filename.pop_back();
+                }
+                pclose(f);
+                if (!filename.empty()) {
+                    if (mgr.loadFromFile(filename)) editCopy = mgr.current();
+                }
+            }
+        }
 #endif
     }
     ImGui::SameLine();
