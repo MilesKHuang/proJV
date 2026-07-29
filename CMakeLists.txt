@@ -114,9 +114,9 @@ else()
 endif()
 
 # ── Release build: strip debug logs ──────────────────────────────────────
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_definitions(PROJV_RELEASE)
-endif()
+# Use generator expression for multi-config generators (MSVC/Xcode).
+# $<$<CONFIG:Release>:PROJV_RELEASE> adds the define only for Release config.
+add_compile_definitions($<$<CONFIG:Release>:PROJV_RELEASE>)
 
 # ── Static library (proJV_lib) ───────────────────────────────────────────
 add_library(proJV_lib STATIC ${COMMON_SOURCES} ${PLATFORM_SOURCES} ${HEADERS})
@@ -165,12 +165,14 @@ endif()
 
 # ── GUI executable ───────────────────────────────────────────────────────
 if(WIN32)
+    set(PROJV_EXE proJV)
     add_executable(proJV WIN32 ${SRC_DIR}/main.cpp)
 else()
-    add_executable(proJV ${SRC_DIR}/main.cpp)
+    set(PROJV_EXE proJV_linux)
+    add_executable(proJV_linux ${SRC_DIR}/main.cpp)
 endif()
 
-target_include_directories(proJV PRIVATE
+target_include_directories(${PROJV_EXE} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${EXTERNAL_DIR}
@@ -178,24 +180,24 @@ target_include_directories(proJV PRIVATE
     ${SRC_DIR}/client
     ${EXTERNAL_DIR}/glfw/include
 )
-target_link_libraries(proJV PRIVATE
+target_link_libraries(${PROJV_EXE} PRIVATE
     proJV_lib
     glfw
 )
 
 if(WIN32)
-    target_compile_definitions(proJV PRIVATE
+    target_compile_definitions(${PROJV_EXE} PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
     )
     if(MSVC)
-        set_target_properties(proJV PROPERTIES
+        set_target_properties(${PROJV_EXE} PROPERTIES
             LINK_FLAGS "/ENTRY:mainCRTStartup"
         )
     endif()
 endif()
 
 # ── imgui sources (OpenGL3 + GLFW backends, both platforms) ──────────────
-target_sources(proJV PRIVATE
+target_sources(${PROJV_EXE} PRIVATE
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
@@ -204,15 +206,10 @@ target_sources(proJV PRIVATE
     ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
-target_include_directories(proJV PRIVATE ${IMGUI_DIR}/backends)
+target_include_directories(${PROJV_EXE} PRIVATE ${IMGUI_DIR}/backends)
 
-# ── Copy assets + projv_files to build directory ─────────────────────────
-add_custom_command(TARGET proJV POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:proJV>/assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/projv_files"
-        "$<TARGET_FILE_DIR:proJV>/projv_files"
-    COMMENT "Copying assets and projv_files to build output"
-)
+# ── Copy TTC font to projv_files/fonts (both platforms share this font) ──
+file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/fonts")
+file(COPY "${CMAKE_SOURCE_DIR}/assets/msyh.ttc" DESTINATION "${CMAKE_SOURCE_DIR}/projv_files/fonts")
+
+

@@ -153,8 +153,8 @@ bool GuiBackend::loadFonts(const std::string& exeDir, float dpiScale) {
     ImGuiIO& io = ImGui::GetIO();
 
     // --- Strategy: bundled font -> system font -> builtin fallback ----------
-    // (1) Try bundled font
-    std::string bundled = exeDir + "/assets/msyh.ttc";
+    // (1) Try bundled font (projv_files/fonts — shared by both platforms)
+    std::string bundled = exeDir + "/projv_files/fonts/msyh.ttc";
     ImFontConfig cfg;
     float fontSize = 17.0f * dpiScale;
     cfg.SizePixels = fontSize;

@@ -17,7 +17,7 @@ public:
     GuiBackend& operator=(const GuiBackend&) = delete;
 
     // Create window + OpenGL context + ImGui context + backends.
-    // Font is loaded here: assets/msyh.ttc -> system font -> builtin fallback.
+    // Font is loaded here: projv_files/fonts/msyh.ttc -> system font -> builtin fallback.
     bool Init(int width, int height, const char* title);
 
     // Call at the start of each frame.
