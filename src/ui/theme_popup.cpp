@@ -1,8 +1,11 @@
 #include "ui/theme.h"
+#include "platform_compat.h"
 #include <imgui.h>
 #include <imgui_internal.h>
+#ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
+#endif
 #include <cstdio>
 
 // ============================================================================
@@ -261,7 +264,7 @@ void renderThemePopup() {
     ImGui::SameLine();
     // Name field
     char nameBuf[128];
-    strncpy_s(nameBuf, editCopy.name.c_str(), sizeof(nameBuf) - 1);
+    strncpy(nameBuf, editCopy.name.c_str(), sizeof(nameBuf) - 1);
     ImGui::PushItemWidth(160);
     if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf)))
         editCopy.name = nameBuf;
@@ -282,7 +285,7 @@ void renderThemePopup() {
     for (const auto& slot : categories[catIdx].slots) {
         std::string& hex = editCopy.*(slot.ptr);
         char buf[10];
-        strncpy_s(buf, hex.c_str(), sizeof(buf) - 1);
+        strncpy(buf, hex.c_str(), sizeof(buf) - 1);
 
         ImGui::Text("%s", slot.label);
         ImGui::SameLine(115);
@@ -318,6 +321,7 @@ void renderThemePopup() {
     }
     ImGui::SameLine();
     if (ImGui::Button("Load...", ImVec2(90, 0))) {
+#ifdef _WIN32
         OPENFILENAMEA ofn={};
         char filename[MAX_PATH]={};
         ofn.lStructSize=sizeof(ofn);
@@ -329,6 +333,27 @@ void renderThemePopup() {
         if(GetOpenFileNameA(&ofn)) {
             if(mgr.loadFromFile(filename)) editCopy = mgr.current();
         }
+#else
+        // Linux: use zenity file open dialog
+        {
+            std::string cmd = "zenity --file-selection --file-filter='*.json' "
+                              "--title='Load Theme' 2>/dev/null";
+            FILE* f = popen(cmd.c_str(), "r");
+            if (f) {
+                char buf[1024];
+                std::string filename;
+                if (fgets(buf, sizeof(buf), f)) {
+                    filename = buf;
+                    while (!filename.empty() && (filename.back() == '\n' || filename.back() == '\r'))
+                        filename.pop_back();
+                }
+                pclose(f);
+                if (!filename.empty()) {
+                    if (mgr.loadFromFile(filename)) editCopy = mgr.current();
+                }
+            }
+        }
+#endif
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset", ImVec2(90, 0))) editCopy = ThemeColors::obsidian();

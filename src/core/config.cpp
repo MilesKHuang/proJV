@@ -1,26 +1,20 @@
 #include "config.h"
 #include "toml.hpp"
 #include "debug_log.h"
+#include "platform/isystem_util.h"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
 #include <cstdlib>
-#include <windows.h>
 
 namespace fs = std::filesystem;
 
-// Config lives under projv_files/ subdirectory next to the executable
 std::string getConfigPath() {
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    fs::path p(exePath);
-    return (p.parent_path() / "projv_files" / "config.toml").string();
+    return SystemUtil::Instance().GetUserConfigDir() + "/config.toml";
 }
 
 std::string getExeDir() {
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    return fs::path(exePath).parent_path().string();
+    return SystemUtil::Instance().GetExeDir();
 }
 
 std::string getProjvDir() {

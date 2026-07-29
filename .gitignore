@@ -38,3 +38,4 @@ config.toml
 .DS_Store
 Thumbs.db
 __pycache__/  
+build_linux/  

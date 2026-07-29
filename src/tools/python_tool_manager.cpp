@@ -2,10 +2,10 @@
 #include "registry.h"
 #include "core/config.h"
 #include "debug_log.h"
+#include "platform/iprocess_runner.h"
 #include "json.hpp"
 #include <filesystem>
 #include <fstream>
-#include <windows.h>
 #include <cstdio>
 #include <array>
 
@@ -22,16 +22,29 @@ std::string PythonToolManager::pytoolDir() {
 // Helper: try 'where <candidate>' to find Python
 // ============================================================================
 static std::string tryWhere(const std::string& name) {
-    std::string cmd = "where " + name + " 2>nul";
+    std::string cmd = 
+#ifdef _WIN32
+        "where " + name + " 2>nul";
+#else
+        "which " + name + " 2>/dev/null";
+#endif
     std::array<char, 512> buf;
     std::string result;
+#ifdef _MSC_VER
     FILE* pipe = _popen(cmd.c_str(), "r");
+#else
+    FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (!pipe) return "";
     while (fgets(buf.data(), (int)buf.size(), pipe) != nullptr) {
         result += buf.data();
         if (!result.empty() && result.back() == '\n') break;
     }
+#ifdef _MSC_VER
     _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
         result.pop_back();
     return result;
@@ -67,7 +80,7 @@ PythonToolManager::PythonToolManager(std::string pythonPath, std::string workspa
 // ============================================================================
 // scanAndRegister
 // ============================================================================
-void PythonToolManager::scanAndRegister(ToolRegistry& registry) {
+void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* procRunner) {
     std::string dir = pytoolDir();
     debugLogf("[PyTool] scanning: %s", dir.c_str());
 
@@ -152,8 +165,8 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry) {
         std::string ws = workspacePath_;
 
         registry.registerTool(def,
-            [tdir, py, ws](const std::string& args) -> std::string {
-                return PythonToolManager::executePyTool(tdir, py, ws, args);
+            [tdir, py, ws, procRunner](const std::string& args) -> std::string {
+                return PythonToolManager::executePyTool(tdir, py, ws, args, procRunner);
             });
 
         registered++;
@@ -165,139 +178,45 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry) {
 }
 
 // ============================================================================
-// executePyTool (static, synchronous subprocess)
+// executePyTool (static, via IProcessRunner -- dual platform)
 // ============================================================================
 std::string PythonToolManager::executePyTool(
     const std::string& toolDir,
     const std::string& pythonPath,
     const std::string& workspacePath,
-    const std::string& args)
+    const std::string& args,
+    IProcessRunner* procRunner)
 {
     if (pythonPath.empty()) return "[PyTool Error] Python not configured";
+    if (!procRunner) return "[PyTool Error] Process runner not available";
 
-    std::string mainPy = toolDir + "\\main.py";
-    std::string cmdLine = "\"" + pythonPath + "\" \"" + mainPy + "\"";
+    std::string mainPy = (fs::path(toolDir) / "main.py").string();
 
-    // Create pipes
-    HANDLE hStdinRd = nullptr, hStdinWr = nullptr;
-    HANDLE hStdoutRd = nullptr, hStdoutWr = nullptr;
-    HANDLE hStderrRd = nullptr, hStderrWr = nullptr;
-    SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE };
+    ProcessConfig cfg;
+    cfg.command      = "\"" + pythonPath + "\" \"" + mainPy + "\"";
+    cfg.workDir      = workspacePath;
+    cfg.stdinContent = args;
+    cfg.inheritEnv   = true;
+    cfg.extraEnv["PROJV_WORKSPACE"] = workspacePath;
+    cfg.extraEnv["PROJV_TOOL_DIR"]  = toolDir;
 
-    if (!CreatePipe(&hStdinRd, &hStdinWr, &sa, 0))
-        return "[PyTool Error] Failed to create stdin pipe";
-    SetHandleInformation(hStdinWr, HANDLE_FLAG_INHERIT, 0);
+    ProcessResult result = procRunner->Run(cfg);
 
-    if (!CreatePipe(&hStdoutRd, &hStdoutWr, &sa, 0)) {
-        CloseHandle(hStdinRd); CloseHandle(hStdinWr);
-        return "[PyTool Error] Failed to create stdout pipe";
-    }
-    SetHandleInformation(hStdoutRd, HANDLE_FLAG_INHERIT, 0);
-
-    if (!CreatePipe(&hStderrRd, &hStderrWr, &sa, 0)) {
-        CloseHandle(hStdinRd); CloseHandle(hStdinWr);
-        CloseHandle(hStdoutRd); CloseHandle(hStdoutWr);
-        return "[PyTool Error] Failed to create stderr pipe";
-    }
-    SetHandleInformation(hStderrRd, HANDLE_FLAG_INHERIT, 0);
-
-    // Build environment: inherit parent + add PROJV_* vars
-    // Merge into parent's env block so PATH, SYSTEMROOT etc. are preserved
-    std::wstring wenv;
-    {
-        LPWCH parentEnv = GetEnvironmentStringsW();
-        if (parentEnv) {
-            // Copy parent environment block
-            const wchar_t* p = parentEnv;
-            while (*p) {
-                std::wstring entry(p);
-                wenv += entry + L'\0';
-                p += entry.size() + 1;
-            }
-            FreeEnvironmentStringsW(parentEnv);
-        }
-    }
-    // Append our custom vars
-    std::wstring wsVar = L"PROJV_WORKSPACE=" +
-        std::wstring(workspacePath.begin(), workspacePath.end());
-    std::wstring tdVar = L"PROJV_TOOL_DIR=" +
-        std::wstring(toolDir.begin(), toolDir.end());
-    wenv += wsVar + L'\0';
-    wenv += tdVar + L'\0';
-    wenv += L'\0';  // double-null terminator
-
-    STARTUPINFOW si = { sizeof(STARTUPINFOW) };
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput  = hStdinRd;
-    si.hStdOutput = hStdoutWr;
-    si.hStdError  = hStderrWr;
-
-    PROCESS_INFORMATION pi = {};
-
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, cmdLine.c_str(),
-        (int)cmdLine.size(), nullptr, 0);
-    std::wstring wcmd(wlen, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, cmdLine.c_str(),
-        (int)cmdLine.size(), &wcmd[0], wlen);
-    std::vector<wchar_t> cmdBuf(wcmd.begin(), wcmd.end());
-    cmdBuf.push_back(L'\0');
-
-    BOOL ok = CreateProcessW(
-        nullptr, cmdBuf.data(),
-        nullptr, nullptr, TRUE,
-        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
-        wenv.empty() ? nullptr : wenv.data(), nullptr, &si, &pi);
-
-    CloseHandle(hStdinRd);
-    CloseHandle(hStdoutWr);
-    CloseHandle(hStderrWr);
-
-    if (!ok) {
-        DWORD err = GetLastError();
-        CloseHandle(hStdinWr); CloseHandle(hStdoutRd); CloseHandle(hStderrRd);
-        return "[PyTool Error] Failed to start: " + pythonPath +
-               " (error " + std::to_string(err) + ")";
-    }
-
-    // Write args to stdin
-    {
-        DWORD written = 0;
-        WriteFile(hStdinWr, args.data(), (DWORD)args.size(), &written, nullptr);
-    }
-    CloseHandle(hStdinWr);
-
-    // Read stdout
-    std::string out, errOut;
-    char buf[4096];
-    DWORD bytesRead;
-    while (ReadFile(hStdoutRd, buf, sizeof(buf) - 1, &bytesRead, nullptr) && bytesRead > 0) {
-        buf[bytesRead] = '\0';
-        out += buf;
-    }
-    CloseHandle(hStdoutRd);
-
-    // Read stderr
-    while (ReadFile(hStderrRd, buf, sizeof(buf) - 1, &bytesRead, nullptr) && bytesRead > 0) {
-        buf[bytesRead] = '\0';
-        errOut += buf;
-    }
-    CloseHandle(hStderrRd);
-
-    WaitForSingleObject(pi.hProcess, INFINITE);
-
-    DWORD exitCode = 0;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
+    std::string out = result.stdout_;
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r'))
         out.pop_back();
-    while (!errOut.empty() && (errOut.back() == '\n' || errOut.back() == '\r'))
-        errOut.pop_back();
 
-    if (exitCode != 0) {
+    if (result.cancelled)
+        return "[PyTool Error] cancelled";
+    if (result.timedOut)
+        return "[PyTool Error] timed out";
+
+    if (result.exitCode != 0) {
+        std::string errOut = result.stderr_;
+        while (!errOut.empty() && (errOut.back() == '\n' || errOut.back() == '\r'))
+            errOut.pop_back();
         return errOut.empty()
-            ? "[PyTool Error] exit code: " + std::to_string(exitCode)
+            ? "[PyTool Error] exit code: " + std::to_string(result.exitCode)
             : "[PyTool Error] " + errOut;
     }
 

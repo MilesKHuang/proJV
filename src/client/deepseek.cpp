@@ -24,8 +24,8 @@ static constexpr int TOOL_CALL_MARKER_COUNT = 4;
 
 // -- Timeouts ----------------------------------------------------------------
 static constexpr int  kStreamTotalTimeoutSec  = 900;   // 15 min hard cap
-static constexpr int  kStreamLowSpeedLimit    = 1;     // bytes/sec (very low â€” tolerate API pauses)
-static constexpr int  kStreamLowSpeedTime     = 300;   // 5 min below limit â†’ timeout (was 120s; give reasoner more time)
+static constexpr int  kStreamLowSpeedLimit    = 1;     // bytes/sec (very low â€?tolerate API pauses)
+static constexpr int  kStreamLowSpeedTime     = 300;   // 5 min below limit â†?timeout (was 120s; give reasoner more time)
 static constexpr int  kConnectTimeoutSec      = 30;
 static constexpr int  kSendTimeoutSec         = 60;    // sending large POST body
 
@@ -51,7 +51,7 @@ static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* us
 
     // If we haven't checked HTTP status yet, skip data until headers are done
     if (!ctx->headerDone) {
-        // Defer â€” data before status check means we need to read status
+        // Defer â€?data before status check means we need to read status
         ctx->headerDone = true;
     }
 
@@ -59,7 +59,7 @@ static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* us
         return 0; // abort transfer
 
     if (ctx->httpStatus != 200) {
-        // Capture error body instead of discarding it â€”
+        // Capture error body instead of discarding it â€?
         // so Agent can distinguish context-overflow vs other 4xx causes.
         ctx->errorBody.append(ptr, bytes);
         return bytes;
@@ -105,12 +105,12 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdat
     return total;
 }
 
-// -- libcurl progress callback (frequent â€” used for cancel detection) --------
+// -- libcurl progress callback (frequent â€?used for cancel detection) --------
 static int progressCallback(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
 {
     auto* ctx = static_cast<StreamContext*>(userdata);
     if (ctx->cancelFlag && ctx->cancelFlag->load(std::memory_order_acquire))
-        return 1; // non-zero â†’ abort transfer
+        return 1; // non-zero â†?abort transfer
     return 0;
 }
 
@@ -168,7 +168,7 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
     nlohmann::json msgs = nlohmann::json::array();
     for (const auto& msg : request.messages) {
         nlohmann::json m;
-        to_json(m, msg);  // delegates to models.cpp â€” handles content=null for tool_calls, etc.
+        to_json(m, msg);  // delegates to models.cpp â€?handles content=null for tool_calls, etc.
         msgs.push_back(m);
     }
     body["messages"] = msgs;
@@ -206,25 +206,25 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
                 ++retries;
                 debugLogf("[DeepSeek] HTTP %ld retryable, attempt %d/%d",
                     *outHttpStatus, retries, retryConfig_.maxRetries);
-                Sleep(retryConfig_.delayForAttempt(retries - 1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
                 continue;
             }
             return (int)res;
         }
 
-        // Network-level error â€” retry if we haven't exceeded limit
+        // Network-level error â€?retry if we haven't exceeded limit
         if (retries < retryConfig_.maxRetries) {
             ++retries;
             debugLogf("[DeepSeek] curl_easy_perform error %d, retry %d/%d",
                 (int)res, retries, retryConfig_.maxRetries);
-            Sleep(retryConfig_.delayForAttempt(retries - 1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
             continue;
         }
         return (int)res;
     }
 }
 
-// -- Cancel: set flag â†’ write/progress callbacks will abort ------------------
+// -- Cancel: set flag â†?write/progress callbacks will abort ------------------
 void DeepSeekClient::cancel() {
     auto tid = std::this_thread::get_id();
     debugLogf("[DeepSeek] cancel called (thread=%08X)", *(unsigned int*)&tid);
@@ -256,7 +256,7 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
         if (!curl) {
             int maxR = ctx.anyContent ? MAX_RETRIES_AFTER_CONTENT : MAX_RETRIES;
             int& r = ctx.anyContent ? transparentRetryAfterContent : transparentRetries;
-            if (r < maxR && !cancelFlag.load(std::memory_order_acquire)) { ++r; Sleep(500); continue; }
+            if (r < maxR && !cancelFlag.load(std::memory_order_acquire)) { ++r; std::this_thread::sleep_for(std::chrono::milliseconds(500)); continue; }
             if (callbacks.onError) callbacks.onError("Failed to init curl");
             break;
         }
@@ -300,7 +300,7 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
             const char* es = curl_easy_strerror(res);
             int maxR = ctx.anyContent ? MAX_RETRIES_AFTER_CONTENT : MAX_RETRIES;
             int& r = ctx.anyContent ? transparentRetryAfterContent : transparentRetries;
-            if (r < maxR && !cancelFlag.load(std::memory_order_acquire)) { ++r; Sleep(retryConfig_.delayForAttempt(r-1)); continue; }
+            if (r < maxR && !cancelFlag.load(std::memory_order_acquire)) { ++r; std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(r-1))); continue; }
             if (callbacks.onError) callbacks.onError(std::string("Stream error: ") + es);
             break;
         }
@@ -309,7 +309,7 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
             int& r = ctx.anyContent ? transparentRetryAfterContent : transparentRetries;
             if (isRetryableHttpStatus(httpStatus) && r < maxR && !cancelFlag.load(std::memory_order_acquire)) {
                 ++r; int d = (httpStatus==429)?2000:retryConfig_.delayForAttempt(r-1);
-                Sleep(d); continue;
+                std::this_thread::sleep_for(std::chrono::milliseconds(d)); continue;
             }
             std::string errMsg = "HTTP "+std::to_string(httpStatus);
             if (!ctx.errorBody.empty()) errMsg += ": " + ctx.errorBody;
@@ -319,7 +319,7 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
         if (!ctx.sseBuffer.empty()) parseSSEChunk(ctx.sseBuffer, 0, callbacks);
         if (ctx.anyContent && !ctx.finished && ctx.totalBytes < 2048) {
             int& r = transparentRetryAfterContent;
-            if (r < MAX_RETRIES_AFTER_CONTENT && !cancelFlag.load(std::memory_order_acquire)) { ++r; Sleep(retryConfig_.delayForAttempt(r-1)); continue; }
+            if (r < MAX_RETRIES_AFTER_CONTENT && !cancelFlag.load(std::memory_order_acquire)) { ++r; std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(r-1))); continue; }
         }
         if (ctx.anyContent && !ctx.finished && callbacks.onFinish) callbacks.onFinish();
         success = true;

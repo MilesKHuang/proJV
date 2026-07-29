@@ -22,12 +22,13 @@ struct ChatBubble {
     bool reasoningExpanded = false; // collapsible state; default collapsed (chain-of-thought is verbose)
 };
 
+class IProcessRunner;
 class App {
 public:
     App();
     ~App();
 
-    bool initialize();
+    bool initialize(IProcessRunner* procRunner = nullptr);
     void render();
     bool hasApiKey() const { return config.loaded && !config.apiKey.empty(); }
     const std::string& configError() const { return config.loadError; }
@@ -119,6 +120,15 @@ private:
     std::thread agentThread_;
     std::atomic<bool> agentThreadRunning_{false};
     std::thread fetchModelsThread_;
+
+    // IProcessRunner for shell tools
+    class IProcessRunner* procRunner_ = nullptr;
+
+    // Deferred file dialogs (Linux: avoid blocking inside ImGui callbacks)
+#ifndef _WIN32
+    bool pendingOpenChat_ = false;
+    bool pendingSaveChat_ = false;
+#endif
 
     // TODO panel
     bool showTodoPanel = true;

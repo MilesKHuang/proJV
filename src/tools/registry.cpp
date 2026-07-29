@@ -1,5 +1,5 @@
 #include "registry.h"
-#include <windows.h>
+#include <cstdio>
 
 void ToolRegistry::registerTool(const ToolDefinition& def, ToolExecutor executor) {
     definitions[def.name] = def;

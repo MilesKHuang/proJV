@@ -1,4 +1,4 @@
-﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "ui/theme.h"
 #include "render_chat.h"
@@ -7,12 +7,19 @@
 #include "tools/registry.h"
 #include "json.hpp"
 #include "debug_log.h"
-#include <windows.h>
-#include <shellapi.h>
+#include "platform_compat.h"
+#include "platform/isystem_util.h"
 #include <imgui.h>
 #include "markdown_render.h"
 #include <algorithm>
+#ifdef _MSC_VER
 #include <format>
+#define std_format std::format
+#else
+#include <cstdio>
+#include "format_compat.h"
+#define std_format projv::fmt
+#endif
 #include <sstream>
 #include <ctime>
 #include <exception>
@@ -60,8 +67,7 @@ void renderFormattedText(const std::string& text, float bubbleWidth,
 
     try {
         renderMarkdown(text, bubbleWidth, [](const std::string& url) {
-            ShellExecuteA(nullptr, "open", url.c_str(),
-                          nullptr, nullptr, SW_SHOWNORMAL);
+            SystemUtil::Instance().OpenUrl(url);
         });
     }
     catch (const std::exception& e) {
@@ -127,12 +133,19 @@ static std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
         if (msg.name == "read_file" || msg.name == "file_search" || msg.name == "grep_files") {
             int lineCount = 0;
             for (char c : msg.content) if (c == '\n') ++lineCount;
-            d = std::format("{} ({} lines, {} bytes)", msg.name, lineCount, byteCount);
+            char buf[128];
+            snprintf(buf, sizeof(buf), "%s (%d lines, %zu bytes)",
+                msg.name.c_str(), lineCount, byteCount);
+            d = buf;
         } else if (msg.name == "exec_shell" || msg.name == "shell" || msg.name == "git_log" 
                    || msg.name == "git_status" || msg.name == "git_diff" || msg.name == "web_search") {
-            d = std::format("{} ({} bytes)", msg.name, byteCount);
+            char buf[96];
+            snprintf(buf, sizeof(buf), "%s (%zu bytes)", msg.name.c_str(), byteCount);
+            d = buf;
         } else {
-            d = std::format("{} ({} bytes)", msg.name, byteCount);
+            char buf[96];
+            snprintf(buf, sizeof(buf), "%s (%zu bytes)", msg.name.c_str(), byteCount);
+            d = buf;
         }
         // Append first line of content for "done X" feel
         std::string firstLine = msg.content.substr(0, msg.content.find('\n'));
@@ -427,8 +440,10 @@ void App::renderChatArea() {
                 ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
 
             std::string arrow = bubble.reasoningExpanded ? "[-]" : "[+]";
-            std::string label = std::format("{} Reasoning ({} chars)",
-                arrow, bubble.reasoningText.size());
+            char buf[128];
+            snprintf(buf, sizeof(buf), "%s Reasoning (%zu chars)",
+                arrow.c_str(), bubble.reasoningText.size());
+            std::string label = buf;
             ImGui::PushStyleColor(ImGuiCol_Text, ThemeColors::toVec4(T().reasoningTextColor));
             if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_None, ImVec2(0, 0)))
                 bubble.reasoningExpanded = !bubble.reasoningExpanded;
@@ -687,7 +702,7 @@ void App::renderInputArea() {
                     : config.workspacePath;
                 ChatBubble cb;
                 cb.role = "system";
-                cb.content = std::format("[Workspace] {}", ws);
+                cb.content = "[Workspace] " + ws;
                 chatHistory.push_back(cb);
                 scrollToBottom = true;
                 inputBuf[0] = '\0';
@@ -724,7 +739,7 @@ void App::renderInputArea() {
                         : config.workspacePath;
                     ChatBubble cb;
                     cb.role = "system";
-                    cb.content = std::format("[Workspace] {}", ws);
+                    cb.content = "[Workspace] " + ws;
                     chatHistory.push_back(cb);
                     scrollToBottom = true;
                     inputBuf[0] = '\0';

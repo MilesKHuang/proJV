@@ -1,4 +1,4 @@
-﻿#define IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "app.h"
 #include "ui/theme.h"
 #include "core/prompts.h"
@@ -11,9 +11,21 @@
 
 #include "json.hpp"
 #include "debug_log.h"
+#include "platform_compat.h"
+#include "platform/isystem_util.h"
+#include <GLFW/glfw3.h>
+#ifdef _WIN32
 #include <windows.h>
-#include <format>
 #include <commdlg.h>
+#endif
+#ifdef _MSC_VER
+#include <format>
+#define std_format std::format
+#else
+#include <cstdio>
+#include "format_compat.h"
+#define std_format projv::fmt
+#endif
 #include <imgui.h>
 #include <algorithm>
 #include <filesystem>
@@ -188,21 +200,22 @@ void App::setupTools() {
         ).string();
     }
 
-    registerShellTool(tools, ws);
+    registerShellTool(tools, ws, procRunner_);
     registerFileTools(tools, ws);
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
-    // registerGitTools(tools);  // removed — git commands are covered by shell_tool
+    // registerGitTools(tools);  // removed -- git commands are covered by shell_tool
     registerFileSearchTool(tools);
     registerSearchTool(tools);
     registerFetchTool(tools);
 
     // Python tools (auto-discovered from projv_pytool/)
     pytoolMgr_.emplace(config.pythonPath, ws);
-    pytoolMgr_->scanAndRegister(tools);
+    pytoolMgr_->scanAndRegister(tools, procRunner_);
 }
 
-bool App::initialize() {
+bool App::initialize(IProcessRunner* procRunner) {
+    procRunner_ = procRunner;
     loadTomlConfig(config, "");
     client.setConfig(config);
     setupTools();
@@ -221,10 +234,10 @@ bool App::initialize() {
     agent->setContextWindow(config.contextWindow);
 
     // -- Initialize config edit buffers from loaded config ----------
-    strncpy_s(baseUrlBuf, config.baseUrl.c_str(), sizeof(baseUrlBuf) - 1);
-    strncpy_s(cppCompilerPathBuf, config.cppCompilerPath.c_str(), sizeof(cppCompilerPathBuf) - 1);
-    strncpy_s(pythonPathBuf, config.pythonPath.c_str(), sizeof(pythonPathBuf) - 1);
-    strncpy_s(workspacePathBuf, config.workspacePath.c_str(), sizeof(workspacePathBuf) - 1);
+    strncpy(baseUrlBuf, config.baseUrl.c_str(), sizeof(baseUrlBuf) - 1);
+    strncpy(cppCompilerPathBuf, config.cppCompilerPath.c_str(), sizeof(cppCompilerPathBuf) - 1);
+    strncpy(pythonPathBuf, config.pythonPath.c_str(), sizeof(pythonPathBuf) - 1);
+    strncpy(workspacePathBuf, config.workspacePath.c_str(), sizeof(workspacePathBuf) - 1);
     configMaxTokens = config.maxTokens;
     configTemperature = static_cast<float>(config.temperature);
 
@@ -244,7 +257,7 @@ bool App::initialize() {
         if (agent) agent->setSystemPrompt(sp);
     }
 
-    // -- 准备会话目录（不创建 DB 文件，等用户发第一条消息时再创建）---
+    // -- Prepare sessions dir (lazy-create DB on first message) ---
     {
         sessionsDir_ = getSessionsDir();
         std::error_code ec;
@@ -254,19 +267,23 @@ bool App::initialize() {
                 sessionsDir_.c_str(), ec.message().c_str());
         }
     }
-    // 设置懒初始化回调：用户发第一条消息时创建 DB 并写入已有 system 消息
+    // Lazy-init: create DB + write existing system messages
     agent->ensureStorage = [this]() {
         if (storage.isOpen()) return;
         auto now = std::time(nullptr);
         char tsBuf[64];
         tm local;
+#ifdef _MSC_VER
         localtime_s(&local, &now);
+#else
+        localtime_r(&now, &local);
+#endif
         strftime(tsBuf, sizeof(tsBuf), "%Y%m%d_%H%M%S", &local);
         std::string dbPath = sessionsDir_ + "/session_" + tsBuf + ".db";
         if (storage.createDatabase(dbPath)) {
             agent->setStorage(&storage);
             debugLogf("[Storage] Lazy-created database: %s", dbPath.c_str());
-            // 把已在 session 中的 system 消息写入 DB
+            // Write existing session system msgs to DB
             for (const auto& msg : agent->getSession().getContextMessages()) {
                 if (msg.role == "system") {
                     storage.insertMessage(msg);
@@ -295,8 +312,8 @@ bool App::initialize() {
     buildBubblesFromMessages();
 
     const char* envKey = std::getenv("DEEPSEEK_API_KEY");
-    if (envKey) strncpy_s(apiKeyBuf, envKey, sizeof(apiKeyBuf) - 1);
-    else strncpy_s(apiKeyBuf, config.apiKey.c_str(), sizeof(apiKeyBuf) - 1);
+    if (envKey) strncpy(apiKeyBuf, envKey, sizeof(apiKeyBuf) - 1);
+    else strncpy(apiKeyBuf, config.apiKey.c_str(), sizeof(apiKeyBuf) - 1);
     needsConfig = config.apiKey.empty();
 
     // Theme is initialized in main.cpp via ThemeManager::init() after this function returns.
@@ -345,6 +362,12 @@ int App::getAgentState() const {
 
 
 
+// Forward declarations for pickers (defined later)
+#ifndef _WIN32
+static std::string pickSavePath();
+static std::string pickOpenPath();
+#endif
+
 // --- Agent flag checks -----------------------------------------------------
 void App::checkAgentFlags() {
     if (!agent) return;
@@ -361,6 +384,32 @@ void App::checkAgentFlags() {
 // --- Render ----------------------------------------------------------------
 
 void App::render() {
+#ifndef _WIN32
+    // Deferred file dialogs: run BEFORE ImGui frame to avoid corrupting menu state
+    if (pendingOpenChat_) {
+        pendingOpenChat_ = false;
+        std::string filename = pickOpenPath();
+        if (!filename.empty()) switchToDialog(filename);
+    }
+    if (pendingSaveChat_) {
+        pendingSaveChat_ = false;
+        std::string filename = pickSavePath();
+        if (!filename.empty()) {
+            std::string srcPath = storage.currentPath();
+            if (!srcPath.empty()) {
+                storage.closeDatabase();
+                std::filesystem::copy_file(srcPath, filename,
+                    std::filesystem::copy_options::overwrite_existing);
+                if (!storage.openDatabase(srcPath)) {
+                    debugLog("[Dialog] Reopen failed, creating recovery database");
+                    storage.createDatabase(srcPath);
+                }
+                debugLogf("[Dialog] Saved copy to: %s", filename.c_str());
+            }
+        }
+    }
+#endif
+
     // -- Per-frame diagnostic: log agent state every ~60 frames when active --
     static int frameSkip = 0;
     static AgentState lastLoggedState = AgentState::Idle;
@@ -492,7 +541,8 @@ void App::renderMainMenuBar() {
             if (ImGui::MenuItem("Save As...", "Ctrl+S")) saveDialogToFile();
             if (ImGui::MenuItem("Open Chat...", "Ctrl+O")) loadDialogFromFile();
             ImGui::Separator();
-            if (ImGui::MenuItem("Exit", "Alt+F4")) PostQuitMessage(0);
+            if (ImGui::MenuItem("Exit", "Alt+F4"))
+                glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Settings")) {
@@ -597,14 +647,15 @@ void App::renderMainMenuBar() {
         double estimatedCost = (double)totalPromptTokens * inputPrice +
                                (double)totalCompletionTokens * outputPrice;
         auto fmtNum = [](int n) -> std::string {
-            if (n >= 1000000) return std::format("{:.2f}M", n/1000000.0);
-            else if (n >= 1000) return std::format("{:.2f}K", n/1000.0);
-            else if (n > 0) return std::format("{}", n);
-            else return std::string();
+            char b[32];
+            if (n >= 1000000) { snprintf(b, 32, "%.2fM", n/1000000.0); return b; }
+            else if (n >= 1000) { snprintf(b, 32, "%.2fK", n/1000.0); return b; }
+            else if (n > 0) { snprintf(b, 32, "%d", n); return b; }
+            return {};
         };
         auto fmtCost = [](double v) -> std::string {
-            if (v < 0.005) return std::string();
-            return std::format("${:.2f}", v);
+            if (v < 0.005) return {};
+            char b[32]; snprintf(b, 32, "$%.2f", v); return b;
         };
         std::string pStr = fmtNum(totalPromptTokens);
         std::string coStr = fmtNum(totalCompletionTokens);
@@ -612,13 +663,15 @@ void App::renderMainMenuBar() {
         bool hasData = !pStr.empty() || !coStr.empty();
         std::string tokenInfo;
         if (hasData) {
-            tokenInfo = std::format(" {} | {}+{} tok{}{}",
-                curModel.label,
-                pStr, coStr,
+            char tb[256];
+            snprintf(tb, sizeof(tb), " %s | %s+%s tok%s%s",
+                curModel.label.c_str(),
+                pStr.c_str(), coStr.c_str(),
                 costStr.empty() ? "" : " | ~",
-                costStr);
+                costStr.c_str());
+            tokenInfo = tb;
         } else {
-            tokenInfo = std::format(" {}", curModel.label);
+            tokenInfo = " " + curModel.label;
         }
         ImGui::TextColored(ThemeColors::toVec4(ThemeManager::instance().current().statusTokenInfo), "%s", tokenInfo.c_str());
 
@@ -644,9 +697,10 @@ void App::renderStatusBar() {
     {
         std::string modelLabel = config.model;
         auto fmtNum = [](int n) -> std::string {
-            if (n >= 1000000) return std::format("{:.2f}M", n / 1000000.0);
-            if (n >= 1000)    return std::format("{:.2f}K", n / 1000.0);
-            return std::format("{}", n);
+            char b[32];
+            if (n >= 1000000) { snprintf(b, 32, "%.2fM", n/1000000.0); return b; }
+            if (n >= 1000)    { snprintf(b, 32, "%.2fK", n/1000.0); return b; }
+            snprintf(b, 32, "%d", n); return b;
         };
 
         // Model name
@@ -762,10 +816,10 @@ void App::renderWelcomePage() {
 }
 
 // --- Save / Load -----------------------------------------------------------
+// Platform-specific path pickers (only the dialog mechanism differs)
 
-void App::saveDialogToFile() {
-    if (!agent) return;
-
+static std::string pickSavePath() {
+#ifdef _WIN32
     char filename[MAX_PATH] = {};
     OPENFILENAMEA ofn = {};
     ofn.lStructSize = sizeof(ofn);
@@ -775,7 +829,62 @@ void App::saveDialogToFile() {
     ofn.lpstrFile = filename;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
-    if (!GetSaveFileNameA(&ofn)) return;
+    if (GetSaveFileNameA(&ofn)) return filename;
+    return "";
+#else
+    std::string cmd =
+        "zenity --file-selection --save --confirm-overwrite "
+        "--file-filter='*.db' --title='Save Chat As' 2>/dev/null";
+    FILE* f = popen(cmd.c_str(), "r");
+    if (!f) return "";
+    char buf[1024];
+    std::string filename;
+    if (fgets(buf, sizeof(buf), f)) {
+        filename = buf;
+        while (!filename.empty() && (filename.back() == '\n' || filename.back() == '\r'))
+            filename.pop_back();
+    }
+    pclose(f);
+    return filename;
+#endif
+}
+
+static std::string pickOpenPath() {
+#ifdef _WIN32
+    char filename[MAX_PATH] = {};
+    OPENFILENAMEA ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = GetActiveWindow();
+    ofn.lpstrFilter = "proJV Dialog\0*.db\0All\0*.*\0";
+    ofn.lpstrDefExt = "db";
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    if (GetOpenFileNameA(&ofn)) return filename;
+    return "";
+#else
+    std::string cmd =
+        "zenity --file-selection --file-filter='*.db' "
+        "--title='Open Chat' 2>/dev/null";
+    FILE* f = popen(cmd.c_str(), "r");
+    if (!f) return "";
+    char buf[1024];
+    std::string filename;
+    if (fgets(buf, sizeof(buf), f)) {
+        filename = buf;
+        while (!filename.empty() && (filename.back() == '\n' || filename.back() == '\r'))
+            filename.pop_back();
+    }
+    pclose(f);
+    return filename;
+#endif
+}
+
+void App::saveDialogToFile() {
+    if (!agent) return;
+#ifdef _WIN32
+    std::string filename = pickSavePath();
+    if (filename.empty()) return;
 
     std::string srcPath = storage.currentPath();
     if (srcPath.empty()) {
@@ -790,32 +899,27 @@ void App::saveDialogToFile() {
         debugLog("[Dialog] Reopen failed, creating recovery database");
         storage.createDatabase(srcPath);
     }
-    debugLogf("[Dialog] Saved copy to: %s", filename);
+    debugLogf("[Dialog] Saved copy to: %s", filename.c_str());
     SetWindowTextA(GetActiveWindow(),
         (std::string("proJV - Saved: ") + filename).c_str());
+#else
+    pendingSaveChat_ = true;   // deferred: handled before next ImGui frame
+#endif
 }
 
 void App::loadDialogFromFile() {
     if (!agent) return;
-    char filename[MAX_PATH] = {};
-    OPENFILENAMEA ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = GetActiveWindow();
-    ofn.lpstrFilter = "proJV Dialog\0*.db\0All\0*.*\0";
-    ofn.lpstrDefExt = "db";
-    ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-    if (!GetOpenFileNameA(&ofn)) return;
-
+#ifdef _WIN32
+    std::string filename = pickOpenPath();
+    if (filename.empty()) return;
     switchToDialog(filename);
+#else
+    pendingOpenChat_ = true;   // deferred: handled before next ImGui frame
+#endif
 }
-
 void App::switchToDialog(const std::string& dbPath) {
     if (!agent) return;
     agent->cancel();
-
-    
 
     std::string oldPath = storage.currentPath();
     agent->clearSession();
@@ -835,7 +939,6 @@ void App::switchToDialog(const std::string& dbPath) {
         debugLogf("[Dialog] loadFromStorage exception: %s", e.what());
     }
 
-    // Build bubbles from messages
     buildBubblesFromMessages();
     debugLogf("[Dialog] Switched to: %s (%zu bubbles, %zu messages)",
         dbPath.c_str(), chatHistory.size(), agent->getSession().messageCount());
@@ -873,16 +976,10 @@ void App::newChat() {
 
     agent->cancel();
     
-
-    auto now = std::time(nullptr);
-    char buf[64];
-    tm local;
-    localtime_s(&local, &now);
-    strftime(buf, sizeof(buf), "chat_%Y%m%d_%H%M%S.db", &local);
-    std::string dbPath = sessionsDir_ + "/" + buf;
-
-    storage.createDatabase(dbPath);
-    agent->setStorage(&storage);
+    // Close current DB; new DB is created lazily on first message via ensureStorage
+    if (storage.isOpen())
+        storage.closeDatabase();
+    agent->setStorage(nullptr);
 
     agent->clearSession();
     chatHistory.clear();
@@ -898,7 +995,7 @@ void App::newChat() {
     // Build bubbles from messages
     buildBubblesFromMessages();
 
-    debugLogf("[Dialog] New chat: %s", dbPath.c_str());
+    debugLog("[Dialog] New chat (db lazy)");
 }
 
 // --- TODO Panel ------------------------------------------------------------

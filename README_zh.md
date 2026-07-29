@@ -1,4 +1,4 @@
-# proJV -- Windows DeepSeek GUI Agent
+# proJV -- 原生 C++ AI Agent，DeepSeek 桌面 GUI
 
 <p align="center">
   <strong>简体中文</strong> | <a href="README.md">English</a>
@@ -8,35 +8,107 @@
   <img src="assets/overview.png" alt="proJV overview" width="1280"/>
 </p>
 
-Project JV, 意思是 **Just Vibing** -- 一个轻快、精致的 Windows 桌面 AI Agent，基于 DeepSeek API，全部代码由 AI 自主生成。
+**proJV = Project Just Vibing** -- 一个快速、精致的原生 C++ 桌面 GUI Agent，基于 DeepSeek API。
 
-基于 **Dear ImGui + DirectX11 + libcurl**，C++20 实现。**零包管理器依赖**，一条 `cmake --build` 搞定。
+基于 **Dear ImGui + GLFW/OpenGL3 + libcurl**，C++20 实现。**零包管理器依赖**，一条 `cmake --build`，产出 ~3 MB 的二进制文件。
 
-> 这个项目的每一行代码，都是 AI Agent 写的。我只负责提需求和点 Approve。
-
----
-
-## 为什么有它
-
-图像算法工程师，主力 C++，也拿 Python 训 NN。喜欢 PC 能打游戏，喜欢轻量的三方库。
-
-市面上的 AI 编程工具太臃肿了 -- 花花绿绿的插件、复杂的终端、永远用不到的功能。我想要的是一个**原生 Windows 桌面应用**：快、干净、真正能帮我干活。
-
-proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、编辑文件、搜索网页、管理 TODO -- 全在清爽的 GUI 里完成。它甚至能**修改和编译自己**。
+> proJV 的每一行代码，都是 proJV 自己写的。
 
 ---
 
-## 亮点功能
+## 为什么是 proJV
 
-### 多角色 System Prompt
+### 1. AI Native Embedded System -- C++ & GUI
 
-往 `projv_files/prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。内置 **coder**（全 11 工具，默认）、**designer**（只读分析模式 -- 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档）和 **analyzer**（代码分析 + `diagram_tool` 架构图）。切换角色不丢上下文。
+AI Native Embedded System 是未来 Agent 一大方向。原生 C++ & GUI 有几大优势：
+
+- **硬件控制的可扩展性** -- C++ 可以直接调用系统 API、操作 GPIO 和外设，不需要经过中间层。
+- **C 端嵌入式正像手机一样走向 GUI** -- 图形界面是消费端设备的人因工程趋势。
+- **C++ 部署轻量** -- 二进制体积小、无运行时依赖；复杂的 AI 能力可以通过 pytool 调用 Python。
+- **嵌入式场景对 CPU 开销敏感** -- 过多的解释型语言会占用计算资源。
+
+proJV 为这个方向而生。
+
+### 2. No-MCP
+
+我相信你可以自己实现任何 MCP 功能。
+
+### 3. 目前只用 DeepSeek
+
+真的太便宜了。
+
+| 模型 | 输入 | 输出 |
+|------|------|------|
+| deepseek-v4-flash | ¥1 / 1M tokens | ¥2 / 1M tokens |
+| deepseek-v4-pro   | ¥3 / 1M tokens | ¥6 / 1M tokens |
+
+---
+
+## 核心功能
+
+### 1. 多角色 System Prompt
+
+往 `projv_files/prompts/` 丢一个 `.md` 文件，立刻出现在角色选择器里。切换角色不丢上下文。以下是三个预设 prompts：
+
+| 角色 | 说明 |
+|------|------|
+| **coder**（默认） | 全 11 工具访问 -- 读写、编辑、Shell、搜索、Web、架构图、TODO |
+| **designer** | 只读分析模式 -- 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档 |
+| **analyzer** | 代码分析 + `diagram_tool` 架构图支持 |
 
 <p align="center">
   <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
 </p>
 
-### 主题系统
+### 2. 全流程自定义 -- 每一层都是你的
+
+| 层级 | 自定义方式 |
+|------|-----------|
+| **System Prompt** | 丢 `.md` 到 `projv_files/prompts/`，立刻成为可选角色 |
+| **Compactor** | 控制上下文达到压力阈值时的压缩策略，可以自己写 |
+| **Python 工具 (pytool)** | 在 `projv_files/pytool/` 里放自己的 Python 脚本，Agent 自动发现并调用 |
+| **主题** | 可视化编辑器实时预览，8 套预设，JSON 导入/导出，每个颜色都可调 |
+| **配置** | 全部在 `config.toml` 里 -- 模型、Key、UI 偏好。纯文本，无隐藏状态 |
+
+没有封闭的"生态锁死"。**每个旋钮你都能拧。**
+
+
+### 3. Python 工具自主扩展（pytool）
+
+往 `projv_files/pytool/` 丢一个 Python 工具文件夹，Agent 自动发现。每个工具只需要两个文件：
+
+```
+projv_files/pytool/
+└── my_tool/
+    ├── tool.json    # 工具名、描述、参数
+    └── main.py      # 从 stdin 读 JSON，结果打印到 stdout
+```
+
+**极简示例** -- 获取当前时间：
+
+`tool.json`：
+```json
+{
+    "name": "get_time",
+    "description": "获取当前系统时间。",
+    "parameters": []
+}
+```
+
+`main.py`：
+```python
+import json, sys, time
+args = json.loads(sys.stdin.read())
+print(time.strftime("%Y-%m-%d %H:%M:%S"))
+```
+
+**就这么简单。** Agent 读取 `tool.json` 学会调用参数，通过 stdin 传入 JSON 执行 `main.py`，stdout 即为结果。需要 pip 依赖时加一个 `requirements.txt`。
+
+### 4. TODO -- 做完自动总结
+
+AI 在侧边栏实时管理任务清单。任务完成后不只是打个勾 -- **它会写一个结构化总结**：改了哪些文件、做了什么、编译验证结果。概览自动归档，永久保留。再也不用问"Agent 刚刚到底干了啥"。
+
+### 5. 主题系统
 
 两套内置（Obsidian / Light），外加 6 套精选主题可由 `projv_files/theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `projv_files/config.toml`，下次启动即恢复。
 
@@ -58,7 +130,7 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 ---
 
-## 支持功能
+## 功能总览
 
 | 功能 | 说明 |
 |------|------|
@@ -69,7 +141,6 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 | **会话持久化** | SQLite 自动保存，支持新建/保存/加载历史会话 |
 | **实时状态栏** | 模型名、Token 用量（输入+输出）、消息数、工具调用、上下文压力 % |
 | **工具审批** | 破坏性操作弹窗确认后放行 |
-| **TODO 面板** | AI 自主管理任务清单，侧边栏实时可见 |
 
 ---
 
@@ -77,26 +148,36 @@ proJV 就是这个工具。它能读懂你的代码库、执行 Shell 命令、�
 
 ### 构建
 
+#### Windows
+
 需要 CMake 和 Visual Studio 2019+（或任何支持 C++20 的编译器）。
 
 ```bash
-call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
-
+# 打开 x64 Native Tools 命令行，然后：
 cd proJV
 mkdir build && cd build
 cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 ```
 
-项目根目录附带了 `clean_and_build.bat`。
+#### Linux
 
-产物：`build/proJV.exe`（~3 MB）
+```bash
+cd proJV
+mkdir build_linux && cd build_linux
+cmake .. -DCMAKE_BUILD_TYPE=Release -DGLFW_BUILD_WAYLAND=OFF
+make -j$(nproc)
+```
+
+产物：
+- Windows：`build/proJV.exe`（~3 MB）
+- Linux：`build_linux/proJV_linux`
 
 ### 运行
 
 1. 申请 DeepSeek API Key：[platform.deepseek.com](https://platform.deepseek.com/api_keys)
-2. 双击 `proJV.exe`，输入 Key -> **Save & Connect**
-3. 开始对话 -- 也可以往 `projv_files/prompts/` 丢自定义 prompt，往 `projv_files/theme/` 丢主题文件
+2. 启动 proJV，输入 Key -> **Save & Connect**
+3. 开始对话 -- 往 `projv_files/prompts/` 丢自定义 prompt，往 `projv_files/theme/` 丢主题，往 `projv_files/pytool/` 丢 Python 工具
 
 ---
 
@@ -112,15 +193,17 @@ proJV/
 │   ├── theme/                 # 可安装的主题 JSON
 │   ├── pytool/                # Python 工具（diagram_tool 等）
 │   └── sessions/              # SQLite 会话数据库
-├── external/                  # 静态依赖：imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
+├── external/                  # 静态依赖：imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl/glfw, loguru
 ├── src/
-│   ├── main.cpp               # WinMain + D3D11 + ImGui 主循环
+│   ├── main.cpp               # 入口 + ImGui 主循环
 │   ├── client/deepseek.*      # DeepSeek API（libcurl + SSE）
 │   ├── core/                  # Agent, Session, Config, Storage, Prompts
 │   ├── ui/                    # App, Chat, Settings, Markdown, Theme 系统
 │   └── tools/                 # Shell, file, search, web, md_file, todo
-└── build/
-    └── proJV.exe              # ~3 MB
+├── build/
+│   └── proJV.exe              # ~3 MB（Windows）
+└── build_linux/
+    └── proJV_linux            # ~3 MB（Linux）
 ```
 
 ---
@@ -131,13 +214,13 @@ proJV/
 |----|------|------|
 | [Dear ImGui](https://github.com/ocornut/imgui) | GUI 框架 | `external/imgui/` |
 | [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) | 数据库 | `external/SQLiteCpp-3.3.3/` |
-| [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/` |
+| [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/`（Win）/ 系统（Linux） |
+| [GLFW](https://www.glfw.org/) | 窗口 + OpenGL 上下文 | `external/glfw/` |
 | [loguru](https://github.com/emilk/loguru) | 日志 | `external/loguru.cpp` |
 | [nlohmann/json](https://github.com/nlohmann/json) | JSON 解析 | 单头文件 |
 | [toml++](https://github.com/marzer/tomlplusplus) | TOML 解析 | 单头文件 |
-| DirectX 11 | GPU 渲染 | 系统内置 |
 
-**没有 vcpkg / conan / npm / pip。**
+**没有 vcpkg / conan / npm / pip。** 所有依赖要么内嵌，要么走系统库。
 
 ---
 
@@ -147,6 +230,7 @@ proJV/
 - [Dear ImGui](https://github.com/ocornut/imgui)
 - [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp)
 - [libcurl](https://curl.se/)
+- [GLFW](https://www.glfw.org/)
 - [loguru](https://github.com/emilk/loguru)
 - 所有开源依赖的维护者
 
