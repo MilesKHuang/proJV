@@ -1,4 +1,4 @@
-# proJV -- Windows DeepSeek GUI Agent
+# proJV -- A Native C++ AI Agent, DeepSeek GUI Desktop
 
 <p align="center">
   <a href="README_zh.md">简体中文</a> | <strong>English</strong>
@@ -8,35 +8,106 @@
   <img src="assets/overview.png" alt="proJV overview" width="1280"/>
 </p>
 
-Project JV, stands for **Just Vibing** -- a sleek, fast, fully AI-built Windows desktop agent for the DeepSeek API.
+**proJV = Project Just Vibing** -- a fast, native C++ desktop GUI Agent powered by DeepSeek.
 
-Built with **Dear ImGui + DirectX11 + libcurl**, C++20. **Zero package managers.** One `cmake --build` does it all.
+Built with **Dear ImGui + GLFW/OpenGL3 + libcurl**, C++20. **Zero package managers.** One `cmake --build` gives you a ~3 MB binary.
 
-> Every line of code in this project was written by an AI Agent. I just filed requests and clicked Approve.
+> Every line of code in proJV was written by proJV.
 
 ---
 
 ## Why proJV
 
-I'm an algorithm engineer who writes C++ and Python. I like my PC for gaming, and I like lightweight libraries.
+### 1. AI Native Embedded System -- C++ & GUI
 
-Most AI coding tools feel bloated -- flashy plugins, complex terminals, features I'll never use. I wanted something different: a **native Windows desktop app** that's fast, minimal, and actually helpful.
+AI Native Embedded System is a major direction for future Agents. Native C++ & GUI bring several advantages:
 
-proJV is that tool. It reads your codebase, runs shell commands, edits files, searches the web, manages TODOs -- all through a clean GUI. It can even **modify and compile itself**.
+- **Hardware control extensibility** -- C++ can directly call system APIs, operate GPIO and peripherals with no intermediate layer.
+- **C-end embedded is moving toward GUI, just like phones** -- graphical interfaces are the human-factor trend for consumer devices.
+- **C++ deployment is lightweight** -- small binary, no runtime dependencies; complex AI capabilities can call Python via pytool.
+- **Embedded scenarios are CPU-sensitive** -- too many interpreted languages consume compute resources.
+
+proJV is built for this direction.
+
+### 2. No-MCP
+
+I believe you can build any MCP function by yourself.
+
+### 3. DeepSeek Only (For Now)
+
+It's just ridiculously cheap.
+
+| Model | Input | Output |
+|-------|-------|--------|
+| deepseek-v4-flash | ¥1 / 1M tokens | ¥2 / 1M tokens |
+| deepseek-v4-pro   | ¥3 / 1M tokens | ¥6 / 1M tokens |
 
 ---
 
-## Spotlight Features
+## Core Features
 
-### Multi-Role System Prompts
+### 1. Multi-Role System Prompts
 
-Drop a `.md` file into `projv_files/prompts/` and it instantly appears in the role selector. Built-in roles include **coder** (full 11-tool access, default), **designer** (read-only analysis -- shell and source edits locked out, outputs structured design docs via `md_file`), and **analyzer** (code analysis with `diagram_tool` support). Switch mid-conversation without losing context.
+Drop a `.md` file into `projv_files/prompts/` and it instantly appears in the role selector. Switch mid-conversation without losing context. Three built-in preset prompts:
+
+| Role | Description |
+|------|-------------|
+| **coder** (default) | Full 11-tool access -- read, write, edit, shell, search, web, diagram, todo |
+| **designer** | Read-only analysis mode -- shell and source edits locked out, outputs structured design docs via `md_file` |
+| **analyzer** | Code analysis with `diagram_tool` support |
 
 <p align="center">
   <img src="assets/customize_system_prompt.png" alt="System prompts" width="720"/>
 </p>
 
-### Theme System
+### 2. Full Stack Customization -- Every Layer Is Yours
+
+| Layer | What You Can Customize |
+|-------|----------------------|
+| **System Prompts** | Drop `.md` files into `projv_files/prompts/` -- instantly appear as selectable roles |
+| **Compactor** | Control how context is compressed at pressure thresholds. Bring your own compaction strategy |
+| **Python Tools (pytool)** | Write your own tool scripts in Python, placed in `projv_files/pytool/`. The agent discovers and calls them automatically |
+| **Themes** | Visual editor with live preview, 8 presets, JSON import/export. Every color editable |
+| **Config** | Everything in `config.toml` -- model, key, UI preferences. Plain text, no hidden state |
+
+No locked-down "eco-system". **You own every knob.**
+
+### 3. Python Tool Extension (pytool)
+
+Drop a Python tool folder into `projv_files/pytool/` and the agent discovers it automatically. Each tool needs just two files:
+
+```
+projv_files/pytool/
+└── my_tool/
+    ├── tool.json    # name, description, parameters
+    └── main.py      # reads JSON from stdin, prints result to stdout
+```
+
+**Minimal example** -- a tool that returns the current time:
+
+`tool.json`:
+```json
+{
+    "name": "get_time",
+    "description": "Get the current system time.",
+    "parameters": []
+}
+```
+
+`main.py`:
+```python
+import json, sys, time
+args = json.loads(sys.stdin.read())
+print(time.strftime("%Y-%m-%d %H:%M:%S"))
+```
+
+**That's it.** The agent reads `tool.json` to know how to call your tool, invokes `main.py` with JSON args via stdin, and captures stdout as the result. Add `requirements.txt` for pip dependencies.
+
+### 4. TODO -- Automatic Completion Summary
+
+The AI manages a real-time TODO sidebar. When a task finishes, it doesn't just check a box -- **it writes a structured completion summary** with file paths, changes made, and verification results. The overview is archived to a permanent log. No more "what did the agent even do?"
+
+### 5. Theme System
 
 Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_files/theme/`. Every color is editable in a visual panel with live preview and JSON import/export. Your choice is auto-saved to `projv_files/config.toml` and restored on next launch.
 
@@ -69,13 +140,14 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 | **Session persistence** | SQLite auto-save, new/save/load conversation history |
 | **Live status bar** | Model name, token counts (in+out), message count, tool calls, context pressure % |
 | **Tool approval** | Destructive operations require user confirmation |
-| **TODO panel** | AI-managed task list, real-time sidebar |
 
 ---
 
 ## Quick Start
 
 ### Build
+
+#### Windows
 
 Requires CMake and Visual Studio 2019+ (or any C++20 compiler).
 
@@ -87,15 +159,24 @@ cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 ```
 
-A `clean_and_build.bat` is also provided.
+#### Linux
 
-Artifact: `build/proJV.exe` (~3 MB)
+```bash
+cd proJV
+mkdir build_linux && cd build_linux
+cmake .. -DCMAKE_BUILD_TYPE=Release -DGLFW_BUILD_WAYLAND=OFF
+make -j$(nproc)
+```
+
+Artifact:
+- Windows: `build/proJV.exe` (~3 MB)
+- Linux: `build_linux/proJV_linux`
 
 ### Run
 
 1. Get a DeepSeek API Key: [platform.deepseek.com](https://platform.deepseek.com/api_keys)
-2. Double-click `proJV.exe`, enter Key -> **Save & Connect**
-3. Start chatting -- drop custom prompts into `projv_files/prompts/` and themes into `projv_files/theme/`
+2. Launch proJV, enter Key -> **Save & Connect**
+3. Start chatting -- drop custom prompts into `projv_files/prompts/`, themes into `projv_files/theme/`, Python tools into `projv_files/pytool/`
 
 ---
 
@@ -111,15 +192,17 @@ proJV/
 │   ├── theme/                 # Installable theme JSON files
 │   ├── pytool/                # Python tools (diagram_tool, etc.)
 │   └── sessions/              # SQLite session databases
-├── external/                  # Static deps: imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl, loguru
+├── external/                  # Static deps: imgui, json.hpp, toml.hpp, SQLiteCpp, libcurl/glfw, loguru
 ├── src/
-│   ├── main.cpp               # WinMain + D3D11 + ImGui loop
+│   ├── main.cpp               # Entry point + ImGui loop
 │   ├── client/deepseek.*      # DeepSeek API (libcurl + SSE)
 │   ├── core/                  # Agent, Session, Config, Storage, Prompts
 │   ├── ui/                    # App, Chat, Settings, Markdown, Theme system
 │   └── tools/                 # Shell, file, search, web, md_file, todo
-└── build/
-    └── proJV.exe              # ~3 MB
+├── build/
+│   └── proJV.exe              # ~3 MB (Windows)
+└── build_linux/
+    └── proJV_linux            # ~3 MB (Linux)
 ```
 
 ---
@@ -130,13 +213,13 @@ proJV/
 |---------|---------|--------|
 | [Dear ImGui](https://github.com/ocornut/imgui) | GUI framework | `external/imgui/` |
 | [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) | Database | `external/SQLiteCpp-3.3.3/` |
-| [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/` |
+| [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/` (Win) / system (Linux) |
+| [GLFW](https://www.glfw.org/) | Window + OpenGL context | `external/glfw/` |
 | [loguru](https://github.com/emilk/loguru) | Logging | `external/loguru.cpp` |
 | [nlohmann/json](https://github.com/nlohmann/json) | JSON parsing | Single header |
 | [toml++](https://github.com/marzer/tomlplusplus) | TOML parsing | Single header |
-| DirectX 11 | GPU rendering | System built-in |
 
-**No vcpkg / conan / npm / pip.**
+**No vcpkg / conan / npm / pip.** All dependencies are either bundled or system-provided.
 
 ---
 
@@ -146,6 +229,7 @@ proJV/
 - [Dear ImGui](https://github.com/ocornut/imgui)
 - [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp)
 - [libcurl](https://curl.se/)
+- [GLFW](https://www.glfw.org/)
 - [loguru](https://github.com/emilk/loguru)
 - All open-source maintainers
 
