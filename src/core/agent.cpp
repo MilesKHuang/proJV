@@ -98,6 +98,7 @@ void Agent::run() {
     doCompaction();
     checkContextWarning();
     toolCallDepth_ = 0;
+    reasoningLengthRetries_ = 0;
     phase_ = AgentPhase::Streaming;
     updateSnapshot();
 
@@ -110,6 +111,7 @@ void Agent::run() {
             currentContent_.clear(); currentReasoning_.clear();
             currentToolCalls_.clear(); streamFinished_ = false;
             streamError_ = false; streamErrorMsg_.clear();
+            lastFinishReason_.clear();
             streamPromptTokens_ = streamCompletionTokens_ = 0;
 
             bool ok = client.streamBlocking(req, makeCallbacks());
@@ -195,10 +197,26 @@ void Agent::run() {
                 phase_ = AgentPhase::Idle; updateSnapshot();
             } else if (!currentReasoning_.empty()) {
                 // Stream finished with reasoning but no content.
+                bool hitLength = (lastFinishReason_.find("length") != std::string::npos);
+                if (hitLength && reasoningLengthRetries_ < 2 && !cancelRequested_.load()) {
+                    // Reasoning consumed the whole output budget (max_tokens),
+                    // so no final answer was generated. Retry with a bigger
+                    // budget and an explicit instruction to stop over-thinking.
+                    ++reasoningLengthRetries_;
+                    configMaxTokens = std::min(configMaxTokens * 2, 65536);
+                    addPersistedMessage(Message::System(
+                        "[Auto-recovery] Reasoning consumed the entire output budget "
+                        "(finish_reason=length) and no answer was produced. "
+                        "Answer the user's request now with a concise final response. "
+                        "Do NOT produce a long chain of thought. Keep thinking to a few "
+                        "lines and output the final answer directly."));
+                    phase_ = AgentPhase::Streaming; updateSnapshot();
+                    break;
+                }
                 // Save reasoning so the user can see what happened,
                 // and add a visible placeholder so the UI doesn't
                 // silently jump to Idle.
-                Message asst = Message::Assistant("[Stream ended after reasoning — no response generated]");
+                Message asst = Message::Assistant("[Stream ended after reasoning - no response generated]");
                 asst.reasoningContent = currentReasoning_;
                 addPersistedMessage(asst);
                 phase_ = AgentPhase::Idle; updateSnapshot();
@@ -405,6 +423,9 @@ StreamCallbacks Agent::makeCallbacks() {
             for (auto& e : self->currentToolCalls_) { if (e.index == call.index) { e.arguments += call.arguments; return; } }
             if (!self->currentToolCalls_.empty()) self->currentToolCalls_.back().arguments += call.arguments;
         }
+    };
+    cb.onFinishReason = [self](const std::string& reason) {
+        self->lastFinishReason_ = reason;
     };
     cb.onFinish = [self]() {
         self->streamFinished_ = true;

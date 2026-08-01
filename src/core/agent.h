@@ -119,6 +119,8 @@ private:
     bool streamFinished_ = false;
     bool streamError_ = false;
     std::string streamErrorMsg_;
+    std::string lastFinishReason_;
+    int reasoningLengthRetries_ = 0;
     int streamPromptTokens_ = 0;
     int streamCompletionTokens_ = 0;
 
@@ -153,6 +155,6 @@ private:
     std::string systemPrompt_;
     std::vector<std::string> allowedTools_;
     size_t configContextWindow = 0;
-    int configMaxTokens = 8192;
+    int configMaxTokens = 16384;
     double configTemperature = 0.0;
 };

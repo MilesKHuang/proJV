@@ -56,7 +56,7 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         cfg.apiKey = tbl["api_key"].value_or<std::string>("");
         cfg.model = tbl["model"].value_or<std::string>("deepseek-v4-flash");
         cfg.baseUrl = tbl["base_url"].value_or<std::string>("https://api.deepseek.com");
-        cfg.maxTokens = tbl["max_tokens"].value_or<int>(4096);
+        cfg.maxTokens = tbl["max_tokens"].value_or<int>(16384);
         cfg.temperature = tbl["temperature"].value_or<double>(0.0);
         cfg.workspacePath = tbl["workspace_path"].value_or<std::string>("");
         cfg.cppCompilerPath = tbl["cpp_compiler_path"].value_or<std::string>("");
@@ -150,7 +150,7 @@ bool saveApiKey(const std::string& key) {
         if (!tbl.contains("base_url"))
             tbl.insert_or_assign("base_url", "https://api.deepseek.com");
         if (!tbl.contains("max_tokens"))
-            tbl.insert_or_assign("max_tokens", 4096);
+            tbl.insert_or_assign("max_tokens", 16384);
         if (!tbl.contains("temperature"))
             tbl.insert_or_assign("temperature", 0.0);
         if (!tbl.contains("workspace_path"))

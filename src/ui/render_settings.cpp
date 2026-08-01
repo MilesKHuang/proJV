@@ -161,7 +161,7 @@ void App::renderConfigPopup() {
     ImGui::Text("Max Tokens:");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(180.0f);
-    ImGui::SliderInt("##cfg_maxtokens", &configMaxTokens, 512, 16384, "%d");
+    ImGui::SliderInt("##cfg_maxtokens", &configMaxTokens, 512, 65536, "%d");
     ImGui::Spacing();
 
     // -- Temperature ------------------------------------------------

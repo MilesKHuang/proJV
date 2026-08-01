@@ -602,6 +602,7 @@ size_t DeepSeekClient::parseSSEChunk(
                 std::string finishReason = choice["finish_reason"].is_string()
                     ? choice["finish_reason"].get<std::string>() : "";
                 debugLogf("[DeepSeek] SSE: finish_reason=%s (no delta)", finishReason.c_str());
+                if (callbacks.onFinishReason) callbacks.onFinishReason(finishReason);
                 if (callbacks.onFinish) callbacks.onFinish();
             }
             return consumed;
@@ -698,6 +699,7 @@ size_t DeepSeekClient::parseSSEChunk(
             std::string finishReason = choice["finish_reason"].is_string()
                 ? choice["finish_reason"].get<std::string>() : "";
             debugLogf("[DeepSeek] SSE: finish_reason=%s", finishReason.c_str());
+            if (callbacks.onFinishReason) callbacks.onFinishReason(finishReason);
             if (callbacks.onFinish) callbacks.onFinish();
             return consumed;
         }

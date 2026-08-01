@@ -67,7 +67,7 @@ struct ChatRequest {
     std::vector<Message> messages;
     std::vector<ToolDefinition> tools;
     bool stream = true;
-    int maxTokens = 8192;
+    int maxTokens = 16384;
     double temperature = 0.0;
 };
 
@@ -134,7 +134,7 @@ struct AppConfig {
     std::string apiKey;
     std::string model = "deepseek-v4-flash";
     std::string baseUrl = "https://api.deepseek.com";
-    int maxTokens = 8192;
+    int maxTokens = 16384;
     double temperature = 0.0;
     std::string configPath;
     std::string workspacePath;   // file access whitelist; empty = exe dir
@@ -213,6 +213,7 @@ struct StreamCallbacks {
     std::function<void(const std::string& text)> onThinking;
     std::function<void(const ToolCall& tool)> onToolCall;
     std::function<void()> onFinish;
+    std::function<void(const std::string& reason)> onFinishReason;
     std::function<void(const std::string& error)> onError;
     std::function<void(int promptTokens, int completionTokens)> onUsage;
 };
