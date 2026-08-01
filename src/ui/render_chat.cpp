@@ -673,47 +673,47 @@ void App::renderInputArea() {
         inputAreaWidth = avail.x - buttonWidth - spacing;
     }
 
-    bool disableInput = isWaiting;
-    if (disableInput) ImGui::BeginDisabled();
+    // Unified send logic -- shared by Shortcut, Enter key, and Send button
+    auto trySend = [&]() {
+        std::string textBuf = inputBuf;
+        textBuf.erase(0, textBuf.find_first_not_of(" \t\n\r"));
+        textBuf.erase(textBuf.find_last_not_of(" \t\n\r") + 1);
+        if (textBuf.empty() || !agent) return;
+        if (textBuf == "/workspace") {
+            std::string ws = config.workspacePath.empty()
+                ? std::filesystem::absolute(
+                      std::filesystem::path(getExeDir())
+                  ).string()
+                : config.workspacePath;
+            ChatBubble cb;
+            cb.role = "system";
+            cb.content = "[Workspace] " + ws;
+            chatHistory.push_back(cb);
+            scrollToBottom = true;
+            inputBuf[0] = '\0';
+        } else if (agent->handleQuickCommand(textBuf)) {
+            inputBuf[0] = '\0';
+        } else {
+            inputBuf[0] = '\0';
+            agent->startTurn(textBuf);
+            launchAgentThread();
+        }
+    };
 
-    // Log the first frame where input transitions from disabled->enabled
-    static bool wasDisabled = false;
-    if (!disableInput && wasDisabled) {
+    // Shortcut BEFORE InputTextMultiline to avoid cross-frame routing pollution
+    if (isIdle && ImGui::Shortcut(ImGuiKey_Enter)) {
+        trySend();
     }
 
     ImGui::PushItemWidth(inputAreaWidth);
-    ImGui::InputTextMultiline("##input", inputBuf, sizeof(inputBuf),
-        ImVec2(inputAreaWidth, btnHeight), 0);
+    bool submitted = ImGui::InputTextMultiline("##input", inputBuf, sizeof(inputBuf),
+        ImVec2(inputAreaWidth, btnHeight),
+        ImGuiInputTextFlags_CtrlEnterForNewLine | ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::PopItemWidth();
 
-    if (disableInput) ImGui::EndDisabled();
-    wasDisabled = disableInput;
-
-    if (isIdle && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Enter)) {
-        std::string text = inputBuf;
-        text.erase(0, text.find_first_not_of(" \t\n\r"));
-        text.erase(text.find_last_not_of(" \t\n\r") + 1);
-        if (!text.empty() && agent) {
-            if (text == "/workspace") {
-                std::string ws = config.workspacePath.empty()
-                    ? std::filesystem::absolute(
-                          std::filesystem::path(getExeDir())
-                      ).string()
-                    : config.workspacePath;
-                ChatBubble cb;
-                cb.role = "system";
-                cb.content = "[Workspace] " + ws;
-                chatHistory.push_back(cb);
-                scrollToBottom = true;
-                inputBuf[0] = '\0';
-            } else if (agent->handleQuickCommand(text)) {
-                inputBuf[0] = '\0';
-            } else {
-                inputBuf[0] = '\0';
-                agent->startTurn(text);
-                launchAgentThread();
-            }
-        }
+    // Enter key in focused widget  ->  send (Shortcut handles unfocused case)
+    if (isIdle && submitted) {
+        trySend();
     }
 
     ImGui::SameLine();
@@ -727,32 +727,11 @@ void App::renderInputArea() {
         bool sendDisabled = (inputBuf[0] == '\0');
         if (sendDisabled) ImGui::BeginDisabled();
         if (ImGui::Button("Send", ImVec2(buttonWidth, btnHeight))) {
-            std::string text = inputBuf;
-            text.erase(0, text.find_first_not_of(" \t\n\r"));
-            text.erase(text.find_last_not_of(" \t\n\r") + 1);
-            if (!text.empty() && agent) {
-                if (text == "/workspace") {
-                    std::string ws = config.workspacePath.empty()
-                        ? std::filesystem::absolute(
-                              std::filesystem::path(getExeDir())
-                          ).string()
-                        : config.workspacePath;
-                    ChatBubble cb;
-                    cb.role = "system";
-                    cb.content = "[Workspace] " + ws;
-                    chatHistory.push_back(cb);
-                    scrollToBottom = true;
-                    inputBuf[0] = '\0';
-                } else if (agent->handleQuickCommand(text)) {
-                    inputBuf[0] = '\0';
-                } else {
-                    inputBuf[0] = '\0';
-                    agent->startTurn(text);
-                    launchAgentThread();
-                }
-            }
+            trySend();
         }
         if (sendDisabled) ImGui::EndDisabled();
+        ImGui::Spacing();
+        ImGui::TextDisabled("Enter send  |  Ctrl+Enter newline");
     }
 
     ImGui::EndChild();  // InputFill
