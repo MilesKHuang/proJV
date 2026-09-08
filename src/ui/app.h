@@ -72,7 +72,7 @@ private:
     char cppCompilerPathBuf[512] = {};
     char pythonPathBuf[512] = {};
     char workspacePathBuf[512] = {};
-    int configMaxTokens = 16384;
+    int configMaxTokens = 65536;
     float configTemperature = 0.0f;
 
     // Token tracking

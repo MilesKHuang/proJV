@@ -67,7 +67,7 @@ struct ChatRequest {
     std::vector<Message> messages;
     std::vector<ToolDefinition> tools;
     bool stream = true;
-    int maxTokens = 16384;
+    int maxTokens = 65536;
     double temperature = 0.0;
 };
 
@@ -134,7 +134,7 @@ struct AppConfig {
     std::string apiKey;
     std::string model = "deepseek-v4-flash";
     std::string baseUrl = "https://api.deepseek.com";
-    int maxTokens = 16384;
+    int maxTokens = 65536;
     double temperature = 0.0;
     std::string configPath;
     std::string workspacePath;   // file access whitelist; empty = exe dir

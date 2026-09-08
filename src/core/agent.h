@@ -155,6 +155,6 @@ private:
     std::string systemPrompt_;
     std::vector<std::string> allowedTools_;
     size_t configContextWindow = 0;
-    int configMaxTokens = 16384;
+    int configMaxTokens = 65536;
     double configTemperature = 0.0;
 };
