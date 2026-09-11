@@ -72,6 +72,9 @@ public:
     }
 
     std::function<void(int prompt, int completion)> onTokenUsage;
+    // Called (from the agent thread) whenever streamed reasoning/content
+    // updates the status snapshot. The TUI uses it to post a redraw event.
+    std::function<void()> onStreamingTick;
     Session::ContextBudget contextBudget;
 
     TodoData copyTodoData() const {

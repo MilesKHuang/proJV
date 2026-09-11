@@ -408,19 +408,25 @@ StreamCallbacks Agent::makeCallbacks() {
     cb.onText = [self, batchCnt](const std::string& t) {
         self->currentContent_ += t;
         if (++(*batchCnt) % BATCH_INTERVAL == 0) {
-            std::lock_guard<std::mutex> lk(self->snapshotMutex_);
-            self->status_.state = AgentState::Thinking;
-            self->status_.streamingText = self->currentContent_;
-            self->status_.reasoningText = self->currentReasoning_;
+            {
+                std::lock_guard<std::mutex> lk(self->snapshotMutex_);
+                self->status_.state = AgentState::Thinking;
+                self->status_.streamingText = self->currentContent_;
+                self->status_.reasoningText = self->currentReasoning_;
+            }
+            if (self->onStreamingTick) self->onStreamingTick();
         }
     };
     cb.onThinking = [self, batchCnt](const std::string& t) {
         self->currentReasoning_ += t;
         if (++(*batchCnt) % BATCH_INTERVAL == 0) {
-            std::lock_guard<std::mutex> lk(self->snapshotMutex_);
-            self->status_.state = AgentState::Thinking;
-            self->status_.streamingText = self->currentContent_;
-            self->status_.reasoningText = self->currentReasoning_;
+            {
+                std::lock_guard<std::mutex> lk(self->snapshotMutex_);
+                self->status_.state = AgentState::Thinking;
+                self->status_.streamingText = self->currentContent_;
+                self->status_.reasoningText = self->currentReasoning_;
+            }
+            if (self->onStreamingTick) self->onStreamingTick();
         }
     };
     cb.onToolCall = [self](const ToolCall& call) {

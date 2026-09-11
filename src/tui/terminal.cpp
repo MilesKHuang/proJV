@@ -21,7 +21,8 @@ void initTerminal() {
 
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     if (hIn != INVALID_HANDLE_VALUE && GetConsoleMode(hIn, &mode)) {
-        mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;  // 0x0200, not VT *processing*
+        mode |= ENABLE_MOUSE_INPUT;             // traditional mouse (fallback for ConHost)
         SetConsoleMode(hIn, mode);
     }
 #else

@@ -73,6 +73,9 @@ public:
     // Invoked on the agent thread when a turn completes (used to trigger a redraw).
     std::function<void()> onTurnComplete;
 
+    // Invoked on the agent thread on every streamed token update.
+    std::function<void()> onStreamingTick;
+
     // Cancel agent + join threads (call before exit).
     void shutdown();
 

@@ -39,9 +39,11 @@ int main() {
     bool show_theme = false;
     bool show_theme_editor = false;
 
-    // Agent turns run on a background thread; post a Custom event so the
-    // FTXUI loop redraws when a turn completes.
+    // Agent turns run on a background thread; post a Custom event on every
+    // streamed token update and on turn completion so the FTXUI loop redraws
+    // in real time (independent of animation/spinner behavior).
     app.onTurnComplete = [&]() { screen.PostEvent(Event::Custom); };
+    app.onStreamingTick = [&]() { screen.PostEvent(Event::Custom); };
 
     InputOption input_opt;
     input_opt.multiline = false;
@@ -98,6 +100,14 @@ int main() {
         }
         if (e == Event::F9) {
             app.toggleLastReasoning();
+            return true;
+        }
+        if (e == Event::ArrowUp) {
+            app.scrollChat(1);
+            return true;
+        }
+        if (e == Event::ArrowDown) {
+            app.scrollChat(-1);
             return true;
         }
         if (e == Event::PageUp) {
@@ -165,7 +175,7 @@ int main() {
         els.push_back(separator());
         els.push_back(text(status_bar::render(app.getStatusBarData())) | dim);
         els.push_back(todo_view::renderTodoPanel(app.copyTodoData()) | size(HEIGHT, LESS_THAN, 6) | frame);
-        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · PgUp/PgDn scroll · Enter send · Esc quit") | dim);
+        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · ↑↓/PgUp/PgDn scroll · Enter send · Esc quit") | dim);
         return vbox(std::move(els));
     });
 

@@ -53,6 +53,9 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
         totalPromptTokens_.fetch_add(p, std::memory_order_relaxed);
         totalCompletionTokens_.fetch_add(c, std::memory_order_relaxed);
     };
+    agent->onStreamingTick = [this] {
+        if (onStreamingTick) onStreamingTick();
+    };
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setWorkspacePath(config.workspacePath);
