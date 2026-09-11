@@ -13,6 +13,7 @@ set(TEST_SOURCES
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
+    golden/test_markdown_render.cpp
     ${SRC_DIR}/tui/bubble_model.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/markdown_text.cpp

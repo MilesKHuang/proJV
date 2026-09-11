@@ -100,6 +100,22 @@ int main() {
             app.toggleLastReasoning();
             return true;
         }
+        if (e == Event::ArrowUp) {
+            app.scrollChat(1);
+            return true;
+        }
+        if (e == Event::ArrowDown) {
+            app.scrollChat(-1);
+            return true;
+        }
+        if (e == Event::PageUp) {
+            app.scrollChat(10);
+            return true;
+        }
+        if (e == Event::PageDown) {
+            app.scrollChat(-10);
+            return true;
+        }
         return false;
     });
 
@@ -128,7 +144,7 @@ int main() {
         els.push_back(separator());
 
         // Main area: chat + TODO side panel.
-        Element chat = chat_view::renderBubbles(app.bubbles()) | frame;
+        Element chat = chat_view::renderBubbles(app.bubbles(), app.chatScroll());
 
         // Live streaming: spinner animates and forces FTXUI to redraw.
         if (app.getPhase() == AgentPhase::Streaming) {
@@ -151,14 +167,14 @@ int main() {
             chat | flex,
             separator(),
             todo | size(WIDTH, EQUAL, 40),
-        }));
+        }) | flex);
 
         els.push_back(separator());
         els.push_back(text(status_line::render(app.getStatus())));
         els.push_back(input_comp->Render());
         els.push_back(separator());
         els.push_back(text(status_bar::render(app.getStatusBarData())) | dim);
-        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · Enter send · Esc quit") | dim);
+        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · ↑↓/PgUp/PgDn scroll · Enter send · Esc quit") | dim);
         return vbox(std::move(els));
     });
 

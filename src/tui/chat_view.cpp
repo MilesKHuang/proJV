@@ -122,30 +122,39 @@ Element renderToolBubble(const std::string& toolTitle, const std::string& merged
 
 } // namespace
 
-Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
+Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int scroll) {
     refreshPalette();
     constexpr int kMaxVisibleBubbles = 100;
     int totalBubbles = static_cast<int>(bubbles.size());
+
+    // Keyboard scroll-up: hide the last `scroll` bubbles.
+    int visibleEnd = totalBubbles - scroll;
+    if (visibleEnd < 0) visibleEnd = 0;
+
     int startIdx = 0;
-    if (totalBubbles > kMaxVisibleBubbles) {
-        startIdx = totalBubbles - kMaxVisibleBubbles;
+    if (visibleEnd > kMaxVisibleBubbles) {
+        startIdx = visibleEnd - kMaxVisibleBubbles;
     }
 
     Elements els;
     if (startIdx > 0) {
         std::string hint = "[ Showing last " + std::to_string(kMaxVisibleBubbles) +
-            " of " + std::to_string(totalBubbles) + " messages - older history hidden ]";
+            " of " + std::to_string(visibleEnd) + " messages - older history hidden ]";
         els.push_back(ftxui::text(hint) | ftxui::color(P.statusIdle));
         els.push_back(ftxui::separator());
     }
+    if (scroll > 0) {
+        els.push_back(ftxui::text("[ Scrolled up " + std::to_string(scroll) + " bubble(s) - Down to return ]") | ftxui::color(P.statusIdle));
+        els.push_back(ftxui::separator());
+    }
 
-    for (int i = startIdx; i < totalBubbles; ++i) {
+    for (int i = startIdx; i < visibleEnd; ++i) {
         const auto& bubble = bubbles[i];
 
         // Merged tool bubble: tool_call title + following tool_result content.
         if (bubble.role == "tool_call") {
             std::string mergedContent;
-            while (i + 1 < totalBubbles && bubbles[i + 1].role == "tool_result") {
+            while (i + 1 < visibleEnd && bubbles[i + 1].role == "tool_result") {
                 if (!mergedContent.empty()) mergedContent += "\n--------------------\n";
                 mergedContent += bubbles[i + 1].content;
                 ++i;

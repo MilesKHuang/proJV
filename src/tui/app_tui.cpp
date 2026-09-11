@@ -141,6 +141,9 @@ void TuiApp::syncChatFromAgent() {
     if (!agent) return;
 
     auto newMsgs = agent->getNewMessagesSince(lastMessageId_);
+    if (!newMsgs.empty()) {
+        resetChatScroll();  // new content -> scroll back to bottom
+    }
     for (const auto& msg : newMsgs) {
         auto derived = bubble_model::deriveBubbles(msg);
         chatHistory.insert(chatHistory.end(), derived.begin(), derived.end());
@@ -309,4 +312,15 @@ void TuiApp::toggleLastReasoning() {
             return;
         }
     }
+}
+
+void TuiApp::scrollChat(int delta) {
+    chatScroll_ += delta;
+    if (chatScroll_ < 0) chatScroll_ = 0;
+    int maxScroll = static_cast<int>(chatHistory.size());
+    if (chatScroll_ > maxScroll) chatScroll_ = maxScroll;
+}
+
+void TuiApp::resetChatScroll() {
+    chatScroll_ = 0;
 }

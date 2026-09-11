@@ -13,7 +13,8 @@ namespace chat_view {
 // Applies the same sliding window (last N visible) and tool_result merging
 // rules as the legacy renderChatArea. Pure function (Element is immutable),
 // so it can be golden-tested against an in-memory Screen.
-ftxui::Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles);
+// `scroll` hides the last `scroll` bubbles (keyboard scroll-up).
+ftxui::Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int scroll = 0);
 
 // Render the live streaming bubble (reasoning card + content) while the agent
 // is still generating. Replaced by the persisted bubble once the turn ends.

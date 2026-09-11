@@ -57,6 +57,11 @@ public:
     // Toggle the last reasoning bubble's expanded/collapsed state.
     void toggleLastReasoning();
 
+    // Keyboard scroll for the chat area (bubble-granular).
+    void scrollChat(int delta);
+    void resetChatScroll();
+    int chatScroll() const { return chatScroll_; }
+
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
     void syncChatFromAgent();
 
@@ -87,6 +92,7 @@ private:
 
     std::vector<bubble_model::Bubble> chatHistory;
     int64_t lastMessageId_ = 0;
+    int chatScroll_ = 0;
     std::string sessionsDir_;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;
