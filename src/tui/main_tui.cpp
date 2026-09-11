@@ -145,8 +145,15 @@ int main() {
         }
         els.push_back(separator());
 
-        // Chat area (scrollable).
-        Element chat = chat_view::renderBubbles(app.bubbles(), app.chatScroll());
+        // Chat area (scrollable via focus + frame).
+        int focusIndex = -1;
+        {
+            int total = static_cast<int>(app.bubbles().size());
+            if (total > 0) {
+                focusIndex = total - 1 - app.chatScroll();
+            }
+        }
+        Element chat = chat_view::renderBubbles(app.bubbles(), focusIndex);
 
         // Live streaming: append the in-progress bubble.
         if (app.getPhase() == AgentPhase::Streaming) {

@@ -48,48 +48,53 @@ Element label(const std::string& text, Color c) {
 
 } // namespace
 
-Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int scroll) {
+Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focusIndex) {
     refreshPalette();
 
     int total = static_cast<int>(bubbles.size());
-    int visibleEnd = total - scroll;
-    if (visibleEnd < 0) visibleEnd = 0;
-
     Elements lines;
-    for (int i = 0; i < visibleEnd; ++i) {
+    for (int i = 0; i < total; ++i) {
         const auto& b = bubbles[i];
 
+        Element block;
         if (b.role == "user") {
-            lines.push_back(label("── You ──", P.user));
-            lines.push_back(ftxui::text(b.content));
+            block = ftxui::vbox({ label("── You ──", P.user), ftxui::text(b.content) });
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {
-            lines.push_back(label("── Thinking ──", P.reasoning));
+            Elements els;
+            els.push_back(label("── Thinking ──", P.reasoning));
             if (b.reasoningExpanded) {
-                lines.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
+                els.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
             } else {
-                lines.push_back(ftxui::text("(collapsed, F9 to expand)") | ftxui::dim);
+                els.push_back(ftxui::text("(collapsed, F9 to expand)") | ftxui::dim);
             }
+            block = ftxui::vbox(std::move(els));
         } else if (b.role == "assistant") {
+            Elements els;
             if (b.hasReasoning && b.reasoningExpanded) {
-                lines.push_back(label("── Thinking ──", P.reasoning));
-                lines.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
+                els.push_back(label("── Thinking ──", P.reasoning));
+                els.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
             }
             if (!b.content.empty()) {
-                lines.push_back(label("── AI ──", P.assistant));
-                lines.push_back(markdown_view::renderMarkdown(b.content));
+                els.push_back(label("── AI ──", P.assistant));
+                els.push_back(markdown_view::renderMarkdown(b.content));
             }
+            block = ftxui::vbox(std::move(els));
         } else if (b.role == "tool_call") {
-            lines.push_back(label("── Tool ──", P.tool));
-            lines.push_back(ftxui::text(b.content));
+            block = ftxui::vbox({ label("── Tool ──", P.tool), ftxui::text(b.content) });
         } else if (b.role == "tool_result") {
-            lines.push_back(label("── Result ──", P.toolResult));
-            lines.push_back(ftxui::text(b.content) | ftxui::dim);
+            block = ftxui::vbox({ label("── Result ──", P.toolResult), ftxui::text(b.content) | ftxui::dim });
         } else if (b.role == "system") {
             bool compacted = b.content.find("[Context compacted:") != std::string::npos;
-            lines.push_back(label("── System ──", compacted ? P.compacted : P.system));
-            lines.push_back(ftxui::text(b.content) | ftxui::dim);
+            block = ftxui::vbox({ label("── System ──", compacted ? P.compacted : P.system),
+                ftxui::text(b.content) | ftxui::dim });
+        } else {
+            block = ftxui::text(b.content);
         }
 
+        if (i == focusIndex) {
+            block = block | ftxui::focus;
+        }
+        lines.push_back(block);
         lines.push_back(ftxui::text(""));  // blank line between messages
     }
 

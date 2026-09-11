@@ -10,11 +10,9 @@
 namespace chat_view {
 
 // Render the bubble list into a single FTXUI element.
-// Applies the same sliding window (last N visible) and tool_result merging
-// rules as the legacy renderChatArea. Pure function (Element is immutable),
-// so it can be golden-tested against an in-memory Screen.
-// `scroll` hides the last `scroll` bubbles (keyboard scroll-up).
-ftxui::Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int scroll = 0);
+// `focusIndex` marks one message block as the scroll anchor (frame scrolls to
+// it). Pass -1 to disable. Direction keys move this index.
+ftxui::Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focusIndex = -1);
 
 // Render the live streaming bubble (reasoning card + content) while the agent
 // is still generating. Replaced by the persisted bubble once the turn ends.

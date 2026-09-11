@@ -320,7 +320,7 @@ void TuiApp::toggleLastReasoning() {
 void TuiApp::scrollChat(int delta) {
     chatScroll_ += delta;
     if (chatScroll_ < 0) chatScroll_ = 0;
-    int maxScroll = static_cast<int>(chatHistory.size());
+    int maxScroll = std::max(0, static_cast<int>(chatHistory.size()) - 1);
     if (chatScroll_ > maxScroll) chatScroll_ = maxScroll;
 }
 
