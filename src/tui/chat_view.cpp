@@ -1,7 +1,8 @@
 // proJV TUI -- chat view: render chat history as labeled, color-coded blocks.
 //
-// Each message is a block: a colored "── Role ──" label, then the content
-// (markdown for assistant replies, plain text otherwise), then a blank line.
+// Each message is a bordered block: a colored "── Role ──" label, then the
+// content (markdown for assistant replies, plain text otherwise). The block
+// border uses the role color so different message kinds are visually distinct.
 #include "chat_view.h"
 
 #include "markdown_view.h"
@@ -46,6 +47,12 @@ Element label(const std::string& text, Color c) {
     return ftxui::text(text) | ftxui::bold | ftxui::color(c);
 }
 
+// Wrap a message block with a colored border (role color for visual separation).
+Element frameBlock(Element block, Color c, bool focused) {
+    if (focused) block = std::move(block) | ftxui::focus;
+    return std::move(block) | ftxui::borderStyled(c);
+}
+
 } // namespace
 
 Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focusIndex) {
@@ -57,9 +64,12 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
         const auto& b = bubbles[i];
 
         Element block;
+        Color roleColor = P.system;
         if (b.role == "user") {
+            roleColor = P.user;
             block = ftxui::vbox({ label("── You ──", P.user), ftxui::text(b.content) });
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {
+            roleColor = P.reasoning;
             Elements els;
             els.push_back(label("── Thinking ──", P.reasoning));
             if (b.reasoningExpanded) {
@@ -69,6 +79,7 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
             }
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "assistant") {
+            roleColor = P.assistant;
             Elements els;
             if (b.hasReasoning && b.reasoningExpanded) {
                 els.push_back(label("── Thinking ──", P.reasoning));
@@ -80,21 +91,22 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
             }
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "tool_call") {
+            roleColor = P.tool;
             block = ftxui::vbox({ label("── Tool ──", P.tool), ftxui::text(b.content) });
         } else if (b.role == "tool_result") {
+            roleColor = P.toolResult;
             block = ftxui::vbox({ label("── Result ──", P.toolResult), ftxui::text(b.content) | ftxui::dim });
         } else if (b.role == "system") {
             bool compacted = b.content.find("[Context compacted:") != std::string::npos;
-            block = ftxui::vbox({ label("── System ──", compacted ? P.compacted : P.system),
+            roleColor = compacted ? P.compacted : P.system;
+            block = ftxui::vbox({ label("── System ──", roleColor),
                 ftxui::text(b.content) | ftxui::dim });
         } else {
+            roleColor = P.system;
             block = ftxui::text(b.content);
         }
 
-        if (i == focusIndex) {
-            block = block | ftxui::focus;
-        }
-        lines.push_back(block);
+        lines.push_back(frameBlock(std::move(block), roleColor, i == focusIndex));
         lines.push_back(ftxui::text(""));  // blank line between messages
     }
 
@@ -103,16 +115,20 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
 
 Element renderStreamingBubble(const AgentStatus& status) {
     refreshPalette();
-    Elements lines;
+    Elements els;
     if (!status.reasoningText.empty()) {
-        lines.push_back(label("── Thinking ──", P.reasoning));
-        lines.push_back(ftxui::text(status.reasoningText) | ftxui::color(P.reasoningBody));
+        els.push_back(label("── Thinking ──", P.reasoning));
+        els.push_back(ftxui::text(status.reasoningText) | ftxui::color(P.reasoningBody));
     }
     if (!status.streamingText.empty()) {
-        lines.push_back(label("── AI ──", P.assistant));
-        lines.push_back(markdown_view::renderMarkdown(status.streamingText));
+        els.push_back(label("── AI ──", P.assistant));
+        els.push_back(markdown_view::renderMarkdown(status.streamingText));
     }
-    return ftxui::vbox(std::move(lines));
+    if (els.empty()) {
+        return ftxui::text(" ");
+    }
+    Element block = ftxui::vbox(std::move(els));
+    return std::move(block) | ftxui::borderStyled(P.assistant);
 }
 
 } // namespace chat_view

@@ -97,3 +97,46 @@ TEST_CASE("markdown: table header and rows") {
     CHECK(lines[1].segs[1].style == Style::TableCell);
     CHECK(lines[1].segs[1].text == "2");
 }
+
+TEST_CASE("markdown: table without leading pipe (DeepSeek style)") {
+    auto lines = parseMarkdown("Name | Value\n---|---\nalpha | 1\nbeta | 2");
+    REQUIRE(lines.size() == 3);
+
+    // Header row: the segment before the first '|' must be kept.
+    REQUIRE(lines[0].segs.size() == 2);
+    CHECK(lines[0].segs[0].style == Style::TableHeader);
+    CHECK(lines[0].segs[0].text == "Name");
+    CHECK(lines[0].segs[1].text == "Value");
+
+    // Data rows keep their first column too.
+    REQUIRE(lines[1].segs.size() == 2);
+    CHECK(lines[1].segs[0].style == Style::TableCell);
+    CHECK(lines[1].segs[0].text == "alpha");
+    CHECK(lines[1].segs[1].text == "1");
+
+    REQUIRE(lines[2].segs.size() == 2);
+    CHECK(lines[2].segs[0].text == "beta");
+    CHECK(lines[2].segs[1].text == "2");
+}
+
+TEST_CASE("markdown: table without leading pipe on separator row") {
+    auto lines = parseMarkdown("A | B\n--- | ---\n1 | 2");
+    REQUIRE(lines.size() == 2);
+
+    REQUIRE(lines[0].segs.size() == 2);
+    CHECK(lines[0].segs[0].text == "A");
+    CHECK(lines[0].segs[1].text == "B");
+
+    REQUIRE(lines[1].segs.size() == 2);
+    CHECK(lines[1].segs[0].text == "1");
+    CHECK(lines[1].segs[1].text == "2");
+}
+
+TEST_CASE("markdown: table column alignment") {
+    auto lines = parseMarkdown("| A | B | C |\n|:---|---:|:---:|\n| 1 | 2 | 3 |");
+    REQUIRE(lines.size() == 2);
+    REQUIRE(lines[0].tableAlign.size() == 3);
+    CHECK(lines[0].tableAlign[0] == 0);  // left
+    CHECK(lines[0].tableAlign[1] == 2);  // right
+    CHECK(lines[0].tableAlign[2] == 1);  // center
+}

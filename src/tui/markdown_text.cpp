@@ -115,6 +115,20 @@ std::vector<Segment> parseInline(const std::string& line) {
 std::vector<std::string> parseTableRow(const std::string& line) {
     std::vector<std::string> cells;
     size_t p = 0;
+
+    // Tables without a leading '|': the segment before the first '|' is the
+    // first cell (previously it was silently dropped).
+    if (!line.empty() && line[0] != '|') {
+        size_t firstPipe = line.find('|');
+        if (firstPipe != std::string::npos) {
+            size_t s = 0, e = firstPipe;
+            while (s < e && (line[s] == ' ' || line[s] == '\t')) ++s;
+            while (e > s && (line[e - 1] == ' ' || line[e - 1] == '\t')) --e;
+            cells.emplace_back(line.substr(s, e - s));
+            p = firstPipe;
+        }
+    }
+
     while (p < line.size()) {
         if (line[p] == '|') {
             ++p;
@@ -221,6 +235,7 @@ std::vector<Line> parseMarkdown(const std::string& text) {
                 seg.style = Style::TableHeader;
                 l.segs.push_back(std::move(seg));
             }
+            l.tableAlign = tableAlign;
             out.push_back(std::move(l));
         }
         for (const auto& row : tableRows) {
@@ -258,7 +273,9 @@ std::vector<Line> parseMarkdown(const std::string& text) {
 
         if (state == State::Table) {
             size_t ts = skipSpace(ln, 0);
-            if (ts < ln.size() && ln[ts] == '|') {
+            // Support table rows without a leading '|' (e.g. "1 | 2").
+            bool rowHasPipe = ln.find('|', ts) != std::string::npos;
+            if (rowHasPipe) {
                 if (isTableSep(ln.substr(ts))) continue;
                 auto cells = parseTableRow(ln.substr(ts));
                 bool any = false;
@@ -346,15 +363,17 @@ std::vector<Line> parseMarkdown(const std::string& text) {
             continue;
         }
 
-        // Table row.
-        if (ln[ls] == '|') {
+        // Table row: a '|' at the line start, or a pipe-delimited line whose
+        // next line is a separator row (supports tables without a leading '|').
+        bool hasPipe = ln.find('|', ls) != std::string::npos;
+        if (hasPipe) {
             flushCode();
             if (state != State::Table) {
                 bool looksLikeTable = false;
                 if (i + 1 < lines.size()) {
                     size_t nls = skipSpace(lines[i + 1], 0);
                     const std::string& nl = lines[i + 1];
-                    if (nls < nl.size() && nl[nls] == '|' && isTableSep(nl.substr(nls))) {
+                    if (nl.find('|', nls) != std::string::npos && isTableSep(nl.substr(nls))) {
                         looksLikeTable = true;
                     }
                 }

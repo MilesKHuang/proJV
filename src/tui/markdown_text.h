@@ -24,6 +24,9 @@ struct Segment {
 
 struct Line {
     std::vector<Segment> segs;
+    // Column alignment for table headers (0=left, 1=center, 2=right).
+    // Populated only on the header Line; empty for every other line.
+    std::vector<int> tableAlign;
 };
 
 // Parse markdown text into structured lines. Pure function (no UI deps).
