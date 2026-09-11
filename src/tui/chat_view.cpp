@@ -107,7 +107,9 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
         }
 
         lines.push_back(frameBlock(std::move(block), roleColor, i == focusIndex));
-        lines.push_back(ftxui::text(""));  // blank line between messages
+        if (i + 1 < total) {
+            lines.push_back(ftxui::separatorHeavy() | ftxui::color(roleColor));
+        }
     }
 
     return ftxui::vbox(std::move(lines));

@@ -57,8 +57,93 @@ Color codeBgColor() {
     return theme_map::hexToColor(ThemeManager::instance().current().mdCodeBg);
 }
 
+// --- CJK-aware soft-wrap -----------------------------------------------------
+//
+// FTXUI paragraph() splits on spaces only, so CJK text (which has no spaces)
+// never wraps and gets clipped. We split into wrap tokens ourselves: ASCII
+// words stay together, fullwidth (CJK) characters become their own token so
+// they can break, and over-long words are split character-by-character so no
+// single token can exceed the line width. flexbox() then re-flows the tokens
+// on every resize (nothing is ever clipped).
+
+int utf8CharLen(unsigned char c) {
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0) return 2;
+    if ((c & 0xF0) == 0xE0) return 3;
+    if ((c & 0xF8) == 0xF0) return 4;
+    return 1;
+}
+
+size_t displayWidth(const std::string& s) {
+    size_t w = 0;
+    for (size_t i = 0; i < s.size();) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c < 0x80) { w += 1; i += 1; }
+        else if ((c & 0xE0) == 0xC0) { w += 1; i += 2; }
+        else if ((c & 0xF0) == 0xE0) { w += 2; i += 3; }
+        else if ((c & 0xF8) == 0xF0) { w += 2; i += 4; }
+        else { w += 1; i += 1; }
+    }
+    return w;
+}
+
+// Tokens wider than this are split character-by-character so they can wrap on
+// even the narrowest terminals.
+const size_t kMaxWordWidth = 20;
+
+std::vector<std::string> splitForWrap(const std::string& text) {
+    std::vector<std::string> tokens;
+    std::string word;
+
+    auto flushWord = [&]() {
+        if (word.empty()) return;
+        if (displayWidth(word) > kMaxWordWidth) {
+            for (size_t i = 0; i < word.size();) {
+                size_t l = utf8CharLen(static_cast<unsigned char>(word[i]));
+                tokens.push_back(word.substr(i, l));
+                i += l;
+            }
+        } else {
+            tokens.push_back(std::move(word));
+        }
+        word.clear();
+    };
+
+    // Attach a space to the previous token (avoids leading spaces on wrapped
+    // lines) and drops leading whitespace at the start of the paragraph.
+    auto appendSpace = [&]() {
+        if (!word.empty()) { word += ' '; }
+        else if (!tokens.empty()) { tokens.back() += ' '; }
+    };
+
+    for (size_t i = 0; i < text.size();) {
+        size_t len = utf8CharLen(static_cast<unsigned char>(text[i]));
+        unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == ' ' || c == '\t') {
+            appendSpace();
+        } else if (len >= 3) {  // fullwidth (CJK / fullwidth punctuation)
+            flushWord();
+            tokens.push_back(text.substr(i, len));
+        } else {
+            word += text.substr(i, len);
+        }
+        i += len;
+    }
+    flushWord();
+    return tokens;
+}
+
+Element wrapParagraph(const std::string& text) {
+    auto tokens = splitForWrap(text);
+    Elements items;
+    items.reserve(tokens.size());
+    for (auto& t : tokens) items.push_back(ftxui::text(std::move(t)));
+    return ftxui::flexbox(std::move(items), ftxui::FlexboxConfig());
+}
+
 // Render a markdown table using ftxui::Table: box-drawing borders, bold
 // header, per-column alignment (from the `:---:` / `---:` separator row).
+// Cells soft-wrap (CJK-aware) so nothing clips and resize re-flows the table.
 Element renderTable(const std::vector<std::vector<std::string>>& table,
                     const std::vector<int>& align) {
     if (table.empty() || table[0].empty()) {
@@ -68,12 +153,31 @@ Element renderTable(const std::vector<std::vector<std::string>>& table,
     size_t cols = 0;
     for (const auto& row : table) cols = std::max(cols, row.size());
 
-    ftxui::Table ft(table);
-    ft.SelectAll().Border(ftxui::LIGHT, ftxui::color(borderColor()));
-    ft.SelectRow(0).DecorateCells([&](Element e) {
-        return std::move(e) | ftxui::bold | ftxui::color(styleColor(Style::TableHeader));
-    });
-    ft.SelectRow(0).SeparatorHorizontal(ftxui::LIGHT);
+    // Build element cells so each cell wraps independently.
+    std::vector<std::vector<Element>> grid;
+    grid.reserve(table.size());
+    for (size_t r = 0; r < table.size(); ++r) {
+        std::vector<Element> row;
+        row.reserve(cols);
+        for (size_t c = 0; c < cols; ++c) {
+            std::string cell = (c < table[r].size()) ? table[r][c] : "";
+            Element e = wrapParagraph(cell);
+            if (r == 0) {
+                e = std::move(e) | ftxui::bold | ftxui::color(styleColor(Style::TableHeader));
+            } else {
+                e = std::move(e) | ftxui::color(styleColor(Style::TableCell));
+            }
+            row.push_back(std::move(e));
+        }
+        grid.push_back(std::move(row));
+    }
+
+    ftxui::Table ft(std::move(grid));
+    // Outer box + inner column separators + header/body line. Border() alone
+    // only draws the outer frame; the column dividers need SeparatorVertical.
+    ft.SelectAll().Border(ftxui::DOUBLE, ftxui::color(borderColor()));
+    ft.SelectAll().SeparatorVertical(ftxui::DOUBLE, ftxui::color(borderColor()));
+    ft.SelectRow(0).SeparatorHorizontal(ftxui::DOUBLE, ftxui::color(borderColor()));
 
     // Per-column alignment (mirrors legacy markdown table alignment rules).
     for (size_t c = 0; c < align.size() && c < cols; ++c) {
@@ -93,12 +197,12 @@ Element renderLine(const Line& line) {
 
     const Segment& first = line.segs.front();
     if (first.style == Style::HR) {
-        return ftxui::separator() | ftxui::color(styleColor(Style::HR));
+        return ftxui::separatorHeavy() | ftxui::color(styleColor(Style::HR));
     }
 
-    // Headings are short; keep as-is (bold + theme color).
+    // Headings soft-wrap too (long headings re-flow on resize).
     if (first.style == Style::H1 || first.style == Style::H2 || first.style == Style::H3) {
-        return ftxui::text(first.text) | ftxui::bold | ftxui::color(styleColor(first.style));
+        return wrapParagraph(first.text) | ftxui::bold | ftxui::color(styleColor(first.style));
     }
 
     // Bullet list: marker + soft-wrapped body.
@@ -107,7 +211,7 @@ Element renderLine(const Line& line) {
         for (const auto& seg : line.segs) body += seg.text;
         return ftxui::hbox({
             ftxui::text("• ") | ftxui::color(styleColor(Style::Bullet)),
-            ftxui::paragraph(body),
+            wrapParagraph(body),
         });
     }
 
@@ -115,7 +219,7 @@ Element renderLine(const Line& line) {
     if (first.style == Style::Ordered) {
         std::string body;
         for (const auto& seg : line.segs) body += seg.text;
-        return ftxui::paragraph(body) | ftxui::color(styleColor(Style::Ordered));
+        return wrapParagraph(body) | ftxui::color(styleColor(Style::Ordered));
     }
 
     // Paragraph / quote / inline: soft-wrap, line-level color from the first
@@ -134,11 +238,11 @@ Element renderLine(const Line& line) {
         const auto& T = ThemeManager::instance().current();
         return ftxui::hbox({
             ftxui::text("│ ") | ftxui::color(theme_map::hexToColor(T.mdQuoteBar)),
-            ftxui::paragraph(body) | ftxui::color(styleColor(Style::Quote)),
+            wrapParagraph(body) | ftxui::color(styleColor(Style::Quote)),
         });
     }
 
-    return ftxui::paragraph(body) | ftxui::color(styleColor(lineStyle));
+    return wrapParagraph(body) | ftxui::color(styleColor(lineStyle));
 }
 
 } // namespace

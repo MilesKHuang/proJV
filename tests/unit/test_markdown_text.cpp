@@ -140,3 +140,35 @@ TEST_CASE("markdown: table column alignment") {
     CHECK(lines[0].tableAlign[1] == 2);  // right
     CHECK(lines[0].tableAlign[2] == 1);  // center
 }
+
+TEST_CASE("markdown: table followed by paragraph") {
+    auto lines = parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |\nnext paragraph");
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0].segs[0].style == Style::TableHeader);
+    CHECK(lines[1].segs[0].style == Style::TableCell);
+    CHECK(lines[2].segs[0].style == Style::Normal);
+    CHECK(lines[2].segs[0].text == "next paragraph");
+}
+
+TEST_CASE("markdown: paragraph followed by table") {
+    auto lines = parseMarkdown("intro text\n| A | B |\n|---|---|\n| 1 | 2 |");
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0].segs[0].style == Style::Normal);
+    CHECK(lines[0].segs[0].text == "intro text");
+    CHECK(lines[1].segs[0].style == Style::TableHeader);
+    CHECK(lines[2].segs[0].style == Style::TableCell);
+}
+
+TEST_CASE("markdown: two tables separated by blank line") {
+    auto lines = parseMarkdown("| A |\n|---|\n| 1 |\n\n| B |\n|---|\n| 2 |");
+    REQUIRE(lines.size() == 5);
+    CHECK(lines[0].segs[0].style == Style::TableHeader);
+    CHECK(lines[0].segs[0].text == "A");
+    CHECK(lines[1].segs[0].style == Style::TableCell);
+    CHECK(lines[1].segs[0].text == "1");
+    CHECK(lines[2].segs.empty());  // blank line between tables
+    CHECK(lines[3].segs[0].style == Style::TableHeader);
+    CHECK(lines[3].segs[0].text == "B");
+    CHECK(lines[4].segs[0].style == Style::TableCell);
+    CHECK(lines[4].segs[0].text == "2");
+}
