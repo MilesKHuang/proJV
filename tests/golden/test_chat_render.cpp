@@ -36,8 +36,10 @@ TEST_CASE("chat_view: user and assistant text lines") {
     b.push_back(mk("user", "hello world"));
     b.push_back(mk("assistant", "hi there"));
     std::string out = renderToString(b);
-    CHECK(out.find("You: hello world") != std::string::npos);
-    CHECK(out.find("AI: hi there") != std::string::npos);
+    CHECK(out.find("── You ──") != std::string::npos);
+    CHECK(out.find("hello world") != std::string::npos);
+    CHECK(out.find("── AI ──") != std::string::npos);
+    CHECK(out.find("hi there") != std::string::npos);
 }
 
 TEST_CASE("chat_view: reasoning expanded shows thinking text") {
@@ -50,7 +52,8 @@ TEST_CASE("chat_view: reasoning expanded shows thinking text") {
     b.push_back(think);
 
     std::string out = renderToString(b);
-    CHECK(out.find("Thinking: some thinking") != std::string::npos);
+    CHECK(out.find("── Thinking ──") != std::string::npos);
+    CHECK(out.find("some thinking") != std::string::npos);
 }
 
 TEST_CASE("chat_view: reasoning collapsed hides body") {
@@ -72,8 +75,10 @@ TEST_CASE("chat_view: tool call and result lines") {
     b.push_back(mk("tool_call", "exec_shell: ls"));
     b.push_back(mk("tool_result", "file1"));
     std::string out = renderToString(b);
-    CHECK(out.find("Tool: exec_shell: ls") != std::string::npos);
-    CHECK(out.find("Result: file1") != std::string::npos);
+    CHECK(out.find("── Tool ──") != std::string::npos);
+    CHECK(out.find("exec_shell: ls") != std::string::npos);
+    CHECK(out.find("── Result ──") != std::string::npos);
+    CHECK(out.find("file1") != std::string::npos);
 }
 
 TEST_CASE("chat_view: streaming bubble shows reasoning and content") {
@@ -87,6 +92,8 @@ TEST_CASE("chat_view: streaming bubble shows reasoning and content") {
     ftxui::Render(screen, doc);
     std::string out = screen.ToString();
 
-    CHECK(out.find("Thinking: thinking...") != std::string::npos);
-    CHECK(out.find("AI: partial answer") != std::string::npos);
+    CHECK(out.find("── Thinking ──") != std::string::npos);
+    CHECK(out.find("thinking...") != std::string::npos);
+    CHECK(out.find("── AI ──") != std::string::npos);
+    CHECK(out.find("partial answer") != std::string::npos);
 }

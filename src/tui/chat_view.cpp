@@ -1,9 +1,10 @@
-// proJV TUI -- chat view: render chat history as plain colored text lines.
+// proJV TUI -- chat view: render chat history as labeled, color-coded blocks.
 //
-// Simplification: no bubble boxes/backgrounds (they render poorly in a terminal
-// and overlap). Each message is plain text with a role prefix and a role color.
+// Each message is a block: a colored "── Role ──" label, then the content
+// (markdown for assistant replies, plain text otherwise), then a blank line.
 #include "chat_view.h"
 
+#include "markdown_view.h"
 #include "theme_map.h"
 #include "theme_manager.h"
 
@@ -32,7 +33,7 @@ const Palette& P = g_palette;
 void refreshPalette() {
     const auto& T = ThemeManager::instance().current();
     g_palette.user = theme_map::hexToColor(T.mdH1);
-    g_palette.assistant = theme_map::hexToColor(T.text);
+    g_palette.assistant = theme_map::hexToColor(T.phaseStreaming);
     g_palette.system = theme_map::hexToColor(T.statusIdle);
     g_palette.tool = theme_map::hexToColor(T.toolTitleColor);
     g_palette.toolResult = theme_map::hexToColor(T.toolResultText);
@@ -41,8 +42,8 @@ void refreshPalette() {
     g_palette.compacted = theme_map::hexToColor(T.statusCtxHigh);
 }
 
-Element line(const std::string& prefix, const std::string& text, Color c) {
-    return ftxui::text(prefix + text) | ftxui::color(c);
+Element label(const std::string& text, Color c) {
+    return ftxui::text(text) | ftxui::bold | ftxui::color(c);
 }
 
 } // namespace
@@ -51,40 +52,45 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int scro
     refreshPalette();
 
     int total = static_cast<int>(bubbles.size());
-    int visibleEnd = total - scroll;  // hide the last `scroll` bubbles (scroll up)
+    int visibleEnd = total - scroll;
     if (visibleEnd < 0) visibleEnd = 0;
 
     Elements lines;
-    if (scroll > 0) {
-        lines.push_back(ftxui::text("[ Scrolled up " + std::to_string(scroll) + " - PgDn to return ]")
-            | ftxui::color(P.system));
-    }
     for (int i = 0; i < visibleEnd; ++i) {
         const auto& b = bubbles[i];
+
         if (b.role == "user") {
-            lines.push_back(line("You: ", b.content, P.user));
+            lines.push_back(label("── You ──", P.user));
+            lines.push_back(ftxui::text(b.content));
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {
+            lines.push_back(label("── Thinking ──", P.reasoning));
             if (b.reasoningExpanded) {
-                lines.push_back(line("Thinking: ", b.reasoningText, P.reasoning));
+                lines.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
             } else {
-                lines.push_back(line("Thinking: ", "(collapsed, F9 to expand)", P.reasoning));
+                lines.push_back(ftxui::text("(collapsed, F9 to expand)") | ftxui::dim);
             }
         } else if (b.role == "assistant") {
             if (b.hasReasoning && b.reasoningExpanded) {
-                lines.push_back(line("Thinking: ", b.reasoningText, P.reasoning));
+                lines.push_back(label("── Thinking ──", P.reasoning));
+                lines.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
             }
             if (!b.content.empty()) {
-                lines.push_back(line("AI: ", b.content, P.assistant));
+                lines.push_back(label("── AI ──", P.assistant));
+                lines.push_back(markdown_view::renderMarkdown(b.content));
             }
         } else if (b.role == "tool_call") {
-            lines.push_back(line("Tool: ", b.content, P.tool));
+            lines.push_back(label("── Tool ──", P.tool));
+            lines.push_back(ftxui::text(b.content));
         } else if (b.role == "tool_result") {
-            lines.push_back(line("Result: ", b.content, P.toolResult));
+            lines.push_back(label("── Result ──", P.toolResult));
+            lines.push_back(ftxui::text(b.content) | ftxui::dim);
         } else if (b.role == "system") {
             bool compacted = b.content.find("[Context compacted:") != std::string::npos;
-            lines.push_back(line("System: ", b.content,
-                compacted ? P.compacted : P.system));
+            lines.push_back(label("── System ──", compacted ? P.compacted : P.system));
+            lines.push_back(ftxui::text(b.content) | ftxui::dim);
         }
+
+        lines.push_back(ftxui::text(""));  // blank line between messages
     }
 
     return ftxui::vbox(std::move(lines));
@@ -94,10 +100,12 @@ Element renderStreamingBubble(const AgentStatus& status) {
     refreshPalette();
     Elements lines;
     if (!status.reasoningText.empty()) {
-        lines.push_back(line("Thinking: ", status.reasoningText, P.reasoning));
+        lines.push_back(label("── Thinking ──", P.reasoning));
+        lines.push_back(ftxui::text(status.reasoningText) | ftxui::color(P.reasoningBody));
     }
     if (!status.streamingText.empty()) {
-        lines.push_back(line("AI: ", status.streamingText, P.assistant));
+        lines.push_back(label("── AI ──", P.assistant));
+        lines.push_back(markdown_view::renderMarkdown(status.streamingText));
     }
     return ftxui::vbox(std::move(lines));
 }

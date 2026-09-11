@@ -135,38 +135,37 @@ int main() {
         }
         els.push_back(separator());
 
-        // Main area: chat + TODO side panel.
+        // Chat area (scrollable).
         Element chat = chat_view::renderBubbles(app.bubbles(), app.chatScroll());
 
-        // Live streaming: spinner animates and forces FTXUI to redraw.
+        // Live streaming: append the in-progress bubble.
         if (app.getPhase() == AgentPhase::Streaming) {
             auto st = app.getStatus();
-            chat = vbox({
-                chat,
-                separator(),
-                hbox({
-                    text("Thinking... ") | color(Color::RGB(224, 200, 96)),
-                    spinner(6, 0) | color(Color::RGB(224, 200, 96)),
-                }),
-            });
             if (!st.streamingText.empty() || !st.reasoningText.empty()) {
                 chat = vbox({ chat, chat_view::renderStreamingBubble(st) });
             }
         }
 
-        Element todo = todo_view::renderTodoPanel(app.copyTodoData());
-        els.push_back(hbox({
-            chat | vscroll_indicator | frame | flex,
-            separator(),
-            todo | size(WIDTH, EQUAL, 40),
-        }) | flex);
-
+        els.push_back(chat | vscroll_indicator | frame | flex);
         els.push_back(separator());
-        els.push_back(text(status_line::render(app.getStatus())));
+
+        // Status line + spinner (outside the frame so the animation redraws).
+        {
+            Element statusEl = text(status_line::render(app.getStatus()));
+            if (app.getPhase() == AgentPhase::Streaming) {
+                statusEl = hbox({
+                    statusEl,
+                    text("  "),
+                    spinner(6, 0) | color(Color::RGB(224, 200, 96)),
+                });
+            }
+            els.push_back(statusEl);
+        }
         els.push_back(input_comp->Render());
         els.push_back(separator());
         els.push_back(text(status_bar::render(app.getStatusBarData())) | dim);
-        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · ↑↓/PgUp/PgDn scroll · Enter send · Esc quit") | dim);
+        els.push_back(todo_view::renderTodoPanel(app.copyTodoData()) | size(HEIGHT, LESS_THAN, 6) | frame);
+        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · PgUp/PgDn scroll · Enter send · Esc quit") | dim);
         return vbox(std::move(els));
     });
 
