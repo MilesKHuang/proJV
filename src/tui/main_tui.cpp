@@ -170,7 +170,8 @@ int main() {
     }, [&] { show_open = false; });
     Component theme_menu = theme_editor::makeThemeMenu([&] { show_theme = false; });
     Component theme_editor_dlg = theme_editor::makeThemeEditor([&] { show_theme_editor = false; });
-    Component welcome = config_view::makeWelcome(app);
+    bool showWelcome = !app.hasApiKey();
+    Component welcome = config_view::makeWelcome(app, [&] { showWelcome = false; });
 
     Component with_modals = Modal(Modal(Modal(Modal(Modal(Modal(
         main_renderer, config_dialog, &show_config),
@@ -180,9 +181,10 @@ int main() {
         theme_menu, &show_theme),
         theme_editor_dlg, &show_theme_editor);
 
-    Component root = Renderer([&] {
-        return app.hasApiKey() ? with_modals->Render() : welcome->Render();
-    });
+    // Welcome page is a modal overlay while no API key is configured; once
+    // saved, showWelcome flips false and the main UI takes focus. This keeps
+    // the whole component tree active so keyboard events actually route.
+    Component root = Modal(with_modals, welcome, &showWelcome);
 
     screen.Loop(root);
 

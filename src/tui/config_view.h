@@ -13,7 +13,7 @@ namespace config_view {
 ftxui::Component makeConfigDialog(TuiApp& app, std::function<void()> onClose);
 
 // Welcome page shown when no API key is configured.
-ftxui::Component makeWelcome(TuiApp& app);
+ftxui::Component makeWelcome(TuiApp& app, std::function<void()> onSaved = nullptr);
 
 // Approval dialog shown while the agent awaits tool approval.
 ftxui::Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose);

@@ -4,6 +4,7 @@
 #include "approval_logic.h"
 
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
 
 #include <memory>
@@ -76,14 +77,27 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     });
 }
 
-Component makeWelcome(TuiApp& app) {
+Component makeWelcome(TuiApp& app, std::function<void()> onSaved) {
     auto apiKey = std::make_shared<std::string>("");
     InputOption password;
     password.password = true;
 
     Component input = Input(apiKey.get(), password);
-    Component saveBtn = Button("Save & Connect", [&app, apiKey] {
-        if (!apiKey->empty()) app.saveApiKeyAndConnect(*apiKey);
+    input |= CatchEvent([&](Event e) {
+        if (e == Event::Return) {
+            if (!apiKey->empty()) {
+                app.saveApiKeyAndConnect(*apiKey);
+                if (onSaved) onSaved();
+            }
+            return true;
+        }
+        return false;
+    });
+    Component saveBtn = Button("Save & Connect", [&app, apiKey, onSaved] {
+        if (!apiKey->empty()) {
+            app.saveApiKeyAndConnect(*apiKey);
+            if (onSaved) onSaved();
+        }
     });
 
     auto container = Container::Vertical({ input, saveBtn });
