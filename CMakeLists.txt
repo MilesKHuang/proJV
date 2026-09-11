@@ -7,7 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ── Paths ────────────────────────────────────────────────────────────────
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
-set(IMGUI_DIR    "${EXTERNAL_DIR}/imgui")
 set(SRC_DIR      "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 # ── SQLiteCpp (both platforms, from source) ──────────────────────────────
@@ -16,16 +15,8 @@ add_subdirectory(
     "${CMAKE_BINARY_DIR}/SQLiteCpp"
 )
 
-# ── GLFW (both platforms, from source) ───────────────────────────────────
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
-add_subdirectory(${EXTERNAL_DIR}/glfw)
-
 # ── Common sources (platform-agnostic business logic) ────────────────────
 set(COMMON_SOURCES
-    ${SRC_DIR}/gui_backend.cpp
     ${SRC_DIR}/client/models.cpp
     ${SRC_DIR}/client/deepseek.cpp
     ${SRC_DIR}/core/config.cpp
@@ -42,17 +33,10 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
-    ${SRC_DIR}/ui/app.cpp
-    ${SRC_DIR}/ui/render_chat.cpp
-    ${SRC_DIR}/ui/render_settings.cpp
-    ${SRC_DIR}/ui/markdown_render.cpp
-    ${SRC_DIR}/ui/theme.cpp
-    ${SRC_DIR}/ui/theme_popup.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
 set(HEADERS
-    ${SRC_DIR}/gui_backend.h
     ${SRC_DIR}/client/models.h
     ${SRC_DIR}/client/deepseek.h
     ${SRC_DIR}/core/config.h
@@ -123,19 +107,15 @@ add_library(proJV_lib STATIC ${COMMON_SOURCES} ${PLATFORM_SOURCES} ${HEADERS})
 
 # Common includes
 target_include_directories(proJV_lib PRIVATE
-    ${IMGUI_DIR}
-    ${IMGUI_DIR}/backends
     ${EXTERNAL_DIR}
     ${SRC_DIR}
     ${SRC_DIR}/client
     ${CURL_INCLUDE_DIR}
-    ${EXTERNAL_DIR}/glfw/include
 )
 
 # ── Platform: Windows ────────────────────────────────────────────────────
 if(WIN32)
     target_link_libraries(proJV_lib PRIVATE
-        opengl32
         crypt32 ole32 shell32 comctl32 comdlg32 gdi32 user32 dbghelp advapi32
         ${CURL_LIBRARY}
         SQLiteCpp
@@ -150,67 +130,13 @@ if(WIN32)
 
 # ── Platform: Linux ──────────────────────────────────────────────────────
 else()
-    find_package(OpenGL REQUIRED)
-    find_package(X11 REQUIRED)
     target_link_libraries(proJV_lib PRIVATE
-        OpenGL::GL
         ${CURL_LIBRARY}
         SQLiteCpp
         pthread
         dl
-        ${X11_LIBRARIES}
     )
-    target_include_directories(proJV_lib PRIVATE ${X11_INCLUDE_DIR})
 endif()
-
-# ── GUI executable ───────────────────────────────────────────────────────
-if(WIN32)
-    set(PROJV_EXE proJV)
-    add_executable(proJV WIN32 ${SRC_DIR}/main.cpp)
-else()
-    set(PROJV_EXE proJV_linux)
-    add_executable(proJV_linux ${SRC_DIR}/main.cpp)
-endif()
-
-target_include_directories(${PROJV_EXE} PRIVATE
-    ${IMGUI_DIR}
-    ${IMGUI_DIR}/backends
-    ${EXTERNAL_DIR}
-    ${SRC_DIR}
-    ${SRC_DIR}/client
-    ${EXTERNAL_DIR}/glfw/include
-)
-target_link_libraries(${PROJV_EXE} PRIVATE
-    proJV_lib
-    glfw
-)
-
-if(WIN32)
-    target_compile_definitions(${PROJV_EXE} PRIVATE
-        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
-    )
-    if(MSVC)
-        set_target_properties(${PROJV_EXE} PROPERTIES
-            LINK_FLAGS "/ENTRY:mainCRTStartup"
-        )
-    endif()
-endif()
-
-# ── imgui sources (OpenGL3 + GLFW backends, both platforms) ──────────────
-target_sources(${PROJV_EXE} PRIVATE
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_demo.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
-)
-target_include_directories(${PROJV_EXE} PRIVATE ${IMGUI_DIR}/backends)
-
-# ── Copy TTC font to projv_files/fonts (both platforms share this font) ──
-file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/fonts")
-file(COPY "${CMAKE_SOURCE_DIR}/assets/msyh.ttc" DESTINATION "${CMAKE_SOURCE_DIR}/projv_files/fonts")
 
 # ── FTXUI TUI backend (frontend migration) ───────────────────────────────
 set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -232,6 +158,7 @@ add_executable(proJV_tui
     ${SRC_DIR}/tui/todo_view.cpp
     ${SRC_DIR}/tui/approval_logic.cpp
     ${SRC_DIR}/tui/config_view.cpp
+    ${SRC_DIR}/tui/theme_map.cpp
 )
 target_include_directories(proJV_tui PRIVATE
     ${EXTERNAL_DIR}/FTXUI-7.0.3/include

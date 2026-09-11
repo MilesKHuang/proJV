@@ -1,5 +1,6 @@
 // proJV TUI -- TODO panel renderer implementation.
 #include "todo_view.h"
+#include "theme_map.h"
 
 #include <sstream>
 #include <string>
@@ -13,12 +14,12 @@ using ftxui::Elements;
 namespace {
 // Approximate legacy theme colors (Phase 9 wires these to ThemeColors).
 struct Palette {
-    Color title = Color::RGB(224, 200, 96);
-    Color pending = Color::RGB(160, 160, 184);
-    Color done = Color::RGB(64, 200, 128);
-    Color inProgress = Color::RGB(224, 136, 48);
-    Color open = Color::RGB(104, 104, 136);
-    Color empty = Color::RGB(56, 56, 88);
+    Color title = theme_map::hexToColor("#E0C860");
+    Color pending = theme_map::hexToColor("#A0A0B8");
+    Color done = theme_map::hexToColor("#40C880");
+    Color inProgress = theme_map::hexToColor("#E08830");
+    Color open = theme_map::hexToColor("#686888");
+    Color empty = theme_map::hexToColor("#383858");
 };
 const Palette P;
 } // namespace

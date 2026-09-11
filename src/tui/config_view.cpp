@@ -140,4 +140,25 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
     });
 }
 
+Component makePathDialog(const std::string& title,
+                         std::function<void(const std::string&)> onSubmit,
+                         std::function<void()> onCancel) {
+    auto path = std::make_shared<std::string>("");
+    Component input = Input(path.get());
+    Component okBtn = Button("OK", [path, onSubmit] { onSubmit(*path); });
+    Component cancelBtn = Button("Cancel", onCancel);
+    auto container = Container::Vertical({
+        input,
+        Container::Horizontal({ okBtn, cancelBtn }),
+    });
+    return Renderer(container, [=] {
+        return vbox({
+            text(title) | bold,
+            separator(),
+            input->Render() | size(WIDTH, EQUAL, 50),
+            hbox({ okBtn->Render(), text("  "), cancelBtn->Render() }),
+        }) | border;
+    });
+}
+
 } // namespace config_view

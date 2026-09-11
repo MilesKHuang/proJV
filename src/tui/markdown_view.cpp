@@ -1,6 +1,7 @@
 // proJV TUI -- Markdown FTXUI renderer implementation.
 #include "markdown_view.h"
 #include "markdown_text.h"
+#include "theme_map.h"
 
 #include <string>
 
@@ -17,22 +18,22 @@ namespace {
 
 Color styleColor(Style s) {
     switch (s) {
-        case Style::Bold:   return Color::RGB(224, 184, 64);
-        case Style::Italic: return Color::RGB(112, 184, 216);
-        case Style::Code:   return Color::RGB(224, 120, 80);
-        case Style::Link:   return Color::RGB(96, 144, 224);
-        case Style::H1:     return Color::RGB(224, 184, 64);
-        case Style::H2:     return Color::RGB(224, 168, 64);
-        case Style::H3:     return Color::RGB(208, 192, 112);
-        case Style::Quote:  return Color::RGB(136, 136, 160);
-        case Style::Bullet: return Color::RGB(112, 168, 200);
-        case Style::Ordered:return Color::RGB(112, 168, 200);
-        case Style::HR:     return Color::RGB(48, 48, 72);
-        case Style::CodeBlock:   return Color::RGB(224, 120, 80);
-        case Style::TableHeader: return Color::RGB(224, 184, 64);
-        case Style::TableCell:   return Color::RGB(212, 212, 224);
+        case Style::Bold:   return theme_map::hexToColor("#E0B840");
+        case Style::Italic: return theme_map::hexToColor("#70B8D8");
+        case Style::Code:   return theme_map::hexToColor("#E07850");
+        case Style::Link:   return theme_map::hexToColor("#6090E0");
+        case Style::H1:     return theme_map::hexToColor("#E0B840");
+        case Style::H2:     return theme_map::hexToColor("#E0A840");
+        case Style::H3:     return theme_map::hexToColor("#D0C070");
+        case Style::Quote:  return theme_map::hexToColor("#8888A0");
+        case Style::Bullet: return theme_map::hexToColor("#70A8C8");
+        case Style::Ordered:return theme_map::hexToColor("#70A8C8");
+        case Style::HR:     return theme_map::hexToColor("#303048");
+        case Style::CodeBlock:   return theme_map::hexToColor("#E07850");
+        case Style::TableHeader: return theme_map::hexToColor("#E0B840");
+        case Style::TableCell:   return theme_map::hexToColor("#D4D4E0");
         case Style::Normal:
-        default:            return Color::RGB(212, 212, 224);
+        default:            return theme_map::hexToColor("#D4D4E0");
     }
 }
 

@@ -48,6 +48,12 @@ public:
                         const std::string& compiler, const std::string& python);
     void approveTool(int action) { if (agent) agent->approveTool(action); }
 
+    // Session management (new chat / switch dialog / save copy).
+    void newChat();
+    void switchToDialog(const std::string& dbPath);
+    bool saveDialogToFile(const std::string& filename);
+    const std::string& currentSessionPath() const { return storage.currentPath(); }
+
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
     void syncChatFromAgent();
 

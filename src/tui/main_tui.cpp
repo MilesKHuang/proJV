@@ -31,6 +31,8 @@ int main() {
     std::string input;
     bool show_config = false;
     bool show_approval = false;
+    bool show_save = false;
+    bool show_open = false;
 
     // Agent turns run on a background thread; post a Custom event so the
     // FTXUI loop redraws when a turn completes.
@@ -54,6 +56,18 @@ int main() {
         }
         if (e == Event::F2) {
             show_config = true;
+            return true;
+        }
+        if (e == Event::F3) {
+            app.newChat();
+            return true;
+        }
+        if (e == Event::F4) {
+            show_save = true;
+            return true;
+        }
+        if (e == Event::F5) {
+            show_open = true;
             return true;
         }
         return false;
@@ -106,10 +120,21 @@ int main() {
 
     Component config_dialog = config_view::makeConfigDialog(app, [&] { show_config = false; });
     Component approval_dialog = config_view::makeApprovalDialog(app, [&] { show_approval = false; });
+    Component save_dialog = config_view::makePathDialog("Save Chat As (.db)", [&](const std::string& p) {
+        app.saveDialogToFile(p);
+        show_save = false;
+    }, [&] { show_save = false; });
+    Component open_dialog = config_view::makePathDialog("Open Chat (.db)", [&](const std::string& p) {
+        app.switchToDialog(p);
+        show_open = false;
+    }, [&] { show_open = false; });
     Component welcome = config_view::makeWelcome(app);
 
-    Component with_modals = Modal(Modal(main_renderer, config_dialog, &show_config),
-                                  approval_dialog, &show_approval);
+    Component with_modals = Modal(Modal(Modal(Modal(
+        main_renderer, config_dialog, &show_config),
+        approval_dialog, &show_approval),
+        save_dialog, &show_save),
+        open_dialog, &show_open);
 
     Component root = Renderer([&] {
         return app.hasApiKey() ? with_modals->Render() : welcome->Render();

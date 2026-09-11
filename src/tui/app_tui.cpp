@@ -228,3 +228,62 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
     agent->setRequestParams(config.maxTokens, config.temperature);
     config.loadError.clear();
 }
+
+void TuiApp::newChat() {
+    if (!agent) return;
+    agent->cancel();
+    if (storage.isOpen()) storage.closeDatabase();
+    agent->setStorage(nullptr);
+    agent->clearSession();
+    chatHistory.clear();
+    lastMessageId_ = 0;
+    totalPromptTokens_.store(0, std::memory_order_relaxed);
+    totalCompletionTokens_.store(0, std::memory_order_relaxed);
+    {
+        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        agent->setSystemPrompt(sp);
+        agent->addPersistedMessage(Message::System(sp));
+    }
+    buildBubblesFromMessages();
+}
+
+void TuiApp::switchToDialog(const std::string& dbPath) {
+    if (!agent) return;
+    agent->cancel();
+
+    std::string oldPath = storage.currentPath();
+    agent->clearSession();
+    chatHistory.clear();
+    lastMessageId_ = 0;
+
+    storage.closeDatabase();
+    if (!storage.openDatabase(dbPath)) {
+        debugLog("[TuiApp] Failed to open, reverting to previous database");
+        if (!storage.openDatabase(oldPath)) {
+            storage.createDatabase(sessionsDir_ + "/recovery.db");
+        }
+    }
+    agent->setStorage(&storage);
+    try {
+        agent->loadFromStorage();
+    } catch (const std::exception& e) {
+        debugLogf("[TuiApp] loadFromStorage exception: %s", e.what());
+    }
+    buildBubblesFromMessages();
+}
+
+bool TuiApp::saveDialogToFile(const std::string& filename) {
+    if (!agent || filename.empty()) return false;
+    std::string srcPath = storage.currentPath();
+    if (srcPath.empty()) return false;
+
+    storage.closeDatabase();
+    std::error_code ec;
+    std::filesystem::copy_file(srcPath, filename,
+        std::filesystem::copy_options::overwrite_existing, ec);
+    if (!storage.openDatabase(srcPath)) {
+        debugLog("[TuiApp] Reopen failed, creating recovery database");
+        storage.createDatabase(srcPath);
+    }
+    return !ec;
+}

@@ -1,6 +1,7 @@
 // proJV TUI -- chat view implementation (1:1 port of renderChatArea rendering).
 #include "chat_view.h"
 #include "markdown_view.h"
+#include "theme_map.h"
 
 #include <string>
 
@@ -14,19 +15,19 @@ using ftxui::Elements;
 // (ImGui hex -> 8-bit-ish RGB; kept in one place for later replacement.)
 namespace {
 struct Palette {
-    Color bubbleUser = Color::RGB(30, 40, 64);
-    Color bubbleAssistant = Color::RGB(30, 40, 30);
-    Color bubbleSystem = Color::RGB(24, 24, 32);
-    Color bubbleDefault = Color::RGB(20, 20, 28);
-    Color bubbleCompacted = Color::RGB(42, 36, 24);
-    Color toolBg = Color::RGB(28, 28, 42);
-    Color toolTitle = Color::RGB(224, 160, 64);
-    Color toolResult = Color::RGB(160, 160, 184);
-    Color reasoningBorder = Color::RGB(72, 72, 128);
-    Color reasoningText = Color::RGB(160, 160, 224);
-    Color reasoningBody = Color::RGB(144, 144, 208);
-    Color compactedLabel = Color::RGB(224, 136, 48);
-    Color statusIdle = Color::RGB(104, 104, 136);
+    Color bubbleUser = theme_map::hexToColor("#1E2840");
+    Color bubbleAssistant = theme_map::hexToColor("#1E281E");
+    Color bubbleSystem = theme_map::hexToColor("#181820");
+    Color bubbleDefault = theme_map::hexToColor("#14141C");
+    Color bubbleCompacted = theme_map::hexToColor("#2A2418");
+    Color toolBg = theme_map::hexToColor("#1C1C2A");
+    Color toolTitle = theme_map::hexToColor("#E0A040");
+    Color toolResult = theme_map::hexToColor("#A0A0B8");
+    Color reasoningBorder = theme_map::hexToColor("#484880");
+    Color reasoningText = theme_map::hexToColor("#A0A0E0");
+    Color reasoningBody = theme_map::hexToColor("#9090D0");
+    Color compactedLabel = theme_map::hexToColor("#E08830");
+    Color statusIdle = theme_map::hexToColor("#686888");
 };
 const Palette P;
 
