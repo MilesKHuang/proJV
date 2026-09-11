@@ -3,6 +3,8 @@
 
 #include "core/prompts.h"
 #include "core/config.h"
+#include "core/project_context.h"
+#include "tui/theme_manager.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
 #include "tools/md_file_tool.h"
@@ -101,10 +103,22 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     // Inject system prompt as first session message.
     agent->addPersistedMessage(Message::System(loadPromptFile(promptFiles_[activePromptIndex_])));
 
-    // NOTE(Phase 10): project-context injection (buildProjectContext) lives in
-    // legacy ui/app.cpp as a static helper. It is a system message (not rendered),
-    // so it does not affect bubble rendering; extract it to core/ and inject here
-    // before wiring send/streaming. Tracked as TODO in the migration plan.
+    // Inject project context (directory structure) so the LLM knows where
+    // files actually live instead of guessing wrong paths.
+    {
+        std::string ctx = buildProjectContext(config.workspacePath);
+        if (!ctx.empty()) {
+            agent->addPersistedMessage(Message::System(ctx));
+            debugLogf("[TuiApp] Injected project context (%zu chars)", ctx.size());
+        }
+    }
+
+    // Theme: load from projv_files/theme/, prefer config.themeName.
+    ThemeManager::instance().init(getThemeDir(), config.themeName);
+    ThemeManager::instance().onThemeChanged = [this](const std::string& name) {
+        config.themeName = name;
+        saveConfig(config);
+    };
 
     buildBubblesFromMessages();
     return true;

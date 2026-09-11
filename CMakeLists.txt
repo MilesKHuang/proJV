@@ -33,6 +33,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
+    ${SRC_DIR}/core/project_context.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -159,6 +160,10 @@ add_executable(proJV_tui
     ${SRC_DIR}/tui/approval_logic.cpp
     ${SRC_DIR}/tui/config_view.cpp
     ${SRC_DIR}/tui/theme_map.cpp
+    ${SRC_DIR}/tui/theme_colors.cpp
+    ${SRC_DIR}/tui/theme_manager.cpp
+    ${SRC_DIR}/tui/theme_editor_view.cpp
+    ${SRC_DIR}/tui/clipboard.cpp
 )
 target_include_directories(proJV_tui PRIVATE
     ${EXTERNAL_DIR}/FTXUI-7.0.3/include

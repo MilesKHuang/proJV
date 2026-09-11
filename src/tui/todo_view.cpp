@@ -1,6 +1,7 @@
 // proJV TUI -- TODO panel renderer implementation.
 #include "todo_view.h"
 #include "theme_map.h"
+#include "theme_manager.h"
 
 #include <sstream>
 #include <string>
@@ -14,17 +15,30 @@ using ftxui::Elements;
 namespace {
 // Approximate legacy theme colors (Phase 9 wires these to ThemeColors).
 struct Palette {
-    Color title = theme_map::hexToColor("#E0C860");
-    Color pending = theme_map::hexToColor("#A0A0B8");
-    Color done = theme_map::hexToColor("#40C880");
-    Color inProgress = theme_map::hexToColor("#E08830");
-    Color open = theme_map::hexToColor("#686888");
-    Color empty = theme_map::hexToColor("#383858");
+    Color title;
+    Color pending;
+    Color done;
+    Color inProgress;
+    Color open;
+    Color empty;
 };
-const Palette P;
+
+Palette g_palette;
+const Palette& P = g_palette;
+
+void refreshPalette() {
+    const auto& T = ThemeManager::instance().current();
+    g_palette.title = theme_map::hexToColor(T.todoTitle);
+    g_palette.pending = theme_map::hexToColor(T.todoPending);
+    g_palette.done = theme_map::hexToColor(T.todoDone);
+    g_palette.inProgress = theme_map::hexToColor(T.todoInProgress);
+    g_palette.open = theme_map::hexToColor(T.todoOpen);
+    g_palette.empty = theme_map::hexToColor(T.todoEmpty);
+}
 } // namespace
 
 Element renderTodoPanel(const TodoData& todo) {
+    refreshPalette();
     Elements els;
     els.push_back(ftxui::text("TODO") | ftxui::color(P.title));
     els.push_back(ftxui::separator());

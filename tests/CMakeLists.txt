@@ -9,6 +9,7 @@ set(TEST_SOURCES
     unit/test_status_line.cpp
     unit/test_approval_logic.cpp
     unit/test_theme_map.cpp
+    unit/test_theme_colors.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
@@ -21,6 +22,8 @@ set(TEST_SOURCES
     ${SRC_DIR}/tui/todo_view.cpp
     ${SRC_DIR}/tui/approval_logic.cpp
     ${SRC_DIR}/tui/theme_map.cpp
+    ${SRC_DIR}/tui/theme_colors.cpp
+    ${SRC_DIR}/tui/theme_manager.cpp
 )
 
 add_executable(proJV_tests ${TEST_SOURCES})

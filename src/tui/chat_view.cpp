@@ -2,6 +2,7 @@
 #include "chat_view.h"
 #include "markdown_view.h"
 #include "theme_map.h"
+#include "theme_manager.h"
 
 #include <string>
 
@@ -15,21 +16,40 @@ using ftxui::Elements;
 // (ImGui hex -> 8-bit-ish RGB; kept in one place for later replacement.)
 namespace {
 struct Palette {
-    Color bubbleUser = theme_map::hexToColor("#1E2840");
-    Color bubbleAssistant = theme_map::hexToColor("#1E281E");
-    Color bubbleSystem = theme_map::hexToColor("#181820");
-    Color bubbleDefault = theme_map::hexToColor("#14141C");
-    Color bubbleCompacted = theme_map::hexToColor("#2A2418");
-    Color toolBg = theme_map::hexToColor("#1C1C2A");
-    Color toolTitle = theme_map::hexToColor("#E0A040");
-    Color toolResult = theme_map::hexToColor("#A0A0B8");
-    Color reasoningBorder = theme_map::hexToColor("#484880");
-    Color reasoningText = theme_map::hexToColor("#A0A0E0");
-    Color reasoningBody = theme_map::hexToColor("#9090D0");
-    Color compactedLabel = theme_map::hexToColor("#E08830");
-    Color statusIdle = theme_map::hexToColor("#686888");
+    Color bubbleUser;
+    Color bubbleAssistant;
+    Color bubbleSystem;
+    Color bubbleDefault;
+    Color bubbleCompacted;
+    Color toolBg;
+    Color toolTitle;
+    Color toolResult;
+    Color reasoningBorder;
+    Color reasoningText;
+    Color reasoningBody;
+    Color compactedLabel;
+    Color statusIdle;
 };
-const Palette P;
+
+Palette g_palette;
+const Palette& P = g_palette;
+
+void refreshPalette() {
+    const auto& T = ThemeManager::instance().current();
+    g_palette.bubbleUser = theme_map::hexToColor(T.bubbleUserBg);
+    g_palette.bubbleAssistant = theme_map::hexToColor(T.bubbleAssistantBg);
+    g_palette.bubbleSystem = theme_map::hexToColor(T.bubbleSystemBg);
+    g_palette.bubbleDefault = theme_map::hexToColor(T.bubbleDefaultBg);
+    g_palette.bubbleCompacted = theme_map::hexToColor(T.bubbleCompactedBg);
+    g_palette.toolBg = theme_map::hexToColor(T.toolBg);
+    g_palette.toolTitle = theme_map::hexToColor(T.toolTitleColor);
+    g_palette.toolResult = theme_map::hexToColor(T.toolResultText);
+    g_palette.reasoningBorder = theme_map::hexToColor(T.reasoningBorder);
+    g_palette.reasoningText = theme_map::hexToColor(T.reasoningTextColor);
+    g_palette.reasoningBody = theme_map::hexToColor(T.reasoningBodyText);
+    g_palette.compactedLabel = theme_map::hexToColor(T.todoInProgress);
+    g_palette.statusIdle = theme_map::hexToColor(T.statusIdle);
+}
 
 Element renderNormalBubble(const bubble_model::Bubble& b) {
     bool isCompacted = (b.role == "system" &&
@@ -102,6 +122,7 @@ Element renderToolBubble(const std::string& toolTitle, const std::string& merged
 } // namespace
 
 Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
+    refreshPalette();
     constexpr int kMaxVisibleBubbles = 100;
     int totalBubbles = static_cast<int>(bubbles.size());
     int startIdx = 0;
@@ -157,10 +178,15 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
         els.push_back(renderNormalBubble(bubble));
     }
 
+    // Focus anchor at the bottom so the FTXUI frame auto-scrolls to the latest
+    // message (Tab focus stays on the input component; this is an Element focus).
+    els.push_back(ftxui::text("") | ftxui::focus);
+
     return ftxui::vbox(std::move(els));
 }
 
 Element renderStreamingBubble(const AgentStatus& status) {
+    refreshPalette();
     Elements els;
 
     // Live reasoning card (expanded while streaming).

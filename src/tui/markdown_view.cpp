@@ -2,6 +2,7 @@
 #include "markdown_view.h"
 #include "markdown_text.h"
 #include "theme_map.h"
+#include "theme_manager.h"
 
 #include <string>
 
@@ -17,23 +18,24 @@ using markdown_text::Style;
 namespace {
 
 Color styleColor(Style s) {
+    const auto& T = ThemeManager::instance().current();
     switch (s) {
-        case Style::Bold:   return theme_map::hexToColor("#E0B840");
-        case Style::Italic: return theme_map::hexToColor("#70B8D8");
-        case Style::Code:   return theme_map::hexToColor("#E07850");
-        case Style::Link:   return theme_map::hexToColor("#6090E0");
-        case Style::H1:     return theme_map::hexToColor("#E0B840");
-        case Style::H2:     return theme_map::hexToColor("#E0A840");
-        case Style::H3:     return theme_map::hexToColor("#D0C070");
-        case Style::Quote:  return theme_map::hexToColor("#8888A0");
-        case Style::Bullet: return theme_map::hexToColor("#70A8C8");
-        case Style::Ordered:return theme_map::hexToColor("#70A8C8");
-        case Style::HR:     return theme_map::hexToColor("#303048");
-        case Style::CodeBlock:   return theme_map::hexToColor("#E07850");
-        case Style::TableHeader: return theme_map::hexToColor("#E0B840");
-        case Style::TableCell:   return theme_map::hexToColor("#D4D4E0");
+        case Style::Bold:   return theme_map::hexToColor(T.mdBold);
+        case Style::Italic: return theme_map::hexToColor(T.mdItalic);
+        case Style::Code:   return theme_map::hexToColor(T.mdCode);
+        case Style::Link:   return theme_map::hexToColor(T.mdLink);
+        case Style::H1:     return theme_map::hexToColor(T.mdH1);
+        case Style::H2:     return theme_map::hexToColor(T.mdH2);
+        case Style::H3:     return theme_map::hexToColor(T.mdH3);
+        case Style::Quote:  return theme_map::hexToColor(T.mdQuote);
+        case Style::Bullet: return theme_map::hexToColor(T.mdBullet);
+        case Style::Ordered:return theme_map::hexToColor(T.mdBullet);
+        case Style::HR:     return theme_map::hexToColor(T.mdHR);
+        case Style::CodeBlock:   return theme_map::hexToColor(T.mdCode);
+        case Style::TableHeader: return theme_map::hexToColor(T.mdTableHdr);
+        case Style::TableCell:   return theme_map::hexToColor(T.text);
         case Style::Normal:
-        default:            return theme_map::hexToColor("#D4D4E0");
+        default:            return theme_map::hexToColor(T.text);
     }
 }
 
