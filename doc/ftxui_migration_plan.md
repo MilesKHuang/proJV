@@ -623,3 +623,58 @@ R2 修复（Phase 0）单独提交并立即 push，与后续迁移解耦，避�
 - [ ] 全量 `proJV_tests` + golden 通过。
 - [ ] 删除旧 `ui/` 后无遗留引用（`grep ImGui/GLFW` 为空）。
 - [ ] §19 的 1:1 代码校验报告已输出并逐项勾选。
+
+---
+
+## §19 执行结果：1:1 代码校验报告（2026-09-11）
+
+### 校验方法
+
+- 逐条对照附录 A 行为清单，核对 `src/tui/` 实现。
+- 关键函数级对照（旧 `src/ui/` ↔ 新 `src/tui/`）。
+- `grep ImGui|GLFW|imgui` 残留扫描（后端 + 新前端 + CMake）。
+
+### 已覆盖（✅）
+
+| 行为 | 旧实现 | 新实现 | 测试 |
+|------|--------|--------|------|
+| 消息→气泡派生（system 过滤/tool 顺序/reasoning 前置） | `deriveBubblesFromMessage` | `bubble_model::deriveBubbles` | `test_bubble_model.cpp` |
+| 工具消息格式化（参数提取/tool_result 摘要） | `formatToolMsg` | `bubble_model::formatToolMsg` | `test_bubble_model.cpp` |
+| 气泡渲染（tool 合并/reasoning 卡片/compacted/窗口） | `renderChatArea` | `chat_view::renderBubbles` | `test_chat_render.cpp` |
+| Markdown 解析（行内/标题/列表/表格/代码块/引用/HR） | `markdown_render.cpp` | `markdown_text::parseMarkdown` | `test_markdown_text.cpp` |
+| 状态行文本 | `renderInputArea` 状态行 | `status_line::render` | `test_status_line.cpp` |
+| 状态栏文本 | `renderStatusBar` | `status_bar::render` | `test_status_line.cpp` |
+| TODO 面板 | `renderTodoPanel` | `todo_view::renderTodoPanel` | `test_todo_render.cpp` |
+| 配置弹窗/欢迎页/审批弹窗 | `renderConfigPopup`/`renderWelcomePage`/`renderToolApprovalDialog` | `config_view` | `test_approval_logic.cpp` |
+| 审批删除命令提取 | 内联在审批弹窗 | `approval_logic::extractDeleteFiles` | `test_approval_logic.cpp` |
+| hex 颜色解析 | `ThemeColors::toVec4` | `theme_map::hexToColor` | `test_theme_map.cpp` |
+| SSE 流式解析 | `parseSSEChunk` | 复用（后端未动） | `test_deepseek_sse.cpp` |
+| R2 上下文清空 | `clearSession`（已修） | 复用 | `test_agent_request.cpp` |
+| 流式实时显示 | 缺失（仅字符计数） | `renderStreamingBubble` + `BATCH_INTERVAL=1` | `test_chat_render.cpp`（streaming 用例） |
+
+### 行为差异（⚠️，需人工验收，见附录 C）
+
+1. **自动滚动**（`SetScrollHereY`）：tui 未实现 yframe 滚动到底。→ C.2。
+2. **相位指示器**（`[Agent: Phase]`）：tui 未显示该行，等价信息在状态行/状态栏。→ C.5。
+3. **菜单栏**（File/Settings/Theme）：tui 改为 F2(配置)/F3(New)/F4(Save)/F5(Open)。→ C.8。
+4. **主题切换 + 逐色编辑器**：未实现（`theme_popup.cpp` 116 处）。→ C.7，§17 R5。
+5. **复制按钮**：未实现（无剪贴板直达）。→ §17 D3。
+6. **文件对话框**：改为终端输入路径。→ §17 D6。
+7. **project context 注入**：`buildProjectContext` 未提取，初始化未注入。→ 见 `app_tui.cpp` TODO 注释。
+
+### 未覆盖（❌）
+
+- 主题编辑器（`theme_popup.cpp`）——列为 C.7 手工项，本期不实现。
+- 会话 Save As/Open 的文件选择对话框（系统弹窗）——改为终端输入路径（D6）。
+
+### 残留引用扫描
+
+- `src/tui/`：无 ImGui/GLFW 代码依赖（仅迁移说明注释）。
+- 后端（`core/`、`client/`、`tools/`、`platform/`）：无 ImGui 依赖。
+- `CMakeLists.txt`：无 imgui/glfw/OpenGL 目标残留。
+
+### 测试覆盖
+
+- 47 测试用例 / 154 断言全绿（doctest）。
+- 单元：R2、气泡派生、Markdown、SSE、状态、审批、颜色。
+- golden：FTXUI smoke、聊天渲染、TODO 面板。
