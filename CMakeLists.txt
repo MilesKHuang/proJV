@@ -212,6 +212,45 @@ target_include_directories(${PROJV_EXE} PRIVATE ${IMGUI_DIR}/backends)
 file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/fonts")
 file(COPY "${CMAKE_SOURCE_DIR}/assets/msyh.ttc" DESTINATION "${CMAKE_SOURCE_DIR}/projv_files/fonts")
 
+# ── FTXUI TUI backend (frontend migration) ───────────────────────────────
+set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(${EXTERNAL_DIR}/FTXUI-7.0.3 ${CMAKE_BINARY_DIR}/ftxui)
+
+add_executable(proJV_tui
+    ${SRC_DIR}/tui/main_tui.cpp
+    ${SRC_DIR}/tui/terminal.cpp
+    ${SRC_DIR}/tui/app_tui.cpp
+    ${SRC_DIR}/tui/chat_view.cpp
+    ${SRC_DIR}/tui/bubble_model.cpp
+    ${SRC_DIR}/tui/markdown_text.cpp
+    ${SRC_DIR}/tui/markdown_view.cpp
+    ${SRC_DIR}/tui/status_line.cpp
+    ${SRC_DIR}/tui/status_bar.cpp
+    ${SRC_DIR}/tui/todo_view.cpp
+    ${SRC_DIR}/tui/approval_logic.cpp
+    ${SRC_DIR}/tui/config_view.cpp
+)
+target_include_directories(proJV_tui PRIVATE
+    ${EXTERNAL_DIR}/FTXUI-7.0.3/include
+    ${EXTERNAL_DIR}
+    ${SRC_DIR}
+    ${SRC_DIR}/client
+    ${SRC_DIR}/tui
+)
+target_link_libraries(proJV_tui PRIVATE proJV_lib ftxui::component)
+
+if(WIN32)
+    target_compile_definitions(proJV_tui PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+    )
+endif()
+if(MSVC)
+    target_compile_options(proJV_tui PRIVATE /utf-8)
+endif()
+
 # ── Tests ────────────────────────────────────────────────────────────────
 option(PROJV_BUILD_TESTS "Build proJV unit tests" ON)
 if(PROJV_BUILD_TESTS)

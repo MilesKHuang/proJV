@@ -401,7 +401,10 @@ void Agent::updateSnapshot() {
 StreamCallbacks Agent::makeCallbacks() {
     StreamCallbacks cb; Agent* self = this;
     auto batchCnt = std::make_shared<int>(0);
-    static constexpr int BATCH_INTERVAL = 16; // update UI every ~16 tokens to reduce mutex contention
+    // R1: flush every token so the TUI streams reasoning/content in real time.
+    // (Legacy batched by 16 to reduce mutex contention; the UI reads the
+    // snapshot at most once per frame, far slower than token arrival.)
+    static constexpr int BATCH_INTERVAL = 1;
     cb.onText = [self, batchCnt](const std::string& t) {
         self->currentContent_ += t;
         if (++(*batchCnt) % BATCH_INTERVAL == 0) {
