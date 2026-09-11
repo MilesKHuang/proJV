@@ -172,3 +172,23 @@ TEST_CASE("markdown: two tables separated by blank line") {
     CHECK(lines[4].segs[0].style == Style::TableCell);
     CHECK(lines[4].segs[0].text == "2");
 }
+
+TEST_CASE("markdown: table cells with inline styles keep one entry per cell") {
+    auto lines = parseMarkdown(
+        "| 名称 | 描述 |\n|---|---|\n| 工具 | 使用 `tool.json` + `main.py` |");
+    REQUIRE(lines.size() == 2);
+
+    // Header: 2 cells.
+    REQUIRE(lines[0].cells.size() == 2);
+    CHECK(lines[0].cells[0][0].text == "名称");
+    CHECK(lines[0].cells[1][0].text == "描述");
+
+    // Data row: still 2 cells even though the second cell contains
+    // inline `code` segments (several inline segs, ONE cell).
+    REQUIRE(lines[1].cells.size() == 2);
+    CHECK(lines[1].cells[0][0].text == "工具");
+    REQUIRE(lines[1].cells[1].size() >= 3);  // text + code + text + code + text
+    std::string joined;
+    for (const auto& sg : lines[1].cells[1]) joined += sg.text;
+    CHECK(joined == "使用 tool.json + main.py");
+}

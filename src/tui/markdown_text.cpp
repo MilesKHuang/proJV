@@ -227,13 +227,19 @@ std::vector<Line> parseMarkdown(const std::string& text) {
 
     auto flushTable = [&]() {
         if (tableHeaders.empty()) return;
+        // Header line: one cells[] entry per column; inline styles inside
+        // cells are kept (legacy headerSegs also ran parseInlineSegs).
         {
             Line l;
+            l.tableHeader = true;
             for (const auto& h : tableHeaders) {
-                Segment seg;
-                seg.text = h;
-                seg.style = Style::TableHeader;
-                l.segs.push_back(std::move(seg));
+                std::vector<Segment> cellSegs;
+                for (auto& sg : parseInline(h)) {
+                    if (sg.style == Style::Normal) sg.style = Style::TableHeader;
+                    l.segs.push_back(sg);  // flat view (legacy-compatible)
+                    cellSegs.push_back(std::move(sg));
+                }
+                l.cells.push_back(std::move(cellSegs));
             }
             l.tableAlign = tableAlign;
             out.push_back(std::move(l));
@@ -241,12 +247,14 @@ std::vector<Line> parseMarkdown(const std::string& text) {
         for (const auto& row : tableRows) {
             Line l;
             for (const auto& c : row) {
-                // Keep inline styles inside cells.
-                auto segs = parseInline(c);
-                for (auto& sg : segs) {
+                std::vector<Segment> cellSegs;
+                // Keep inline styles inside cells (one cells[] entry per cell).
+                for (auto& sg : parseInline(c)) {
                     if (sg.style == Style::Normal) sg.style = Style::TableCell;
-                    l.segs.push_back(std::move(sg));
+                    l.segs.push_back(sg);  // flat view (legacy-compatible)
+                    cellSegs.push_back(std::move(sg));
                 }
+                l.cells.push_back(std::move(cellSegs));
             }
             out.push_back(std::move(l));
         }

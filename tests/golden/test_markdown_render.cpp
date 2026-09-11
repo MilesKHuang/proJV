@@ -37,6 +37,24 @@ TEST_CASE("markdown render: table draws box-drawing border") {
     CHECK(out.find("\u2551") != std::string::npos);  // ║
 }
 
+TEST_CASE("markdown render: wraps inside yframe viewport") {
+    // Regression: the chat area used frame() (2-axis), whose internal width is
+    // stretched to the content min_x, so wrapping elements never saw the
+    // viewport width and long lines were clipped. yframe() (vertical-only)
+    // passes the viewport width through, so the paragraph re-wraps on resize.
+    std::string text = "这是一段很长的中文内容用来测试换行表现以及是否被截断处理正确";
+    auto content = ftxui::vbox({ markdown_view::renderMarkdown(text) });
+
+    auto doc = ftxui::yframe(content);
+    auto screen = Screen::Create(Dimension::Fixed(24), Dimension::Fixed(8));
+    Render(screen, doc);
+    std::string out = screen.ToString();
+
+    // First and last characters must both survive (wrapped, not clipped).
+    CHECK(out.find("这") != std::string::npos);
+    CHECK(out.find("确") != std::string::npos);
+}
+
 TEST_CASE("markdown render: table columns have separators") {
     auto doc = markdown_view::renderMarkdown("| Name | Value |\n|---|---|\n| a | b |");
     auto screen = Screen::Create(Dimension::Fixed(30), Dimension::Fixed(6));

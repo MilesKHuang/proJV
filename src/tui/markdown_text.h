@@ -27,6 +27,13 @@ struct Line {
     // Column alignment for table headers (0=left, 1=center, 2=right).
     // Populated only on the header Line; empty for every other line.
     std::vector<int> tableAlign;
+    // For table rows: one entry per CELL (each cell keeps its inline
+    // segments). Empty for non-table lines. A cell containing inline styles
+    // (e.g. `code`) produces several segments, so the old "one seg = one
+    // cell" convention could not represent it.
+    std::vector<std::vector<Segment>> cells;
+    // True only on the table header line.
+    bool tableHeader = false;
 };
 
 // Parse markdown text into structured lines. Pure function (no UI deps).

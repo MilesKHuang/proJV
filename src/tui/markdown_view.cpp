@@ -255,21 +255,33 @@ Element renderMarkdown(const std::string& text) {
             els.push_back(ftxui::text(" "));
             continue;
         }
-        if (lines[i].segs.front().style == Style::TableHeader) {
+        if (lines[i].tableHeader) {
             // Collect the whole table block (header + consecutive data rows).
+            // Use cells[] so a cell containing inline styles stays ONE column
+            // (the old flat "one seg = one cell" convention broke the column
+            // count whenever a cell contained e.g. `code` or **bold**).
+            auto collectRow = [](const Line& ln) {
+                std::vector<std::string> row;
+                if (!ln.cells.empty()) {
+                    for (const auto& cell : ln.cells) {
+                        std::string s;
+                        for (const auto& sg : cell) s += sg.text;
+                        row.push_back(std::move(s));
+                    }
+                } else {
+                    // Fallback for hand-built Line objects without cells.
+                    for (const auto& seg : ln.segs) row.push_back(seg.text);
+                }
+                return row;
+            };
+
             std::vector<std::vector<std::string>> table;
             std::vector<int> align = lines[i].tableAlign;
-
-            std::vector<std::string> header;
-            for (const auto& seg : lines[i].segs) header.push_back(seg.text);
-            table.push_back(std::move(header));
+            table.push_back(collectRow(lines[i]));
 
             size_t j = i + 1;
-            while (j < lines.size() && !lines[j].segs.empty() &&
-                   lines[j].segs.front().style == Style::TableCell) {
-                std::vector<std::string> row;
-                for (const auto& seg : lines[j].segs) row.push_back(seg.text);
-                table.push_back(std::move(row));
+            while (j < lines.size() && !lines[j].cells.empty() && !lines[j].tableHeader) {
+                table.push_back(collectRow(lines[j]));
                 ++j;
             }
             els.push_back(renderTable(table, align));

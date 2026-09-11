@@ -163,7 +163,7 @@ int main() {
             }
         }
 
-        els.push_back(chat | vscroll_indicator | frame | flex);
+        els.push_back(chat | vscroll_indicator | yframe | flex);
         els.push_back(separator());
 
         // Status line + spinner (outside the frame so the animation redraws).
@@ -181,7 +181,7 @@ int main() {
         els.push_back(input_comp->Render());
         els.push_back(separator());
         els.push_back(text(status_bar::render(app.getStatusBarData())) | dim);
-        els.push_back(todo_view::renderTodoPanel(app.copyTodoData()) | size(HEIGHT, LESS_THAN, 6) | frame);
+        els.push_back(todo_view::renderTodoPanel(app.copyTodoData()) | size(HEIGHT, LESS_THAN, 6) | yframe);
         els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · ↑↓/PgUp/PgDn scroll · Enter send · Esc quit") | dim);
         return vbox(std::move(els));
     });
