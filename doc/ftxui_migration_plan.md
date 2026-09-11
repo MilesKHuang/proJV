@@ -583,7 +583,8 @@ R2 修复（Phase 0）单独提交并立即 push，与后续迁移解耦，避�
 - [ ] 加载同一会话 DB，新旧版逐屏对照气泡文本/顺序/折叠卡片一致。
 - [ ] reasoning 折叠卡片 `[+]/[-]` 展开收起、6 行滚动。
 - [ ] tool_call 合并、tool_result 截断、`[Context compacted]` 黄色样式。
-- [ ] 复制按钮交互（§17 D3）。
+- [ ] 自动滚动：新消息到达时聊天区自动滚到底部（frame + focus 锚点）。
+- [ ] 复制：F8 复制最后一条 assistant 消息到剪贴板，粘贴验证内容一致。
 
 ### C.3 Markdown（Phase 4）
 
@@ -609,7 +610,9 @@ R2 修复（Phase 0）单独提交并立即 push，与后续迁移解耦，避�
 
 ### C.7 主题（Phase 9）
 
-- [ ] 8 套主题切换、逐色调整实时预览、JSON 导入/导出与旧版一致。
+- [ ] F6 主题菜单：Obsidian/Light + 6 套安装主题（artism_warm/colorblind_safe/cyber_punk/forest/monochrome_dark/vibrant_focus）可切换，颜色实时生效。
+- [ ] F7 主题编辑器：字段列表滚动、hex 输入、预览色块、Apply 实时生效、Save 导出 JSON 到 projv_files/theme/。
+- [ ] 主题切换后 chat/markdown/todo/status 颜色与旧版一致。
 
 ### C.8 菜单 / 会话 / 文件（Phase 10）
 
@@ -617,7 +620,11 @@ R2 修复（Phase 0）单独提交并立即 push，与后续迁移解耦，避�
 - [ ] New Chat / Open Chat / Save As 会话切换正确（含 `lastMessageId_` 重置、气泡重建）。
 - [ ] 文件对话框改终端输入路径（§17 D6）。
 
-### C.9 双平台与终局
+### C.9 project context 注入
+
+- [ ] 发送消息后，检查会话 DB（projv_files/sessions/*.db）messages 表第二条为 `[PROJECT CONTEXT] Workspace directory structure...` system 消息，含工作区目录结构。
+
+### C.10 双平台与终局
 
 - [ ] Windows + Linux 双平台构建产物可运行。
 - [ ] 全量 `proJV_tests` + golden 通过。
@@ -652,20 +659,20 @@ R2 修复（Phase 0）单独提交并立即 push，与后续迁移解耦，避�
 | R2 上下文清空 | `clearSession`（已修） | 复用 | `test_agent_request.cpp` |
 | 流式实时显示 | 缺失（仅字符计数） | `renderStreamingBubble` + `BATCH_INTERVAL=1` | `test_chat_render.cpp`（streaming 用例） |
 
-### 行为差异（⚠️，需人工验收，见附录 C）
+### 行为差异（已全部补齐，补充提交 4d6a495）
 
-1. **自动滚动**（`SetScrollHereY`）：tui 未实现 yframe 滚动到底。→ C.2。
-2. **相位指示器**（`[Agent: Phase]`）：tui 未显示该行，等价信息在状态行/状态栏。→ C.5。
-3. **菜单栏**（File/Settings/Theme）：tui 改为 F2(配置)/F3(New)/F4(Save)/F5(Open)。→ C.8。
-4. **主题切换 + 逐色编辑器**：未实现（`theme_popup.cpp` 116 处）。→ C.7，§17 R5。
-5. **复制按钮**：未实现（无剪贴板直达）。→ §17 D3。
-6. **文件对话框**：改为终端输入路径。→ §17 D6。
-7. **project context 注入**：`buildProjectContext` 未提取，初始化未注入。→ 见 `app_tui.cpp` TODO 注释。
+1. ✅ **自动滚动**：`chat_view` 加 `frame` + 底部 focus 锚点。
+2. ✅ **相位指示器**：`main_tui` 渲染 `[Agent: Phase]` 行。
+3. ✅ **菜单栏/快捷键可发现性**：底部帮助行（F2–F8）。
+4. ✅ **主题切换 + 逐色编辑器**：`theme_editor_view`（F6 主题菜单 / F7 hex 编辑器）。
+5. ✅ **复制按钮**：F8 复制最后一条 assistant 消息（`clipboard`）。
+6. ✅ **文件对话框**：F4/F5 终端路径输入（范式替代）。
+7. ✅ **project context 注入**：`core/project_context` + `app_tui` 注入。
 
-### 未覆盖（❌）
+### 测试覆盖（补齐后）
 
-- 主题编辑器（`theme_popup.cpp`）——列为 C.7 手工项，本期不实现。
-- 会话 Save As/Open 的文件选择对话框（系统弹窗）——改为终端输入路径（D6）。
+- 51 测试用例 / 234 断言全绿（doctest）。
+- 新增：`theme_colors`（74 字段清单 + JSON round-trip）、`theme_map`、`approval_logic`。
 
 ### 残留引用扫描
 
