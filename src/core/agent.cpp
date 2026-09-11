@@ -352,6 +352,15 @@ void Agent::clearSession() {
     toolCallDepth_ = 0; destructiveApproved_.store(false);
     phase_ = AgentPhase::Idle;
     {
+        // R2: new session must not carry over overview/TODO/user-request context.
+        // Previously only the message session was cleared; todoData survived and
+        // kept injecting [OVERVIEW]/[TODO]/[USER REQUEST] system messages via
+        // buildChatRequest(). Reset it here so new chat / open dialog / /clear
+        // all start with a clean todo state.
+        std::lock_guard<std::mutex> lk(todoMutex);
+        todoData = TodoData{};
+    }
+    {
         std::lock_guard<std::mutex> lk(snapshotMutex_);
         status_.state = AgentState::Idle; status_.statusMessage = "Ready";
         status_.streamingText.clear(); status_.reasoningText.clear();

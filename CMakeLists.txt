@@ -212,4 +212,11 @@ target_include_directories(${PROJV_EXE} PRIVATE ${IMGUI_DIR}/backends)
 file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/fonts")
 file(COPY "${CMAKE_SOURCE_DIR}/assets/msyh.ttc" DESTINATION "${CMAKE_SOURCE_DIR}/projv_files/fonts")
 
+# ── Tests ────────────────────────────────────────────────────────────────
+option(PROJV_BUILD_TESTS "Build proJV unit tests" ON)
+if(PROJV_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
 
