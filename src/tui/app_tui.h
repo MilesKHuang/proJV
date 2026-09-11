@@ -54,6 +54,9 @@ public:
     bool saveDialogToFile(const std::string& filename);
     const std::string& currentSessionPath() const { return storage.currentPath(); }
 
+    // Toggle the last reasoning bubble's expanded/collapsed state.
+    void toggleLastReasoning();
+
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
     void syncChatFromAgent();
 

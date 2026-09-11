@@ -301,3 +301,12 @@ bool TuiApp::saveDialogToFile(const std::string& filename) {
     }
     return !ec;
 }
+
+void TuiApp::toggleLastReasoning() {
+    for (auto it = chatHistory.rbegin(); it != chatHistory.rend(); ++it) {
+        if (it->hasReasoning) {
+            it->reasoningExpanded = !it->reasoningExpanded;
+            return;
+        }
+    }
+}

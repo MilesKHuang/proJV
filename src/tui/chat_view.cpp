@@ -88,7 +88,8 @@ Element renderReasoningCard(const bubble_model::Bubble& b) {
     els.push_back(ftxui::text(label) | ftxui::color(P.reasoningText));
     if (b.reasoningExpanded) {
         els.push_back(ftxui::separator());
-        els.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
+        els.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody)
+            | ftxui::frame | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, 5));
     }
     return ftxui::vbox(std::move(els)) | ftxui::border | ftxui::color(P.reasoningBorder);
 }

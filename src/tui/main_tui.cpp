@@ -96,6 +96,10 @@ int main() {
             if (!last.empty()) clipboard::setText(last);
             return true;
         }
+        if (e == Event::F9) {
+            app.toggleLastReasoning();
+            return true;
+        }
         return false;
     });
 
@@ -154,7 +158,7 @@ int main() {
         els.push_back(input_comp->Render());
         els.push_back(separator());
         els.push_back(text(status_bar::render(app.getStatusBarData())) | dim);
-        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · Enter send · Esc quit") | dim);
+        els.push_back(text("F2 config · F3 new · F4 save · F5 open · F6 theme · F7 editor · F8 copy · F9 thinking · Enter send · Esc quit") | dim);
         return vbox(std::move(els));
     });
 
