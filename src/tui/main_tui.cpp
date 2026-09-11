@@ -100,20 +100,12 @@ int main() {
             app.toggleLastReasoning();
             return true;
         }
-        if (e == Event::ArrowUp) {
-            app.scrollChat(1);
-            return true;
-        }
-        if (e == Event::ArrowDown) {
-            app.scrollChat(-1);
-            return true;
-        }
         if (e == Event::PageUp) {
-            app.scrollChat(10);
+            app.scrollChat(5);
             return true;
         }
         if (e == Event::PageDown) {
-            app.scrollChat(-10);
+            app.scrollChat(-5);
             return true;
         }
         return false;
@@ -164,7 +156,7 @@ int main() {
 
         Element todo = todo_view::renderTodoPanel(app.copyTodoData());
         els.push_back(hbox({
-            chat | flex,
+            chat | vscroll_indicator | frame | flex,
             separator(),
             todo | size(WIDTH, EQUAL, 40),
         }) | flex);
