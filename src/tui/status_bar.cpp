@@ -54,6 +54,11 @@ std::string render(const Data& d) {
     }
 
     s += " [ws: " + (d.workspace.empty() ? std::string("exe dir") : d.workspace) + "]";
+    if (d.cost >= 0.005) {
+        char b[32];
+        snprintf(b, sizeof(b), " ~$%.2f", d.cost);
+        s += b;
+    }
     return s;
 }
 

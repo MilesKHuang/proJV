@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -45,22 +46,31 @@ public:
     void saveApiKeyAndConnect(const std::string& apiKey);
     void saveFullConfig(const std::string& apiKey, const std::string& baseUrl,
                         int maxTokens, double temperature, const std::string& workspace,
-                        const std::string& compiler, const std::string& python);
+                        const std::string& compiler, const std::string& python,
+                        const std::string& model);
     void approveTool(int action) { if (agent) agent->approveTool(action); }
+
+    // System prompt role switching (coder / designer / analyzer / ...).
+    const std::vector<std::string>& promptFiles() const { return promptFiles_; }
+    int activePromptIndex() const { return activePromptIndex_; }
+    void switchPrompt(int index);
+
+    // Switch the model (persists to config and resets context auto-detect).
+    void setModel(const std::string& model);
 
     // Session management (new chat / switch dialog / save copy).
     void newChat();
     void switchToDialog(const std::string& dbPath);
-    bool saveDialogToFile(const std::string& filename);
+    std::vector<std::string> listSessions() const;
     const std::string& currentSessionPath() const { return storage.currentPath(); }
 
     // Toggle the last reasoning bubble's expanded/collapsed state.
     void toggleLastReasoning();
 
-    // Keyboard scroll for the chat area (bubble-granular).
+    // Keyboard scroll for the chat area (row-granular).
     void scrollChat(int delta);
     void resetChatScroll();
-    int chatScroll() const { return chatScroll_; }
+    int chatScrollRow() const { return chatScrollRow_; }
 
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
     void syncChatFromAgent();
@@ -69,12 +79,24 @@ public:
 
     // Queue a user message and start an agent turn on a background thread.
     void sendMessage(const std::string& text);
+    bool isBusy() const { return agentThreadRunning_.load(); }
+    void cancelTurn();
+    size_t pendingCount() const { return pendingQueue_.size(); }
 
     // Invoked on the agent thread when a turn completes (used to trigger a redraw).
     std::function<void()> onTurnComplete;
 
     // Invoked on the agent thread on every streamed token update.
     std::function<void()> onStreamingTick;
+
+    // Invoked when the theme changes (used to trigger a redraw).
+    std::function<void()> onThemeChanged;
+
+    // Model list (fetched from the API on a background thread).
+    void refreshModels();
+    std::vector<ModelInfo> getAvailableModels() const;
+    bool modelsLoading() const { return modelsLoading_.load(); }
+    std::function<void()> onModelsUpdated;
 
     // Cancel agent + join threads (call before exit).
     void shutdown();
@@ -84,6 +106,8 @@ private:
     void buildBubblesFromMessages();
     void launchAgentThread();
     void joinAgentThread();
+    void joinModelsThread();
+    void drainPendingQueue();
 
     AppConfig config;
     DeepSeekClient client;
@@ -95,10 +119,17 @@ private:
 
     std::vector<bubble_model::Bubble> chatHistory;
     int64_t lastMessageId_ = 0;
-    int chatScroll_ = 0;
+    int chatScrollRow_ = 1000000000;  // large = scrolled to bottom
     std::string sessionsDir_;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;
+
+    std::vector<std::string> pendingQueue_;
+
+    std::vector<ModelInfo> availableModels_;
+    mutable std::mutex modelsMutex_;
+    std::atomic<bool> modelsLoading_{false};
+    std::thread modelsThread_;
 
     std::thread agentThread_;
     std::atomic<bool> agentThreadRunning_{false};

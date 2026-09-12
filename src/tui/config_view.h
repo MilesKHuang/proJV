@@ -18,9 +18,4 @@ ftxui::Component makeWelcome(TuiApp& app, std::function<void()> onSaved = nullpt
 // Approval dialog shown while the agent awaits tool approval.
 ftxui::Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose);
 
-// Simple path-input dialog (Save As / Open).
-ftxui::Component makePathDialog(const std::string& title,
-                                std::function<void(const std::string&)> onSubmit,
-                                std::function<void()> onCancel);
-
 } // namespace config_view

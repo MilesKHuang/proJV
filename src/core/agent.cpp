@@ -35,11 +35,9 @@ static constexpr const char* WS_VIOLATION_GUIDANCE_NO_WS =
 static constexpr const char* QUICK_HELP =
     "### Quick Commands\n\n| Command | Description |\n|---------|-------------|\n"
     "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
-    "| `/save`  | Save session |\n| `/load`  | Load session |\n"
-    "| `/compress` | Summarize early messages |\n";
+    "| `/compress` | Summarize early messages |\n"
+    "\nproJV v0.5.0 — native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
-static constexpr const char* SAVE_TRIGGERED = "Save triggered.";
-static constexpr const char* LOAD_TRIGGERED = "Load triggered.";
 
 static std::string buildToolPathsMessage(const std::string& cpp, const std::string& py) {
     if (cpp.empty() && py.empty()) return TOOL_PATHS_NONE;
@@ -87,14 +85,15 @@ void Agent::startTurn(const std::string& text) {
     if (ensureStorage) ensureStorage();
     { std::lock_guard<std::mutex> lk(todoMutex); todoData.incomingUserPrompt = text; }
     cancelRequested_.store(false, std::memory_order_release);
-    hasUserInput_ = true;
-    queuedUserText_ = text;
+    // Persist the user message synchronously (main thread) so the frontend can
+    // display it immediately on the next redraw, instead of waiting for the
+    // background agent thread's run() to reach it.
+    addPersistedMessage(Message::User(text));
     approvalDone_ = false;
 }
 
 void Agent::run() {
     debugLog("[Agent] run: BEGIN");
-    if (hasUserInput_) { addPersistedMessage(Message::User(queuedUserText_)); hasUserInput_ = false; }
     doCompaction();
     checkContextWarning();
     toolCallDepth_ = 0;
@@ -618,8 +617,6 @@ bool Agent::handleQuickCommand(const std::string& input) {
     auto e = c.find_last_not_of(" \t\r\n"); c = c.substr(s, e-s+1);
     if (c == "/clear") { clearSession(); addPersistedMessage(Message::Assistant(SESSION_CLEARED)); return true; }
     if (c == "/help") { addPersistedMessage(Message::Assistant(QUICK_HELP)); return true; }
-    if (c == "/save") { saveRequested = true; addPersistedMessage(Message::Assistant(SAVE_TRIGGERED)); return true; }
-    if (c == "/load") { loadRequested = true; addPersistedMessage(Message::Assistant(LOAD_TRIGGERED)); return true; }
     if (c == "/compress") {
         auto msgs = session.getContextMessages();
         size_t ot = 0; for (auto& m : msgs) ot += Session::estimateTokens(m.content);

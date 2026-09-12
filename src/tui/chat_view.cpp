@@ -19,6 +19,7 @@ using ftxui::Elements;
 
 namespace {
 struct Palette {
+    Color text;
     Color user;
     Color assistant;
     Color system;
@@ -33,6 +34,7 @@ const Palette& P = g_palette;
 
 void refreshPalette() {
     const auto& T = ThemeManager::instance().current();
+    g_palette.text = theme_map::hexToColor(T.text);
     g_palette.user = theme_map::hexToColor(T.mdH1);
     g_palette.assistant = theme_map::hexToColor(T.phaseStreaming);
     g_palette.system = theme_map::hexToColor(T.statusIdle);
@@ -48,14 +50,13 @@ Element label(const std::string& text, Color c) {
 }
 
 // Wrap a message block with a colored border (role color for visual separation).
-Element frameBlock(Element block, Color c, bool focused) {
-    if (focused) block = std::move(block) | ftxui::focus;
+Element frameBlock(Element block, Color c) {
     return std::move(block) | ftxui::borderStyled(c);
 }
 
 } // namespace
 
-Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focusIndex) {
+Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
     refreshPalette();
 
     int total = static_cast<int>(bubbles.size());
@@ -67,7 +68,7 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
         Color roleColor = P.system;
         if (b.role == "user") {
             roleColor = P.user;
-            block = ftxui::vbox({ label("── You ──", P.user), ftxui::text(b.content) });
+            block = ftxui::vbox({ label("── You ──", P.user), ftxui::text(b.content) | ftxui::color(P.text) });
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {
             roleColor = P.reasoning;
             Elements els;
@@ -92,21 +93,39 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focu
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "tool_call") {
             roleColor = P.tool;
-            block = ftxui::vbox({ label("── Tool ──", P.tool), ftxui::text(b.content) });
+            std::string merged = b.content;
+            // Merge consecutive tool_result bubbles into a single tool block.
+            while (i + 1 < total && bubbles[i + 1].role == "tool_result") {
+                merged += "\n--------------------\n" + bubbles[i + 1].content;
+                ++i;
+            }
+            std::string display = merged;
+            int nl = 0;
+            for (char c : merged) if (c == '\n') ++nl;
+            if (nl >= 5) {
+                int found = 0; size_t pos = 0;
+                while (found < 5 && pos < merged.size()) {
+                    pos = merged.find('\n', pos);
+                    if (pos == std::string::npos) break;
+                    ++pos; ++found;
+                }
+                display = merged.substr(0, pos) + "...";
+            }
+            block = ftxui::vbox({ label("── Tool ──", P.tool), ftxui::text(display) | ftxui::color(P.text) });
         } else if (b.role == "tool_result") {
             roleColor = P.toolResult;
-            block = ftxui::vbox({ label("── Result ──", P.toolResult), ftxui::text(b.content) | ftxui::dim });
+            block = ftxui::vbox({ label("── Result ──", P.toolResult), ftxui::text(b.content) | ftxui::color(P.text) | ftxui::dim });
         } else if (b.role == "system") {
             bool compacted = b.content.find("[Context compacted:") != std::string::npos;
             roleColor = compacted ? P.compacted : P.system;
             block = ftxui::vbox({ label("── System ──", roleColor),
-                ftxui::text(b.content) | ftxui::dim });
+                ftxui::text(b.content) | ftxui::color(P.text) | ftxui::dim });
         } else {
             roleColor = P.system;
-            block = ftxui::text(b.content);
+            block = ftxui::text(b.content) | ftxui::color(P.text);
         }
 
-        lines.push_back(frameBlock(std::move(block), roleColor, i == focusIndex));
+        lines.push_back(frameBlock(std::move(block), roleColor));
         if (i + 1 < total) {
             lines.push_back(ftxui::separatorHeavy() | ftxui::color(roleColor));
         }

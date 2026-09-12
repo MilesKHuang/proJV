@@ -50,11 +50,6 @@ public:
     bool handleQuickCommand(const std::string& input);
     bool compactSession();
 
-    bool isSaveRequested() const { return saveRequested; }
-    bool isLoadRequested() const { return loadRequested; }
-    void clearSaveRequested() { saveRequested = false; }
-    void clearLoadRequested() { loadRequested = false; }
-
     void setModel(const std::string& model);
     void setToolPaths(const std::string& cpp, const std::string& python);
     void setRequestParams(int maxTokens, double temperature);
@@ -113,9 +108,6 @@ private:
     AgentStatus status_;
     mutable std::mutex snapshotMutex_;
 
-    std::string queuedUserText_;
-    bool hasUserInput_ = false;
-
     std::string currentContent_;
     std::string currentReasoning_;
     std::vector<ToolCall> currentToolCalls_;
@@ -146,8 +138,6 @@ private:
 
     std::atomic<bool> cancelRequested_{false};
 
-    bool saveRequested = false;
-    bool loadRequested = false;
     TodoData todoData;
     mutable std::mutex todoMutex;
 

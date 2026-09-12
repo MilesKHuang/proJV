@@ -15,15 +15,19 @@ void setText(const std::string& text) {
 #ifdef _WIN32
     if (!OpenClipboard(nullptr)) return;
     EmptyClipboard();
-    size_t len = text.size() + 1;
-    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, len);
-    if (h) {
-        void* p = GlobalLock(h);
-        if (p) {
-            std::memcpy(p, text.c_str(), len);
-            GlobalUnlock(h);
+    // Convert UTF-8 to UTF-16 so CJK text survives the clipboard round-trip.
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (wlen > 0) {
+        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, static_cast<SIZE_T>(wlen) * sizeof(wchar_t));
+        if (h) {
+            void* p = GlobalLock(h);
+            if (p) {
+                MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1,
+                                    static_cast<wchar_t*>(p), wlen);
+                GlobalUnlock(h);
+            }
+            SetClipboardData(CF_UNICODETEXT, h);
         }
-        SetClipboardData(CF_TEXT, h);
     }
     CloseClipboard();
 #else

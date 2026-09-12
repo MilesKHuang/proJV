@@ -18,6 +18,7 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     const auto& cfg = app.getConfig();
     auto apiKey = std::make_shared<std::string>(cfg.apiKey);
     auto baseUrl = std::make_shared<std::string>(cfg.baseUrl);
+    auto model = std::make_shared<std::string>(cfg.model);
     auto workspace = std::make_shared<std::string>(cfg.workspacePath);
     auto compiler = std::make_shared<std::string>(cfg.cppCompilerPath);
     auto python = std::make_shared<std::string>(cfg.pythonPath);
@@ -25,20 +26,25 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     auto temperature = std::make_shared<std::string>(
         cfg.temperature < 0.0001 ? "0" : std::to_string(cfg.temperature));
 
+    InputOption singleLine;
+    singleLine.multiline = false;
+
     InputOption password;
     password.password = true;
+    password.multiline = false;
 
     Component apiKeyInput = Input(apiKey.get(), password);
-    Component baseUrlInput = Input(baseUrl.get());
-    Component maxTokensInput = Input(maxTokens.get());
-    Component tempInput = Input(temperature.get());
-    Component wsInput = Input(workspace.get());
-    Component cppInput = Input(compiler.get());
-    Component pyInput = Input(python.get());
+    Component baseUrlInput = Input(baseUrl.get(), singleLine);
+    Component modelInput = Input(model.get(), singleLine);
+    Component maxTokensInput = Input(maxTokens.get(), singleLine);
+    Component tempInput = Input(temperature.get(), singleLine);
+    Component wsInput = Input(workspace.get(), singleLine);
+    Component cppInput = Input(compiler.get(), singleLine);
+    Component pyInput = Input(python.get(), singleLine);
 
     Component saveBtn = Button("Save & Connect", [&app, onClose, apiKey, baseUrl,
                                                    maxTokens, temperature, workspace,
-                                                   compiler, python] {
+                                                   compiler, python, model] {
         int mt = 0;
         try { mt = std::stoi(*maxTokens); } catch (...) { mt = 0; }
         if (mt < 512) mt = 512;
@@ -49,13 +55,13 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
         if (t < 0.0) t = 0.0;
         if (t > 2.0) t = 2.0;
 
-        app.saveFullConfig(*apiKey, *baseUrl, mt, t, *workspace, *compiler, *python);
+        app.saveFullConfig(*apiKey, *baseUrl, mt, t, *workspace, *compiler, *python, *model);
         onClose();
     });
     Component cancelBtn = Button("Cancel", onClose);
 
     auto container = Container::Vertical({
-        apiKeyInput, baseUrlInput, maxTokensInput, tempInput,
+        apiKeyInput, baseUrlInput, modelInput, maxTokensInput, tempInput,
         wsInput, cppInput, pyInput,
         Container::Horizontal({ saveBtn, cancelBtn }),
     });
@@ -66,6 +72,7 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
             separator(),
             hbox({ text("API Key: ") | size(WIDTH, EQUAL, 16), apiKeyInput->Render() | size(WIDTH, EQUAL, 44) }),
             hbox({ text("Base URL: ") | size(WIDTH, EQUAL, 16), baseUrlInput->Render() | size(WIDTH, EQUAL, 44) }),
+            hbox({ text("Model: ") | size(WIDTH, EQUAL, 16), modelInput->Render() | size(WIDTH, EQUAL, 44) }),
             hbox({ text("Max Tokens: ") | size(WIDTH, EQUAL, 16), maxTokensInput->Render() | size(WIDTH, EQUAL, 44) }),
             hbox({ text("Temperature: ") | size(WIDTH, EQUAL, 16), tempInput->Render() | size(WIDTH, EQUAL, 44) }),
             hbox({ text("Workspace: ") | size(WIDTH, EQUAL, 16), wsInput->Render() | size(WIDTH, EQUAL, 44) }),
@@ -81,6 +88,7 @@ Component makeWelcome(TuiApp& app, std::function<void()> onSaved) {
     auto apiKey = std::make_shared<std::string>("");
     InputOption password;
     password.password = true;
+    password.multiline = false;
 
     Component input = Input(apiKey.get(), password);
     input |= CatchEvent([&](Event e) {
@@ -109,7 +117,7 @@ Component makeWelcome(TuiApp& app, std::function<void()> onSaved) {
             hbox({ text("API Key: "), input->Render() | size(WIDTH, EQUAL, 44) }),
             hbox({ saveBtn->Render() }),
             separator(),
-            text("Commands: /help, /workspace, /doctor, /clear") | dim,
+            text("Commands: /help, /workspace, /clear, /compress") | dim,
         }) | border;
     });
 }
@@ -151,27 +159,6 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
         els.push_back(text("Approve this delete operation?"));
         els.push_back(hbox({ yes->Render(), text("  "), always->Render(), text("  "), no->Render() }));
         return vbox(std::move(els)) | border;
-    });
-}
-
-Component makePathDialog(const std::string& title,
-                         std::function<void(const std::string&)> onSubmit,
-                         std::function<void()> onCancel) {
-    auto path = std::make_shared<std::string>("");
-    Component input = Input(path.get());
-    Component okBtn = Button("OK", [path, onSubmit] { onSubmit(*path); });
-    Component cancelBtn = Button("Cancel", onCancel);
-    auto container = Container::Vertical({
-        input,
-        Container::Horizontal({ okBtn, cancelBtn }),
-    });
-    return Renderer(container, [=] {
-        return vbox({
-            text(title) | bold,
-            separator(),
-            input->Render() | size(WIDTH, EQUAL, 50),
-            hbox({ okBtn->Render(), text("  "), cancelBtn->Render() }),
-        }) | border;
     });
 }
 

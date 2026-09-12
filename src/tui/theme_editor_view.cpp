@@ -1,4 +1,4 @@
-// proJV TUI -- theme menu + editor implementation.
+// proJV TUI -- theme menu + editor implementation (keyboard-first).
 #include "theme_editor_view.h"
 
 #include "theme_colors.h"
@@ -28,29 +28,25 @@ Component makeThemeMenu(std::function<void()> onClose) {
     }
 
     auto selected = std::make_shared<int>(0);
-    Component menu = Menu(names.get(), selected.get());
-    Component applyBtn = Button("Apply", [names, selected, onClose] {
+    MenuOption opt;
+    opt.on_enter = [names, selected, onClose] {
         if (*selected >= 0 && *selected < static_cast<int>(names->size())) {
             ThemeManager::instance().switchTo((*names)[*selected]);
         }
         onClose();
-    });
-    Component cancelBtn = Button("Cancel", onClose);
-
-    auto container = Container::Vertical({ menu, Container::Horizontal({ applyBtn, cancelBtn }) });
-    container |= CatchEvent([onClose](Event e) {
+    };
+    Component menu = Menu(names.get(), selected.get(), opt);
+    menu |= CatchEvent([onClose](Event e) {
         if (e == Event::Escape) { onClose(); return true; }
         return false;
     });
 
-    return Renderer(container, [names, menu, applyBtn, cancelBtn] {
+    return Renderer(menu, [menu] {
         return vbox({
             text("Theme") | bold,
             separator(),
-            menu->Render() | frame | size(HEIGHT, LESS_THAN, 12),
-            separator(),
-            hbox({ applyBtn->Render(), text("  "), cancelBtn->Render() }),
-            text("Esc close · arrows select · Tab to buttons") | dim,
+            menu->Render() | frame | size(HEIGHT, LESS_THAN, 16),
+            text("Esc close · ↑↓ select · Enter apply") | dim,
         }) | border;
     });
 }
@@ -64,43 +60,68 @@ Component makeThemeEditor(std::function<void()> onClose) {
     auto selected = std::make_shared<int>(0);
     auto hex = std::make_shared<std::string>((*editing).*themeColorFields()[*selected].member);
 
-    MenuOption menu_opt;
-    menu_opt.on_change = [editing, hex, selected] {
+    auto applyHexToField = [editing, selected, hex] {
+        if (*selected >= 0 && *selected < static_cast<int>(themeColorFields().size())) {
+            (*editing).*themeColorFields()[*selected].member = *hex;
+        }
+    };
+    auto loadFieldToHex = [editing, selected, hex] {
         if (*selected >= 0 && *selected < static_cast<int>(themeColorFields().size())) {
             hex->assign((*editing).*themeColorFields()[*selected].member);
         }
     };
 
-    Component menu = Menu(names.get(), selected.get(), menu_opt);
-    Component input = Input(hex.get());
+    // Menu Enter moves focus to the hex input (the input is created below).
+    auto input_ref = std::make_shared<Component>();
 
-    Component applyBtn = Button("Apply", [editing] {
+    MenuOption menu_opt;
+    menu_opt.on_change = [loadFieldToHex] { loadFieldToHex(); };
+    menu_opt.on_enter = [input_ref] { if (*input_ref) (*input_ref)->TakeFocus(); };
+    Component menu = Menu(names.get(), selected.get(), menu_opt);
+
+    InputOption input_opt;
+    input_opt.multiline = false;
+    input_opt.on_enter = [menu, applyHexToField] { applyHexToField(); menu->TakeFocus(); };
+    Component input = Input(hex.get(), input_opt);
+    *input_ref = input;
+
+    Component applyBtn = Button("Apply", [editing, applyHexToField] {
+        applyHexToField();
         ThemeManager::instance().applyCustom(*editing);
     });
-    Component saveBtn = Button("Save", [editing] {
+    Component saveBtn = Button("Save", [editing, applyHexToField] {
+        applyHexToField();
         ThemeManager::instance().applyCustom(*editing);
         ThemeManager::instance().exportToFile(editing->name);
     });
     Component closeBtn = Button("Close", onClose);
 
-    auto container = Container::Horizontal({
-        menu,
-        Container::Vertical({
-            input,
-            Container::Horizontal({ applyBtn, saveBtn, closeBtn }),
-        }),
+    auto right = Container::Vertical({
+        input,
+        Container::Horizontal({ applyBtn, saveBtn, closeBtn }),
     });
-    container |= CatchEvent([onClose](Event e) {
+
+    auto container = Container::Horizontal({ menu, right });
+    container |= CatchEvent([onClose, menu, input, applyBtn, saveBtn, closeBtn](Event e) {
         if (e == Event::Escape) { onClose(); return true; }
+        if (e == Event::Tab || e == Event::TabReverse) {
+            // Menu swallows Tab by default; cycle focus manually.
+            if (menu->Focused()) input->TakeFocus();
+            else if (input->Focused()) applyBtn->TakeFocus();
+            else if (applyBtn->Focused()) saveBtn->TakeFocus();
+            else if (saveBtn->Focused()) closeBtn->TakeFocus();
+            else menu->TakeFocus();
+            return true;
+        }
         return false;
     });
 
-    return Renderer(container, [editing, names, selected, hex, menu, input,
-                                applyBtn, saveBtn, closeBtn] {
-        if (*selected >= 0 && *selected < static_cast<int>(themeColorFields().size())) {
-            (*editing).*themeColorFields()[*selected].member = *hex;
-        }
-        const auto& f = themeColorFields()[*selected];
+    return Renderer(container, [editing, names, selected, hex, menu, input, applyBtn, saveBtn, closeBtn] {
+        // Keep the hex buffer reflected in the preview/apply operations.
+        const auto& fields = themeColorFields();
+        int idx = (*selected >= 0 && *selected < static_cast<int>(fields.size())) ? *selected : 0;
+        (*editing).*fields[idx].member = *hex;
+        const auto& f = fields[idx];
         return vbox({
             text("Theme Editor") | bold,
             separator(),
@@ -118,7 +139,7 @@ Component makeThemeEditor(std::function<void()> onClose) {
                         saveBtn->Render(), text("  "),
                         closeBtn->Render(),
                     }),
-                    text("Esc close · arrows select field · Tab to Hex input") | dim,
+                    text("Esc close · ↑↓ field · Enter edit hex · Tab next") | dim,
                 }) | flex,
             }),
         }) | border;

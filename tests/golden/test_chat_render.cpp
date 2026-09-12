@@ -70,13 +70,22 @@ TEST_CASE("chat_view: reasoning collapsed hides body") {
     CHECK(out.find("secret thought") == std::string::npos);
 }
 
-TEST_CASE("chat_view: tool call and result lines") {
+TEST_CASE("chat_view: tool call merges following result") {
     std::vector<Bubble> b;
     b.push_back(mk("tool_call", "exec_shell: ls"));
     b.push_back(mk("tool_result", "file1"));
     std::string out = renderToString(b);
     CHECK(out.find("── Tool ──") != std::string::npos);
     CHECK(out.find("exec_shell: ls") != std::string::npos);
+    CHECK(out.find("file1") != std::string::npos);
+    // Merged into a single tool block; no separate Result label.
+    CHECK(out.find("── Result ──") == std::string::npos);
+}
+
+TEST_CASE("chat_view: standalone tool_result keeps Result label") {
+    std::vector<Bubble> b;
+    b.push_back(mk("tool_result", "file1"));
+    std::string out = renderToString(b);
     CHECK(out.find("── Result ──") != std::string::npos);
     CHECK(out.find("file1") != std::string::npos);
 }

@@ -11,6 +11,7 @@
 #include "tools/web_tools.h"
 #include "debug_log.h"
 
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -64,6 +65,9 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
 
     // Prompt files from projv_files/prompts/.
     promptFiles_ = ensureDefaultPrompts();
+    promptFiles_.erase(
+        std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
+        promptFiles_.end());
     activePromptIndex_ = 0;
     for (size_t i = 0; i < promptFiles_.size(); ++i) {
         if (promptFiles_[i] == "coder.md") { activePromptIndex_ = static_cast<int>(i); break; }
@@ -121,9 +125,11 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     ThemeManager::instance().onThemeChanged = [this](const std::string& name) {
         config.themeName = name;
         saveConfig(config);
+        if (onThemeChanged) onThemeChanged();
     };
 
     buildBubblesFromMessages();
+    refreshModels();  // kick off model list fetch (async)
     return true;
 }
 
@@ -159,11 +165,46 @@ void TuiApp::syncChatFromAgent() {
         size_t excess = chatHistory.size() - kMaxBubbles;
         chatHistory.erase(chatHistory.begin(), chatHistory.begin() + excess);
     }
+
+    // Send any queued message once the previous turn has finished.
+    drainPendingQueue();
 }
 
 void TuiApp::sendMessage(const std::string& text) {
     if (!agent || text.empty()) return;
-    if (agentThreadRunning_.load()) return;
+
+    // Busy: queue the message instead of dropping it (drained on completion).
+    if (agentThreadRunning_.load()) {
+        pendingQueue_.push_back(text);
+        return;
+    }
+
+    // Ensure the session DB exists so quick commands (/help etc.) persist.
+    if (agent->ensureStorage) agent->ensureStorage();
+
+    std::string trimmed = text;
+    auto s = trimmed.find_first_not_of(" \t\r\n");
+    auto e = trimmed.find_last_not_of(" \t\r\n");
+    trimmed = (s == std::string::npos) ? std::string() : trimmed.substr(s, e - s + 1);
+
+    // /workspace: frontend-only display of the workspace path (like legacy).
+    if (trimmed == "/workspace") {
+        std::string ws = config.workspacePath;
+        if (ws.empty()) ws = fs::absolute(fs::path(getExeDir())).string();
+        bubble_model::Bubble cb;
+        cb.role = "system";
+        cb.content = "[Workspace] " + ws;
+        chatHistory.push_back(cb);
+        resetChatScroll();
+        return;
+    }
+
+    // Other quick commands handled by the backend (/clear /help /compress).
+    if (agent->handleQuickCommand(trimmed)) {
+        // Already persisted; the event that sent it triggers a redraw.
+        return;
+    }
+
     agent->startTurn(text);
     launchAgentThread();
 }
@@ -186,11 +227,27 @@ void TuiApp::joinAgentThread() {
     }
 }
 
+void TuiApp::drainPendingQueue() {
+    if (agentThreadRunning_.load()) return;
+    if (pendingQueue_.empty()) return;
+    std::string next = pendingQueue_.front();
+    pendingQueue_.erase(pendingQueue_.begin());
+    sendMessage(next);
+}
+
+void TuiApp::cancelTurn() {
+    pendingQueue_.clear();
+    if (agent) agent->cancel();
+}
+
 void TuiApp::shutdown() {
     if (agent) agent->cancel();
     joinAgentThread();
+    joinModelsThread();
     delete agent;
     agent = nullptr;
+    // Explicitly close the DB and checkpoint the WAL on exit (bug fix).
+    storage.closeDatabase();
 }
 
 status_bar::Data TuiApp::getStatusBarData() const {
@@ -200,6 +257,14 @@ status_bar::Data TuiApp::getStatusBarData() const {
     d.completionTokens = totalCompletionTokens_.load(std::memory_order_relaxed);
     d.status = getStatus();
     d.workspace = config.workspacePath;
+    d.cost = totalPromptTokens_.load() * lookupModelPrice(config.modelPrices, config.model, true) * 1e-6
+           + totalCompletionTokens_.load() * lookupModelPrice(config.modelPrices, config.model, false) * 1e-6;
+    if (activePromptIndex_ >= 0 && activePromptIndex_ < static_cast<int>(promptFiles_.size())) {
+        d.roleName = promptFiles_[activePromptIndex_];
+        if (d.roleName.size() > 3 && d.roleName.substr(d.roleName.size() - 3) == ".md") {
+            d.roleName = d.roleName.substr(0, d.roleName.size() - 3);
+        }
+    }
     if (agent) {
         d.msgCount = agent->getSession().messageCount();
         int toolCount = 0;
@@ -227,7 +292,8 @@ void TuiApp::saveApiKeyAndConnect(const std::string& apiKey) {
 
 void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUrl,
                             int maxTokens, double temperature, const std::string& workspace,
-                            const std::string& compiler, const std::string& python) {
+                            const std::string& compiler, const std::string& python,
+                            const std::string& model) {
     config.apiKey = apiKey;
     config.baseUrl = baseUrl;
     config.maxTokens = maxTokens;
@@ -235,6 +301,7 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
     config.workspacePath = workspace;
     config.cppCompilerPath = compiler;
     config.pythonPath = python;
+    config.model = model;
     config.loaded = true;
     config.loadError.clear();
 
@@ -246,6 +313,8 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
     setupTools();  // re-register tools with new workspace path
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
+    agent->setModel(config.model);
+    agent->setContextWindow(0);  // reset auto-detect on model switch
     config.loadError.clear();
 }
 
@@ -292,20 +361,62 @@ void TuiApp::switchToDialog(const std::string& dbPath) {
     buildBubblesFromMessages();
 }
 
-bool TuiApp::saveDialogToFile(const std::string& filename) {
-    if (!agent || filename.empty()) return false;
-    std::string srcPath = storage.currentPath();
-    if (srcPath.empty()) return false;
-
-    storage.closeDatabase();
+std::vector<std::string> TuiApp::listSessions() const {
+    std::vector<std::string> out;
     std::error_code ec;
-    std::filesystem::copy_file(srcPath, filename,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (!storage.openDatabase(srcPath)) {
-        debugLog("[TuiApp] Reopen failed, creating recovery database");
-        storage.createDatabase(srcPath);
+    for (const auto& entry : fs::directory_iterator(sessionsDir_, ec)) {
+        if (ec) { ec.clear(); continue; }
+        if (!entry.is_regular_file(ec)) continue;
+        if (entry.path().extension() != ".db") continue;
+        out.push_back(entry.path().string());
     }
-    return !ec;
+    // Timestamp-named files: newest first.
+    std::sort(out.begin(), out.end(), std::greater<std::string>());
+    return out;
+}
+
+void TuiApp::switchPrompt(int index) {
+    if (!agent || agentThreadRunning_.load()) return;  // only while idle
+    if (index < 0 || index >= static_cast<int>(promptFiles_.size())) return;
+    if (index == activePromptIndex_) return;
+    activePromptIndex_ = index;
+    std::string content = loadPromptFile(promptFiles_[activePromptIndex_]);
+    agent->replaceSystemPrompt(content);
+}
+
+void TuiApp::setModel(const std::string& model) {
+    config.model = model;
+    if (agent) {
+        agent->setModel(model);
+        agent->setContextWindow(0);  // reset auto-detect on model switch
+    }
+    saveConfig(config);
+}
+
+void TuiApp::refreshModels() {
+    if (modelsLoading_.exchange(true)) return;  // already loading
+    joinModelsThread();
+    modelsThread_ = std::thread([this]() {
+        std::string err;
+        auto models = client.fetchModels(&err);
+        if (!models.empty()) {
+            std::lock_guard<std::mutex> lk(modelsMutex_);
+            availableModels_ = std::move(models);
+        }
+        modelsLoading_.store(false);
+        if (onModelsUpdated) onModelsUpdated();
+    });
+}
+
+std::vector<ModelInfo> TuiApp::getAvailableModels() const {
+    std::lock_guard<std::mutex> lk(modelsMutex_);
+    return availableModels_;
+}
+
+void TuiApp::joinModelsThread() {
+    if (modelsThread_.joinable()) {
+        try { modelsThread_.join(); } catch (...) {}
+    }
 }
 
 void TuiApp::toggleLastReasoning() {
@@ -318,12 +429,11 @@ void TuiApp::toggleLastReasoning() {
 }
 
 void TuiApp::scrollChat(int delta) {
-    chatScroll_ += delta;
-    if (chatScroll_ < 0) chatScroll_ = 0;
-    int maxScroll = std::max(0, static_cast<int>(chatHistory.size()) - 1);
-    if (chatScroll_ > maxScroll) chatScroll_ = maxScroll;
+    chatScrollRow_ += delta;
+    if (chatScrollRow_ < 0) chatScrollRow_ = 0;
+    if (chatScrollRow_ > 1000000000) chatScrollRow_ = 1000000000;
 }
 
 void TuiApp::resetChatScroll() {
-    chatScroll_ = 0;
+    chatScrollRow_ = 1000000000;
 }

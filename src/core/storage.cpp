@@ -113,13 +113,15 @@ bool Storage::openReadDb() {
 }
 
 void Storage::closeDatabase() {
-    // Close read connection first, then write
+    // Close read connection first so the writer can checkpoint the WAL.
     if (readDb_) {
         debugLogf("[Storage] Closed read connection: %s", currentPath_.c_str());
     }
     readDb_.reset();
 
     if (writeDb_) {
+        // Merge the WAL back into the main DB before closing.
+        try { writeDb_->exec("PRAGMA wal_checkpoint(TRUNCATE);"); } catch (...) {}
         debugLogf("[Storage] Closed write connection: %s", currentPath_.c_str());
     }
     writeDb_.reset();

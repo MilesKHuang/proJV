@@ -10,9 +10,8 @@
 namespace chat_view {
 
 // Render the bubble list into a single FTXUI element.
-// `focusIndex` marks one message block as the scroll anchor (frame scrolls to
-// it). Pass -1 to disable. Direction keys move this index.
-ftxui::Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, int focusIndex = -1);
+// Row-level scrolling is handled by the caller via focusPosition().
+ftxui::Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles);
 
 // Render the live streaming bubble (reasoning card + content) while the agent
 // is still generating. Replaced by the persisted bubble once the turn ends.

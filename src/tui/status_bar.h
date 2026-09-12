@@ -19,6 +19,8 @@ struct Data {
     size_t estimatedTokens = 0;
     size_t windowTokens = 0;
     std::string workspace;
+    std::string roleName;  // current system prompt role (without .md)
+    double cost = 0.0;     // estimated cost in USD
 };
 
 // Render the one-line status bar.

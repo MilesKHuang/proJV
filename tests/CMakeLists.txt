@@ -14,6 +14,7 @@ set(TEST_SOURCES
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
     golden/test_markdown_render.cpp
+    golden/test_theme_editor.cpp
     ${SRC_DIR}/tui/bubble_model.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/markdown_text.cpp
@@ -25,6 +26,7 @@ set(TEST_SOURCES
     ${SRC_DIR}/tui/theme_map.cpp
     ${SRC_DIR}/tui/theme_colors.cpp
     ${SRC_DIR}/tui/theme_manager.cpp
+    ${SRC_DIR}/tui/theme_editor_view.cpp
 )
 
 add_executable(proJV_tests ${TEST_SOURCES})
@@ -37,7 +39,7 @@ target_include_directories(proJV_tests PRIVATE
     ${SRC_DIR}/client
 )
 
-target_link_libraries(proJV_tests PRIVATE proJV_lib ftxui::dom)
+target_link_libraries(proJV_tests PRIVATE proJV_lib ftxui::dom ftxui::component)
 
 if(WIN32)
     target_compile_definitions(proJV_tests PRIVATE
