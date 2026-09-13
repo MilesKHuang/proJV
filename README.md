@@ -101,7 +101,7 @@ print(time.strftime("%Y-%m-%d %H:%M:%S"))
 
 ### 4. TODO -- Automatic Completion Summary
 
-The AI manages a real-time TODO panel. When a task finishes, it doesn't just check a box -- **it writes a structured completion summary** with file paths, changes made, and verification results. No more "what did the agent even do?"
+The AI manages a real-time TODO panel that docks on the right (`F9`) and soft-wraps long tasks so nothing is clipped. When a task finishes, it doesn't just check a box -- **it writes a structured completion summary** with file paths, changes made, and verification results. No more "what did the agent even do?"
 
 ### 5. Theme System
 
@@ -117,6 +117,8 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 | **Thinking display** | deepseek-reasoner chain-of-thought, collapsed by default with a one-line summary + trailing window (F8) |
 | **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
 | **CJK soft-wrap** | Chat bubbles and the input box wrap long lines and re-flow on resize |
+| **Role theme grading** | Bubble text and agent status follow the active theme's semantic colors; AI replies titled `proJV` |
+| **Busy indicator** | Animated spinner while streaming, executing tools, or awaiting approval |
 | **Safe shutdown** | SQLite WAL is checkpointed and closed on window close / Ctrl+C |
 | **Context management** | Token estimation + smart compaction at pressure thresholds |
 | **Session persistence** | SQLite auto-save; open history from the sessions picker |

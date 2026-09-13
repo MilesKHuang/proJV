@@ -15,6 +15,7 @@
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/component/animation.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/box.hpp>
@@ -58,6 +59,27 @@ ftxui::Element observeHeight(ftxui::Element child, std::function<void(int)> on_h
         ftxui::unpack(std::move(child)), std::move(on_height));
 }
 
+// Advances a spinner frame only while the agent is busy. FTXUI only calls
+// OnAnimation when a frame was requested, so this component re-requests frames
+// continuously during busy states and lets the animation go idle otherwise.
+class SpinnerTicker : public ftxui::ComponentBase {
+public:
+    SpinnerTicker(std::function<bool()> busy, std::function<void()> onTick)
+        : busy_(std::move(busy)), onTick_(std::move(onTick)) {}
+
+    ftxui::Element OnRender() override { return ftxui::text(""); }
+
+    void OnAnimation(ftxui::animation::Params&) override {
+        if (!busy_()) return;
+        onTick_();
+        ftxui::animation::RequestAnimationFrame();
+    }
+
+private:
+    std::function<bool()> busy_;
+    std::function<void()> onTick_;
+};
+
 } // namespace
 
 int main() {
@@ -93,6 +115,18 @@ int main() {
     app.onTurnComplete = [&]() { screen.PostEvent(Event::Custom); };
     app.onStreamingTick = [&]() { screen.PostEvent(Event::Custom); };
     app.onThemeChanged = [&]() { screen.PostEvent(Event::Custom); };
+
+    // Animated "working" spinner: advances only while the agent is busy.
+    int spinnerFrame = 0;
+    auto busy = [&] {
+        auto phase = app.getPhase();
+        return phase == AgentPhase::Streaming
+            || phase == AgentPhase::ExecutingTools
+            || phase == AgentPhase::AwaitApproval;
+    };
+    auto spinner_ticker = std::make_shared<SpinnerTicker>(busy, [&] {
+        spinnerFrame = (spinnerFrame + 1) % 8;
+    });
 
     // Model picker state (F11): names come from the API when available.
     auto model_names = std::make_shared<std::vector<std::string>>();
@@ -233,6 +267,9 @@ int main() {
     auto main_renderer = Renderer(input_comp, [&] {
         app.syncChatFromAgent();
 
+        // Bootstrap the spinner animation loop while the agent is busy.
+        if (busy()) screen.RequestAnimationFrame();
+
         // Drive the approval modal from the agent phase.
         if (app.getPhase() == AgentPhase::AwaitApproval) show_approval = true;
         else if (show_approval && app.getPhase() != AgentPhase::AwaitApproval) show_approval = false;
@@ -243,14 +280,17 @@ int main() {
         // Agent phase indicator (1:1 with renderChatArea's state machine line).
         {
             const char* phaseName = "?";
+            std::string ThemeColors::* phaseColor = &ThemeColors::phaseIdle;
             switch (app.getPhase()) {
-                case AgentPhase::Idle:           phaseName = "Idle"; break;
-                case AgentPhase::Streaming:      phaseName = "Streaming"; break;
-                case AgentPhase::ExecutingTools: phaseName = "ExecutingTools"; break;
-                case AgentPhase::AwaitApproval:  phaseName = "AwaitApproval"; break;
-                case AgentPhase::Error:          phaseName = "Error"; break;
+                case AgentPhase::Idle:           phaseName = "Idle"; phaseColor = &ThemeColors::phaseIdle; break;
+                case AgentPhase::Streaming:      phaseName = "Streaming"; phaseColor = &ThemeColors::phaseStreaming; break;
+                case AgentPhase::ExecutingTools: phaseName = "ExecutingTools"; phaseColor = &ThemeColors::phaseExecutingTools; break;
+                case AgentPhase::AwaitApproval:  phaseName = "AwaitApproval"; phaseColor = &ThemeColors::phaseAwaitApproval; break;
+                case AgentPhase::Error:          phaseName = "Error"; phaseColor = &ThemeColors::phaseError; break;
             }
-            els.push_back(text(" [Agent: " + std::string(phaseName) + "]") | dim);
+            const auto& T = ThemeManager::instance().current();
+            els.push_back(text(" [Agent: " + std::string(phaseName) + "]")
+                | color(theme_map::hexToColor(T.*phaseColor)));
         }
         els.push_back(separator());
 
@@ -265,23 +305,38 @@ int main() {
             }
         }
 
-        els.push_back(
+        Element chatColumn =
             observeHeight(
                 observeHeight(chat, [&](int rows) { app.setChatContentRows(rows); })
                     | focusPosition(0, app.chatFocusRow())
                     | vscroll_indicator | yframe,
-                [&](int rows) { app.setChatViewportRows(rows); })
-            | flex);
+                [&](int rows) { app.setChatViewportRows(rows); });
+
+        // TODO lives in a right-side dock (legacy GUI layout), not a bottom strip.
+        Element mainArea;
+        if (show_todo) {
+            mainArea = hbox({
+                std::move(chatColumn) | flex,
+                separator(),
+                todo_view::renderTodoPanel(app.copyTodoData())
+                    | size(WIDTH, EQUAL, 36) | yframe | vscroll_indicator,
+            });
+        } else {
+            mainArea = std::move(chatColumn) | flex;
+        }
+        els.push_back(std::move(mainArea) | flex);
         els.push_back(separator());
 
         // Status line + spinner (outside the frame so the animation redraws).
         {
-            Element statusEl = text(status_line::render(app.getStatus()));
-            if (app.getPhase() == AgentPhase::Streaming) {
+            auto stLine = status_line::render(app.getStatus());
+            const auto& T = ThemeManager::instance().current();
+            Element statusEl = text(stLine.text) | color(theme_map::hexToColor(T.*stLine.color));
+            if (busy()) {
                 statusEl = hbox({
                     statusEl,
                     text("  "),
-                    spinner(6, 0) | color(Color::RGB(224, 200, 96)),
+                    spinner(6, spinnerFrame) | color(Color::RGB(224, 200, 96)),
                 });
             }
             els.push_back(statusEl);
@@ -309,9 +364,6 @@ int main() {
             segEls.push_back(text("  (Tab)") | dim);
             els.push_back(xflex_grow(hbox(std::move(segEls)))
                           | bgcolor(theme_map::hexToColor(T.menuBarBg)));
-        }
-        if (show_todo) {
-            els.push_back(todo_view::renderTodoPanel(app.copyTodoData()) | size(HEIGHT, LESS_THAN, 6) | yframe);
         }
         {
             // Compact keycap hint bar: colored keycaps replace the long "F1 about"
@@ -342,6 +394,9 @@ int main() {
         }
         return vbox(std::move(els));
     });
+
+    // Keep the spinner ticker in the component tree so its OnAnimation runs.
+    main_renderer->Add(spinner_ticker);
 
     Component config_dialog = config_view::makeConfigDialog(app, [&] { show_config = false; });
     Component approval_dialog = config_view::makeApprovalDialog(app, [&] { show_approval = false; });
@@ -400,7 +455,7 @@ int main() {
         return vbox({
             text("About proJV") | bold,
             separator(),
-            text("proJV v0.5.0"),
+            text("proJV v0.5.1"),
             text("Native C++ DeepSeek AI agent (FTXUI)."),
             separator(),
             about_close->Render(),

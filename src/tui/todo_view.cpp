@@ -1,5 +1,6 @@
 // proJV TUI -- TODO panel renderer implementation.
 #include "todo_view.h"
+#include "markdown_view.h"
 #include "theme_map.h"
 #include "theme_manager.h"
 
@@ -13,7 +14,6 @@ using ftxui::Element;
 using ftxui::Elements;
 
 namespace {
-// Approximate legacy theme colors (Phase 9 wires these to ThemeColors).
 struct Palette {
     Color title;
     Color pending;
@@ -51,7 +51,8 @@ Element renderTodoPanel(const TodoData& todo) {
             if (line.find("[x]") != std::string::npos) c = P.done;
             else if (line.find("[*]") != std::string::npos) c = P.inProgress;
             else if (line.find("[ ]") != std::string::npos) c = P.open;
-            els.push_back(ftxui::text(line) | ftxui::color(c));
+            // Soft-wrap so long tasks stay fully visible in the right dock.
+            els.push_back(markdown_view::renderPlainText(line) | ftxui::color(c));
         }
     } else {
         els.push_back(ftxui::text("  (No active tasks)") | ftxui::color(P.empty));

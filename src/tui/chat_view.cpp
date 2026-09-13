@@ -1,8 +1,9 @@
 // proJV TUI -- chat view: render chat history as labeled, color-coded blocks.
 //
-// Each message is a bordered block: a colored "── Role ──" label, then the
-// content (markdown for assistant replies, plain text otherwise). The block
-// border uses the role color so different message kinds are visually distinct.
+// Each message is a bordered block: a "── Role ──" label, then the content
+// (markdown for assistant replies, plain text otherwise). Borders stay neutral
+// and the text color follows the theme's semantic grading, matching the
+// legacy GUI text-color mapping (see theme_popup.cpp in the pre-TUI code).
 #include "chat_view.h"
 
 #include "markdown_view.h"
@@ -20,14 +21,12 @@ using ftxui::Elements;
 namespace {
 struct Palette {
     Color text;
-    Color user;
-    Color assistant;
-    Color system;
+    Color border;
     Color tool;
     Color toolResult;
     Color reasoning;
     Color reasoningBody;
-    Color compacted;
+    Color warning;
 };
 Palette g_palette;
 const Palette& P = g_palette;
@@ -35,23 +34,22 @@ const Palette& P = g_palette;
 void refreshPalette() {
     const auto& T = ThemeManager::instance().current();
     g_palette.text = theme_map::hexToColor(T.text);
-    g_palette.user = theme_map::hexToColor(T.mdH1);
-    g_palette.assistant = theme_map::hexToColor(T.phaseStreaming);
-    g_palette.system = theme_map::hexToColor(T.statusIdle);
+    g_palette.border = theme_map::hexToColor(T.border);
     g_palette.tool = theme_map::hexToColor(T.toolTitleColor);
     g_palette.toolResult = theme_map::hexToColor(T.toolResultText);
     g_palette.reasoning = theme_map::hexToColor(T.reasoningTextColor);
     g_palette.reasoningBody = theme_map::hexToColor(T.reasoningBodyText);
-    g_palette.compacted = theme_map::hexToColor(T.statusCtxHigh);
+    g_palette.warning = theme_map::hexToColor(T.todoInProgress);
 }
 
 Element label(const std::string& text, Color c) {
     return ftxui::text(text) | ftxui::bold | ftxui::color(c);
 }
 
-// Wrap a message block with a colored border (role color for visual separation).
-Element frameBlock(Element block, Color c) {
-    return std::move(block) | ftxui::borderStyled(c);
+// Wrap a message block with a neutral border so role identity comes from the
+// label/text color, not from a rainbow of borders.
+Element frameBlock(Element block) {
+    return std::move(block) | ftxui::borderStyled(P.border);
 }
 
 // Long chains of thought are shown as a trailing window instead of in full:
@@ -126,12 +124,12 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
         const auto& b = bubbles[i];
 
         Element block;
-        Color roleColor = P.system;
         if (b.role == "user") {
-            roleColor = P.user;
-            block = ftxui::vbox({ label("── You ──", P.user), markdown_view::renderPlainText(b.content) | ftxui::color(P.text) });
+            block = ftxui::vbox({
+                label("── You ──", P.text),
+                markdown_view::renderPlainText(b.content) | ftxui::color(P.text),
+            });
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {
-            roleColor = P.reasoning;
             Elements els;
             els.push_back(label("── Thinking ──", P.reasoning));
             if (reasoningExpanded) {
@@ -145,7 +143,6 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
             }
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "assistant") {
-            roleColor = P.assistant;
             Elements els;
             if (b.hasReasoning) {
                 if (reasoningExpanded) {
@@ -160,48 +157,56 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
                 }
             }
             if (!b.content.empty()) {
-                els.push_back(label("── AI ──", P.assistant));
+                els.push_back(label("── proJV ──", P.text));
                 els.push_back(markdown_view::renderMarkdown(b.content));
             }
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "tool_call") {
-            roleColor = P.tool;
-            std::string merged = b.content;
-            // Merge consecutive tool_result bubbles into a single tool block.
+            std::string title = b.content;
+            std::string results;
+            // Merge consecutive tool_result bubbles into the same tool block,
+            // but keep the invocation title and result text separately colored.
             while (i + 1 < total && bubbles[i + 1].role == "tool_result") {
-                merged += "\n--------------------\n" + bubbles[i + 1].content;
+                if (!results.empty()) results += "\n--------------------\n";
+                results += bubbles[i + 1].content;
                 ++i;
             }
-            std::string display = merged;
+            std::string displayResults = results;
             int nl = 0;
-            for (char c : merged) if (c == '\n') ++nl;
+            for (char c : results) if (c == '\n') ++nl;
             if (nl >= 5) {
                 int found = 0; size_t pos = 0;
-                while (found < 5 && pos < merged.size()) {
-                    pos = merged.find('\n', pos);
+                while (found < 5 && pos < results.size()) {
+                    pos = results.find('\n', pos);
                     if (pos == std::string::npos) break;
                     ++pos; ++found;
                 }
-                display = merged.substr(0, pos) + "...";
+                displayResults = results.substr(0, pos) + "...";
             }
-            block = ftxui::vbox({ label("── Tool ──", P.tool), markdown_view::renderPlainText(display) | ftxui::color(P.text) });
+            Elements toolEls;
+            toolEls.push_back(label("── Tool ──", P.tool));
+            toolEls.push_back(markdown_view::renderPlainText(title) | ftxui::color(P.tool));
+            if (!results.empty()) {
+                toolEls.push_back(markdown_view::renderPlainText(displayResults) | ftxui::color(P.toolResult));
+            }
+            block = ftxui::vbox(std::move(toolEls));
         } else if (b.role == "tool_result") {
-            roleColor = P.toolResult;
-            block = ftxui::vbox({ label("── Result ──", P.toolResult), markdown_view::renderPlainText(b.content) | ftxui::color(P.text) | ftxui::dim });
+            block = ftxui::vbox({
+                label("── Result ──", P.toolResult),
+                markdown_view::renderPlainText(b.content) | ftxui::color(P.toolResult),
+            });
         } else if (b.role == "system") {
             bool compacted = b.content.find("[Context compacted:") != std::string::npos;
-            roleColor = compacted ? P.compacted : P.system;
-            block = ftxui::vbox({ label("── System ──", roleColor),
-                markdown_view::renderPlainText(b.content) | ftxui::color(P.text) | ftxui::dim });
+            Color labelColor = compacted ? P.warning : P.text;
+            block = ftxui::vbox({
+                label("── System ──", labelColor),
+                markdown_view::renderPlainText(b.content) | ftxui::color(P.text),
+            });
         } else {
-            roleColor = P.system;
             block = markdown_view::renderPlainText(b.content) | ftxui::color(P.text);
         }
 
-        lines.push_back(frameBlock(std::move(block), roleColor));
-        if (i + 1 < total) {
-            lines.push_back(ftxui::separatorHeavy() | ftxui::color(roleColor));
-        }
+        lines.push_back(frameBlock(std::move(block)));
     }
 
     return ftxui::vbox(std::move(lines));
@@ -219,14 +224,14 @@ Element renderStreamingBubble(const AgentStatus& status) {
                       | ftxui::color(P.reasoningBody));
     }
     if (!status.streamingText.empty()) {
-        els.push_back(label("── AI ──", P.assistant));
+        els.push_back(label("── proJV ──", P.text));
         els.push_back(markdown_view::renderMarkdown(status.streamingText));
     }
     if (els.empty()) {
         return ftxui::text(" ");
     }
     Element block = ftxui::vbox(std::move(els));
-    return std::move(block) | ftxui::borderStyled(P.assistant);
+    return std::move(block) | ftxui::borderStyled(P.border);
 }
 
 } // namespace chat_view

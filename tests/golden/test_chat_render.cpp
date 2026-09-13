@@ -38,7 +38,7 @@ TEST_CASE("chat_view: user and assistant text lines") {
     std::string out = renderToString(b, true);
     CHECK(out.find("── You ──") != std::string::npos);
     CHECK(out.find("hello world") != std::string::npos);
-    CHECK(out.find("── AI ──") != std::string::npos);
+    CHECK(out.find("── proJV ──") != std::string::npos);
     CHECK(out.find("hi there") != std::string::npos);
 }
 
@@ -101,6 +101,6 @@ TEST_CASE("chat_view: streaming bubble shows reasoning and content") {
 
     CHECK(out.find("── Thinking ──") != std::string::npos);
     CHECK(out.find("thinking...") != std::string::npos);
-    CHECK(out.find("── AI ──") != std::string::npos);
+    CHECK(out.find("── proJV ──") != std::string::npos);
     CHECK(out.find("partial answer") != std::string::npos);
 }

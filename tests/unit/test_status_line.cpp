@@ -8,14 +8,14 @@
 
 TEST_CASE("status_line: idle") {
     AgentStatus st;
-    CHECK(status_line::render(st) == "Idle");
+    CHECK(status_line::render(st).text == "Idle");
 }
 
 TEST_CASE("status_line: thinking reasoning only") {
     AgentStatus st;
     st.state = AgentState::Thinking;
     st.reasoningText = "12345";
-    CHECK(status_line::render(st) == "Reasoning... (5 chars)");
+    CHECK(status_line::render(st).text == "Reasoning... (5 chars)");
 }
 
 TEST_CASE("status_line: thinking generating + reasoned count") {
@@ -23,7 +23,7 @@ TEST_CASE("status_line: thinking generating + reasoned count") {
     st.state = AgentState::Thinking;
     st.streamingText = "abcdef";
     st.reasoningText = "abc";
-    std::string s = status_line::render(st);
+    std::string s = status_line::render(st).text;
     CHECK(s.find("Generating... (6 chars)") != std::string::npos);
     CHECK(s.find("reasoned 3 chars") != std::string::npos);
 }
@@ -34,13 +34,13 @@ TEST_CASE("status_line: executing tool") {
     st.currentToolName = "read_file";
     st.toolProgressCurrent = 1;
     st.toolProgressTotal = 3;
-    CHECK(status_line::render(st) == "Running: read_file (1/3)");
+    CHECK(status_line::render(st).text == "Running: read_file (1/3)");
 }
 
 TEST_CASE("status_line: awaiting approval") {
     AgentStatus st;
     st.state = AgentState::AwaitingApproval;
-    CHECK(status_line::render(st) == "Awaiting approval...");
+    CHECK(status_line::render(st).text == "Awaiting approval...");
 }
 
 TEST_CASE("status_bar: model/token/msgs/workspace") {
