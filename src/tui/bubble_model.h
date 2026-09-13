@@ -20,7 +20,6 @@ struct Bubble {
     std::string content;
     std::string reasoningText; // reasoning_content from deepseek-reasoner
     bool hasReasoning = false;
-    bool reasoningExpanded = true; // collapsible chain-of-thought (default expanded)
 };
 
 // Format a tool message into (bubbleRole, displayText). Pure function.

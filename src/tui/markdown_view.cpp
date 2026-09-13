@@ -53,6 +53,10 @@ Color borderColor() {
     return theme_map::hexToColor(ThemeManager::instance().current().border);
 }
 
+Color tableBorderColor() {
+    return theme_map::hexToColor(ThemeManager::instance().current().headerActive);
+}
+
 Color codeBgColor() {
     return theme_map::hexToColor(ThemeManager::instance().current().mdCodeBg);
 }
@@ -163,7 +167,10 @@ Element renderTable(const std::vector<std::vector<std::string>>& table,
             std::string cell = (c < table[r].size()) ? table[r][c] : "";
             Element e = wrapParagraph(cell);
             if (r == 0) {
-                e = std::move(e) | ftxui::bold | ftxui::color(styleColor(Style::TableHeader));
+                const auto& T = ThemeManager::instance().current();
+                e = std::move(e) | ftxui::bold
+                    | ftxui::color(theme_map::hexToColor(T.text))
+                    | ftxui::bgcolor(theme_map::hexToColor(T.mdTableHdr));
             } else {
                 e = std::move(e) | ftxui::color(styleColor(Style::TableCell));
             }
@@ -175,9 +182,9 @@ Element renderTable(const std::vector<std::vector<std::string>>& table,
     ftxui::Table ft(std::move(grid));
     // Outer box + inner column separators + header/body line. Border() alone
     // only draws the outer frame; the column dividers need SeparatorVertical.
-    ft.SelectAll().Border(ftxui::DOUBLE, ftxui::color(borderColor()));
-    ft.SelectAll().SeparatorVertical(ftxui::DOUBLE, ftxui::color(borderColor()));
-    ft.SelectRow(0).SeparatorHorizontal(ftxui::DOUBLE, ftxui::color(borderColor()));
+    ft.SelectAll().Border(ftxui::DOUBLE, ftxui::color(tableBorderColor()));
+    ft.SelectAll().SeparatorVertical(ftxui::DOUBLE, ftxui::color(tableBorderColor()));
+    ft.SelectRow(0).SeparatorHorizontal(ftxui::DOUBLE, ftxui::color(tableBorderColor()));
 
     // Per-column alignment (mirrors legacy markdown table alignment rules).
     for (size_t c = 0; c < align.size() && c < cols; ++c) {
@@ -307,6 +314,84 @@ Element renderMarkdown(const std::string& text) {
         }
     }
     return ftxui::vbox(std::move(els));
+}
+
+ftxui::Element renderPlainText(const std::string& text) {
+    ftxui::Elements lines;
+    std::string cur;
+    for (char c : text) {
+        if (c == '\n') {
+            lines.push_back(cur.empty() ? ftxui::text(" ") : wrapParagraph(cur));
+            cur.clear();
+        } else if (c == '\r') {
+            continue;
+        } else {
+            cur += c;
+        }
+    }
+    if (!cur.empty()) lines.push_back(wrapParagraph(cur));
+    if (lines.empty()) lines.push_back(ftxui::text(" "));
+    return ftxui::vbox(std::move(lines));
+}
+
+ftxui::Element renderSoftWrappedInput(const std::string& text, int cursorByte, bool focused) {
+    std::vector<std::string> lines;
+    std::string cur;
+    for (char c : text) {
+        if (c == '\n') {
+            lines.push_back(cur);
+            cur.clear();
+        } else if (c == '\r') {
+            continue;
+        } else {
+            cur += c;
+        }
+    }
+    lines.push_back(cur);
+
+    int cursor = cursorByte < 0 ? 0
+        : (cursorByte > static_cast<int>(text.size()) ? static_cast<int>(text.size()) : cursorByte);
+    int cursorLine = 0;
+    int col = cursor;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (col <= static_cast<int>(lines[i].size())) {
+            cursorLine = static_cast<int>(i);
+            break;
+        }
+        col -= static_cast<int>(lines[i].size()) + 1;
+        cursorLine = static_cast<int>(i) + 1;
+    }
+
+    ftxui::Elements rows;
+    rows.reserve(lines.size());
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (static_cast<int>(i) != cursorLine || !focused) {
+            rows.push_back(lines[i].empty() ? ftxui::text(" ") : wrapParagraph(lines[i]));
+            continue;
+        }
+        const std::string& line = lines[i];
+        std::string before = line.substr(0, col);
+        std::string at;
+        if (col < static_cast<int>(line.size())) {
+            int len = utf8CharLen(static_cast<unsigned char>(line[col]));
+            at = line.substr(col, len);
+        }
+        std::string after = (col + at.size() <= line.size()) ? line.substr(col + at.size()) : "";
+
+        auto beforeTokens = splitForWrap(before);
+        auto afterTokens = splitForWrap(after);
+        ftxui::Elements items;
+        for (auto& t : beforeTokens) items.push_back(ftxui::text(std::move(t)));
+        if (at.empty()) {
+            items.push_back(ftxui::text(" ") | ftxui::focusCursorBarBlinking);
+        } else {
+            items.push_back(ftxui::text(at) | ftxui::focusCursorBarBlinking);
+        }
+        for (auto& t : afterTokens) items.push_back(ftxui::text(std::move(t)));
+        rows.push_back(ftxui::flexbox(std::move(items), ftxui::FlexboxConfig()));
+    }
+
+    return ftxui::vbox(std::move(rows));
 }
 
 } // namespace markdown_view

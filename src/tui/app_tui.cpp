@@ -250,6 +250,14 @@ void TuiApp::shutdown() {
     storage.closeDatabase();
 }
 
+void TuiApp::emergencyShutdown() {
+    if (agent) agent->cancel();
+    joinAgentThread();
+    // Do not join the models thread: it never touches the DB and might be
+    // blocked on the network. Close the DB now; the OS reclaims the rest.
+    storage.closeDatabase();
+}
+
 status_bar::Data TuiApp::getStatusBarData() const {
     status_bar::Data d;
     d.model = config.model;
@@ -419,21 +427,30 @@ void TuiApp::joinModelsThread() {
     }
 }
 
-void TuiApp::toggleLastReasoning() {
-    for (auto it = chatHistory.rbegin(); it != chatHistory.rend(); ++it) {
-        if (it->hasReasoning) {
-            it->reasoningExpanded = !it->reasoningExpanded;
-            return;
-        }
-    }
+void TuiApp::toggleReasoning() {
+    reasoningExpanded_ = !reasoningExpanded_;
 }
 
 void TuiApp::scrollChat(int delta) {
-    chatScrollRow_ += delta;
+    int maxScroll = chatContentRows_ > chatViewportRows_
+        ? chatContentRows_ - chatViewportRows_ - 1 : 0;
+    if (chatFollowBottom_) {
+        chatScrollRow_ = maxScroll;   // snap to the current bottom before scrolling
+        chatFollowBottom_ = false;
+    }
+    chatScrollRow_ -= delta;          // delta > 0 = scroll up (row index decreases)
     if (chatScrollRow_ < 0) chatScrollRow_ = 0;
-    if (chatScrollRow_ > 1000000000) chatScrollRow_ = 1000000000;
+    if (chatScrollRow_ >= maxScroll) {
+        chatScrollRow_ = maxScroll;
+        chatFollowBottom_ = true;
+    }
 }
 
 void TuiApp::resetChatScroll() {
-    chatScrollRow_ = 1000000000;
+    chatFollowBottom_ = true;
+    chatScrollRow_ = 0;
+}
+
+int TuiApp::chatFocusRow() const {
+    return chatFollowBottom_ ? 1000000000 : chatScrollRow_ + chatViewportRows_ / 2;
 }

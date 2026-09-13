@@ -54,9 +54,70 @@ Element frameBlock(Element block, Color c) {
     return std::move(block) | ftxui::borderStyled(c);
 }
 
+// Long chains of thought are shown as a trailing window instead of in full:
+// laying out 30k-50k chars would flood the chat and slow every streaming
+// redraw. These helpers keep the display compact without touching the stored
+// reasoning text.
+constexpr int kReasoningTailLines = 18;
+
+int countLines(const std::string& text) {
+    int n = 1;
+    for (char c : text) if (c == '\n') ++n;
+    return n;
+}
+
+std::string tailLines(const std::string& text, int maxLines) {
+    int total = countLines(text);
+    if (total <= maxLines) return text;
+    int skip = total - maxLines;
+    size_t pos = 0;
+    for (int i = 0; i < skip; ++i) {
+        pos = text.find('\n', pos);
+        if (pos == std::string::npos) break;
+        ++pos;
+    }
+    return text.substr(pos);
+}
+
+std::string collapseBlankLines(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    int nl = 0;
+    for (char c : text) {
+        if (c == '\n') {
+            ++nl;
+            if (nl <= 2) out += c;
+        } else if (c == '\r') {
+            continue;
+        } else {
+            nl = 0;
+            out += c;
+        }
+    }
+    return out;
+}
+
+std::string reasoningSummary(const std::string& text) {
+    std::string s = "Thinking (" + std::to_string(text.size()) + " chars, "
+        + std::to_string(countLines(text)) + " lines)";
+    size_t end = text.size();
+    while (end > 0 && (text[end - 1] == '\n' || text[end - 1] == '\r' ||
+                       text[end - 1] == ' ' || text[end - 1] == '\t')) {
+        --end;
+    }
+    size_t start = (end == 0) ? 0 : text.rfind('\n', end - 1);
+    start = (start == std::string::npos) ? 0 : start + 1;
+    std::string lastLine = text.substr(start, end - start);
+    if (lastLine.size() > 60) lastLine = lastLine.substr(0, 57) + "...";
+    if (!lastLine.empty()) s += " · " + lastLine;
+    s += " · F8 expand";
+    return s;
+}
+
 } // namespace
 
-Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
+Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
+                     bool reasoningExpanded) {
     refreshPalette();
 
     int total = static_cast<int>(bubbles.size());
@@ -68,23 +129,35 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
         Color roleColor = P.system;
         if (b.role == "user") {
             roleColor = P.user;
-            block = ftxui::vbox({ label("── You ──", P.user), ftxui::text(b.content) | ftxui::color(P.text) });
+            block = ftxui::vbox({ label("── You ──", P.user), markdown_view::renderPlainText(b.content) | ftxui::color(P.text) });
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {
             roleColor = P.reasoning;
             Elements els;
             els.push_back(label("── Thinking ──", P.reasoning));
-            if (b.reasoningExpanded) {
-                els.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
+            if (reasoningExpanded) {
+                if (countLines(b.reasoningText) > kReasoningTailLines) {
+                    els.push_back(ftxui::text("… (earlier thinking omitted)") | ftxui::dim);
+                }
+                els.push_back(markdown_view::renderPlainText(collapseBlankLines(tailLines(b.reasoningText, kReasoningTailLines)))
+                              | ftxui::color(P.reasoningBody));
             } else {
-                els.push_back(ftxui::text("(collapsed, F9 to expand)") | ftxui::dim);
+                els.push_back(ftxui::text(reasoningSummary(b.reasoningText)) | ftxui::dim);
             }
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "assistant") {
             roleColor = P.assistant;
             Elements els;
-            if (b.hasReasoning && b.reasoningExpanded) {
-                els.push_back(label("── Thinking ──", P.reasoning));
-                els.push_back(ftxui::text(b.reasoningText) | ftxui::color(P.reasoningBody));
+            if (b.hasReasoning) {
+                if (reasoningExpanded) {
+                    els.push_back(label("── Thinking ──", P.reasoning));
+                    if (countLines(b.reasoningText) > kReasoningTailLines) {
+                        els.push_back(ftxui::text("… (earlier thinking omitted)") | ftxui::dim);
+                    }
+                    els.push_back(markdown_view::renderPlainText(collapseBlankLines(tailLines(b.reasoningText, kReasoningTailLines)))
+                                  | ftxui::color(P.reasoningBody));
+                } else {
+                    els.push_back(ftxui::text(reasoningSummary(b.reasoningText)) | ftxui::dim);
+                }
             }
             if (!b.content.empty()) {
                 els.push_back(label("── AI ──", P.assistant));
@@ -111,18 +184,18 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles) {
                 }
                 display = merged.substr(0, pos) + "...";
             }
-            block = ftxui::vbox({ label("── Tool ──", P.tool), ftxui::text(display) | ftxui::color(P.text) });
+            block = ftxui::vbox({ label("── Tool ──", P.tool), markdown_view::renderPlainText(display) | ftxui::color(P.text) });
         } else if (b.role == "tool_result") {
             roleColor = P.toolResult;
-            block = ftxui::vbox({ label("── Result ──", P.toolResult), ftxui::text(b.content) | ftxui::color(P.text) | ftxui::dim });
+            block = ftxui::vbox({ label("── Result ──", P.toolResult), markdown_view::renderPlainText(b.content) | ftxui::color(P.text) | ftxui::dim });
         } else if (b.role == "system") {
             bool compacted = b.content.find("[Context compacted:") != std::string::npos;
             roleColor = compacted ? P.compacted : P.system;
             block = ftxui::vbox({ label("── System ──", roleColor),
-                ftxui::text(b.content) | ftxui::color(P.text) | ftxui::dim });
+                markdown_view::renderPlainText(b.content) | ftxui::color(P.text) | ftxui::dim });
         } else {
             roleColor = P.system;
-            block = ftxui::text(b.content) | ftxui::color(P.text);
+            block = markdown_view::renderPlainText(b.content) | ftxui::color(P.text);
         }
 
         lines.push_back(frameBlock(std::move(block), roleColor));
@@ -139,7 +212,11 @@ Element renderStreamingBubble(const AgentStatus& status) {
     Elements els;
     if (!status.reasoningText.empty()) {
         els.push_back(label("── Thinking ──", P.reasoning));
-        els.push_back(ftxui::text(status.reasoningText) | ftxui::color(P.reasoningBody));
+        if (countLines(status.reasoningText) > kReasoningTailLines) {
+            els.push_back(ftxui::text("… (earlier thinking omitted)") | ftxui::dim);
+        }
+        els.push_back(markdown_view::renderPlainText(collapseBlankLines(tailLines(status.reasoningText, kReasoningTailLines)))
+                      | ftxui::color(P.reasoningBody));
     }
     if (!status.streamingText.empty()) {
         els.push_back(label("── AI ──", P.assistant));

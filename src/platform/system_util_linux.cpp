@@ -10,7 +10,9 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <mutex>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -61,6 +63,18 @@ public:
         prevHandler_ = this;
     }
 
+    void InstallExitHandler(std::function<void()> onExit) override {
+        exitCallback_ = std::move(onExit);
+        prevHandler_ = this;
+        struct sigaction sa;
+        std::memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = ExitAction;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGHUP, &sa, nullptr);
+        sigaction(SIGINT, &sa, nullptr);
+        sigaction(SIGTERM, &sa, nullptr);
+    }
+
     std::string GetPathSeparator() override {
         return "/";
     }
@@ -76,6 +90,15 @@ public:
 private:
     static SystemUtilLinux* prevHandler_;
     static std::mutex       crashMutex_;
+    std::function<void()>   exitCallback_;
+
+    static void ExitAction(int sig) {
+        (void)sig;
+        if (prevHandler_ && prevHandler_->exitCallback_) {
+            prevHandler_->exitCallback_();
+        }
+        _exit(0);
+    }
 
     static void CrashAction(int sig, siginfo_t*, void*) {
         std::lock_guard<std::mutex> lock(crashMutex_);

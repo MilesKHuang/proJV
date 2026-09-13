@@ -64,12 +64,24 @@ public:
     std::vector<std::string> listSessions() const;
     const std::string& currentSessionPath() const { return storage.currentPath(); }
 
-    // Toggle the last reasoning bubble's expanded/collapsed state.
-    void toggleLastReasoning();
+    // Toggle the global reasoning expanded/collapsed state (all history).
+    void toggleReasoning();
+    bool reasoningExpanded() const { return reasoningExpanded_; }
 
-    // Keyboard scroll for the chat area (row-granular).
+    // Best-effort shutdown for exit signals: cancel agent, close DB quickly
+    // without joining the models thread (which never touches the DB).
+    void emergencyShutdown();
+
+    // Keyboard scroll for the chat area (row-granular, real rendered rows).
+    // delta > 0 scrolls up (toward older content); delta < 0 scrolls down.
     void scrollChat(int delta);
     void resetChatScroll();
+    // Called by the renderer after layout with the chat's real rendered row count.
+    void setChatContentRows(int rows) { chatContentRows_ = rows; }
+    // Called by the renderer after layout with the chat's visible (viewport) rows.
+    void setChatViewportRows(int rows) { chatViewportRows_ = rows; }
+    int chatFocusRow() const;
+    bool chatFollowBottom() const { return chatFollowBottom_; }
     int chatScrollRow() const { return chatScrollRow_; }
 
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
@@ -119,12 +131,16 @@ private:
 
     std::vector<bubble_model::Bubble> chatHistory;
     int64_t lastMessageId_ = 0;
-    int chatScrollRow_ = 1000000000;  // large = scrolled to bottom
+    int chatScrollRow_ = 0;        // real rendered-row target (0 = top)
+    bool chatFollowBottom_ = true; // stick to the newest content
+    int chatContentRows_ = 0;      // real rendered rows from the last layout
+    int chatViewportRows_ = 0;     // visible rows from the last layout
     std::string sessionsDir_;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;
 
     std::vector<std::string> pendingQueue_;
+    bool reasoningExpanded_ = false;  // global chain-of-thought collapse state (default collapsed)
 
     std::vector<ModelInfo> availableModels_;
     mutable std::mutex modelsMutex_;

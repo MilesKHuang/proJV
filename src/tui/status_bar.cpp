@@ -16,49 +16,67 @@ std::string fmtNum(int n) {
     return b;
 }
 
-const char* pressureName(Session::PressureLevel p) {
-    switch (p) {
-        case Session::PressureLevel::High:     return "HIGH";
-        case Session::PressureLevel::Critical: return "CRITICAL";
-        case Session::PressureLevel::Medium:   return "MEDIUM";
-        case Session::PressureLevel::Low:
-        default:                               return "LOW";
-    }
-}
-
 } // namespace
 
-std::string render(const Data& d) {
-    std::string s;
-    s += d.model;
-    s += " tok: " + fmtNum(d.promptTokens) + "+" + fmtNum(d.completionTokens);
-    s += " msgs: " + std::to_string(d.msgCount);
-    if (d.toolCount > 0) s += " tools: " + std::to_string(d.toolCount);
+std::vector<Segment> renderSegments(const Data& d) {
+    std::vector<Segment> segs;
+
+    segs.push_back({d.model, &ThemeColors::statusModelName});
+    segs.push_back({" tok: " + fmtNum(d.promptTokens) + "+" + fmtNum(d.completionTokens),
+                    &ThemeColors::statusTokenCount});
+    segs.push_back({" msgs: " + std::to_string(d.msgCount), &ThemeColors::statusMsgCount});
+
+    if (d.toolCount > 0) {
+        segs.push_back({" tools: " + std::to_string(d.toolCount), &ThemeColors::statusToolCount});
+    }
 
     if (d.status.state == AgentState::Thinking) {
-        s += std::string(" ctx: ") + pressureName(d.pressure);
+        std::string name = "LOW";
+        std::string ThemeColors::* ctxColor = &ThemeColors::statusCtxLow;
+        switch (d.pressure) {
+            case Session::PressureLevel::High:
+                name = "HIGH"; ctxColor = &ThemeColors::statusCtxHigh; break;
+            case Session::PressureLevel::Critical:
+                name = "CRITICAL"; ctxColor = &ThemeColors::statusCtxCritical; break;
+            case Session::PressureLevel::Medium:
+                name = "MEDIUM"; ctxColor = &ThemeColors::statusCtxMedium; break;
+            case Session::PressureLevel::Low:
+            default:
+                name = "LOW"; ctxColor = &ThemeColors::statusCtxLow; break;
+        }
+        segs.push_back({" ctx: " + name, ctxColor});
         if (d.windowTokens > 0) {
             int pct = static_cast<int>(d.estimatedTokens * 100 / d.windowTokens);
-            s += " (" + std::to_string(pct) + "%)";
+            segs.push_back({" (" + std::to_string(pct) + "%)", &ThemeColors::statusCtxPercent});
         }
     }
 
     if (d.status.state == AgentState::ExecutingTool) {
-        s += " running: " + d.status.currentToolName + " (" +
+        segs.push_back({" running: " + d.status.currentToolName + " (" +
             std::to_string(d.status.toolProgressCurrent) + "/" +
-            std::to_string(d.status.toolProgressTotal) + ")";
+            std::to_string(d.status.toolProgressTotal) + ")",
+            &ThemeColors::statusRunning});
     } else if (d.status.state == AgentState::AwaitingApproval) {
-        s += " awaiting approval";
+        segs.push_back({" awaiting approval", &ThemeColors::statusAwaiting});
     } else if (d.status.state == AgentState::Error) {
-        s += " error: " + d.status.errorMessage;
+        segs.push_back({" error: " + d.status.errorMessage, &ThemeColors::statusError});
     }
 
-    s += " [ws: " + (d.workspace.empty() ? std::string("exe dir") : d.workspace) + "]";
+    segs.push_back({" [ws: " + (d.workspace.empty() ? std::string("exe dir") : d.workspace) + "]",
+                    &ThemeColors::statusWorkspace});
+
     if (d.cost >= 0.005) {
         char b[32];
         snprintf(b, sizeof(b), " ~$%.2f", d.cost);
-        s += b;
+        segs.push_back({b, &ThemeColors::statusTokenInfo});
     }
+
+    return segs;
+}
+
+std::string render(const Data& d) {
+    std::string s;
+    for (const auto& seg : renderSegments(d)) s += seg.text;
     return s;
 }
 

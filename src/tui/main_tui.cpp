@@ -2,6 +2,7 @@
 #include "terminal.h"
 #include "app_tui.h"
 #include "chat_view.h"
+#include "markdown_view.h"
 #include "status_line.h"
 #include "status_bar.h"
 #include "todo_view.h"
@@ -15,12 +16,49 @@
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
+#include <ftxui/dom/node.hpp>
+#include <ftxui/screen/box.hpp>
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 
 using namespace ftxui;
+
+namespace {
+
+// Observes the laid-out box of the chat content and reports its height in rows.
+// SetBox is the layout step where soft-wrap is already resolved, so this gives
+// the real rendered row count. Unlike ftxui::reflect, Render() does not
+// overwrite the captured box, so the height survives for the next frame's
+// row-granular scrolling.
+class ObserveHeightNode : public ftxui::Node {
+public:
+    ObserveHeightNode(ftxui::Elements children, std::function<void(int)> on_height)
+        : Node(std::move(children)), on_height_(std::move(on_height)) {}
+
+    void ComputeRequirement() override {
+        Node::ComputeRequirement();
+        requirement_ = children_[0]->requirement();
+    }
+
+    void SetBox(ftxui::Box box) override {
+        if (on_height_) on_height_(box.y_max - box.y_min);
+        Node::SetBox(box);
+        children_[0]->SetBox(box);
+    }
+
+private:
+    std::function<void(int)> on_height_;
+};
+
+ftxui::Element observeHeight(ftxui::Element child, std::function<void(int)> on_height) {
+    return std::make_shared<ObserveHeightNode>(
+        ftxui::unpack(std::move(child)), std::move(on_height));
+}
+
+} // namespace
 
 int main() {
     tui::initTerminal();
@@ -31,6 +69,12 @@ int main() {
 
     TuiApp app;
     app.initialize(procRunner);
+
+    // Window close / Ctrl+C must still close the DB before the process is
+    // reaped (FTXUI does not handle console close events on its own).
+    SystemUtil::Instance().InstallExitHandler([&app]() {
+        app.emergencyShutdown();
+    });
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string input;
@@ -95,8 +139,17 @@ int main() {
         *session_selected = 0;
     };
 
+    int input_cursor = 0;
     InputOption input_opt;
     input_opt.multiline = false;
+    input_opt.cursor_position = Ref<int>(&input_cursor);
+    input_opt.transform = [&input, &input_cursor](InputState state) -> Element {
+        if (input.empty()) {
+            return state.element;  // placeholder
+        }
+        return markdown_view::renderSoftWrappedInput(input, input_cursor, state.focused)
+            | yframe | size(HEIGHT, LESS_THAN, 8) | xflex;
+    };
     Component input_comp = Input(&input, "type a message (Enter=send, Esc=quit, F2=config)", input_opt);
 
     input_comp |= CatchEvent([&](Event e) {
@@ -134,7 +187,7 @@ int main() {
             return true;
         }
         if (e == Event::F8) {
-            app.toggleLastReasoning();
+            app.toggleReasoning();
             return true;
         }
         if (e == Event::F9) {
@@ -159,19 +212,19 @@ int main() {
             return true;
         }
         if (e == Event::ArrowUp) {
-            app.scrollChat(-1);
-            return true;
-        }
-        if (e == Event::ArrowDown) {
             app.scrollChat(1);
             return true;
         }
+        if (e == Event::ArrowDown) {
+            app.scrollChat(-1);
+            return true;
+        }
         if (e == Event::PageUp) {
-            app.scrollChat(-10);
+            app.scrollChat(10);
             return true;
         }
         if (e == Event::PageDown) {
-            app.scrollChat(10);
+            app.scrollChat(-10);
             return true;
         }
         return false;
@@ -202,7 +255,7 @@ int main() {
         els.push_back(separator());
 
         // Chat area (row-granular scrolling via focusPosition).
-        Element chat = chat_view::renderBubbles(app.bubbles());
+        Element chat = chat_view::renderBubbles(app.bubbles(), app.reasoningExpanded());
 
         // Live streaming: append the in-progress bubble.
         if (app.getPhase() == AgentPhase::Streaming) {
@@ -212,7 +265,13 @@ int main() {
             }
         }
 
-        els.push_back(chat | focusPosition(0, app.chatScrollRow()) | vscroll_indicator | yframe | flex);
+        els.push_back(
+            observeHeight(
+                observeHeight(chat, [&](int rows) { app.setChatContentRows(rows); })
+                    | focusPosition(0, app.chatFocusRow())
+                    | vscroll_indicator | yframe,
+                [&](int rows) { app.setChatViewportRows(rows); })
+            | flex);
         els.push_back(separator());
 
         // Status line + spinner (outside the frame so the animation redraws).
@@ -235,21 +294,52 @@ int main() {
         {
             auto sb = app.getStatusBarData();
             const auto& T = ThemeManager::instance().current();
+            Elements segEls;
+            for (const auto& seg : status_bar::renderSegments(sb)) {
+                segEls.push_back(text(seg.text) | color(theme_map::hexToColor(T.*seg.color)));
+            }
+            // Role pill: user-bubble background with the streaming accent so the
+            // active role pops against the status bar.
             Element role = text(sb.roleName.empty() ? "?" : sb.roleName)
                 | bold
-                | color(theme_map::hexToColor(T.text))
+                | color(theme_map::hexToColor(T.phaseStreaming))
                 | bgcolor(theme_map::hexToColor(T.bubbleUserBg));
-            els.push_back(hbox({
-                text(status_bar::render(sb)) | dim,
-                text("  role: "),
-                role,
-                text("  (Tab)") | dim,
-            }));
+            segEls.push_back(text("  role: "));
+            segEls.push_back(role);
+            segEls.push_back(text("  (Tab)") | dim);
+            els.push_back(xflex_grow(hbox(std::move(segEls)))
+                          | bgcolor(theme_map::hexToColor(T.menuBarBg)));
         }
         if (show_todo) {
             els.push_back(todo_view::renderTodoPanel(app.copyTodoData()) | size(HEIGHT, LESS_THAN, 6) | yframe);
         }
-        els.push_back(text("F1 about · F2 config · F3 new · F5 open · F6 theme · F7 editor · F8 thinking · F9 todo · F10 model · ↑↓/PgUp/PgDn scroll · Enter send · Esc quit/cancel") | dim);
+        {
+            // Compact keycap hint bar: colored keycaps replace the long "F1 about"
+            // labels and the · separators, so the line stays short.
+            const auto& T = ThemeManager::instance().current();
+            Color capFg = theme_map::hexToColor(T.text);
+            Color capBg = theme_map::hexToColor(T.buttonActive);
+            auto keycap = [&](const std::string& k) {
+                return text(k) | bold | color(capFg) | bgcolor(capBg);
+            };
+            auto hint = [&](Element cap, const std::string& label) {
+                return hbox({ std::move(cap), text(" " + label) | dim });
+            };
+            els.push_back(hbox({
+                hint(keycap("F1"), "help"), text("  "),
+                hint(keycap("F2"), "cfg"), text("  "),
+                hint(keycap("F3"), "new"), text("  "),
+                hint(keycap("F5"), "open"), text("  "),
+                hint(keycap("F6"), "theme"), text("  "),
+                hint(keycap("F7"), "edit"), text("  "),
+                hint(keycap("F8"), "think"), text("  "),
+                hint(keycap("F9"), "todo"), text("  "),
+                hint(keycap("F10"), "model"), text("  "),
+                hint(keycap("↑↓"), "scroll"), text("  "),
+                hint(keycap("Enter"), "send"), text("  "),
+                hint(keycap("Esc"), "quit"),
+            }));
+        }
         return vbox(std::move(els));
     });
 

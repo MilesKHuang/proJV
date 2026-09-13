@@ -3,8 +3,10 @@
 
 #include "models.h"
 #include "core/session.h"
+#include "theme_colors.h"
 
 #include <string>
+#include <vector>
 
 namespace status_bar {
 
@@ -23,7 +25,17 @@ struct Data {
     double cost = 0.0;     // estimated cost in USD
 };
 
-// Render the one-line status bar.
+// One colored segment of the status bar. `color` points at a ThemeColors field
+// so every segment keeps the exact legacy status-bar color (never invented).
+struct Segment {
+    std::string text;
+    std::string ThemeColors::* color;
+};
+
+// Render the status bar as colored segments (1:1 with the legacy status bar).
+std::vector<Segment> renderSegments(const Data& d);
+
+// Render the one-line status bar as plain text (kept for tests / debugging).
 std::string render(const Data& d);
 
 } // namespace status_bar
