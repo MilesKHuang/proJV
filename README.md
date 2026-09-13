@@ -10,6 +10,8 @@ Built with **FTXUI + libcurl**, C++20. **Zero package managers.** One `cmake --b
 
 > Every line of code in proJV was written by proJV.
 
+<!-- Demo GIF placeholder: add `assets/demo.gif` once recorded. -->
+
 ---
 
 ## Why proJV
@@ -110,8 +112,10 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 | Feature | Description |
 |---------|-------------|
 | **AI tool orchestration** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool -- AI decides what to call and when |
-| **Thinking display** | deepseek-reasoner chain-of-thought as collapsible cards (F8) |
+| **Thinking display** | deepseek-reasoner chain-of-thought, collapsed by default with a one-line summary + trailing window (F8) |
 | **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
+| **CJK soft-wrap** | Chat bubbles and the input box wrap long lines and re-flow on resize |
+| **Safe shutdown** | SQLite WAL is checkpointed and closed on window close / Ctrl+C |
 | **Context management** | Token estimation + smart compaction at pressure thresholds |
 | **Session persistence** | SQLite auto-save; open history from the sessions picker |
 | **Live status bar** | Model, role, token counts, cost estimate, context pressure % |
@@ -129,7 +133,7 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 | `F5` | Open session (picker from `projv_files/sessions/`) |
 | `F6` | Switch theme |
 | `F7` | Theme editor |
-| `F8` | Toggle reasoning (thinking) card |
+| `F8` | Toggle reasoning (collapsed summary ↔ trailing window) |
 | `F9` | Toggle TODO panel |
 | `F10` | Switch model (fetched from the API) |
 | `Tab` | Cycle system-prompt role |

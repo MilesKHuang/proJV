@@ -10,6 +10,8 @@
 
 > proJV 的每一行代码，都是 proJV 自己写的。
 
+<!-- 演示 GIF 占位：录屏完成后添加 `assets/demo.gif`。 -->
+
 ---
 
 ## 为什么是 proJV
@@ -110,8 +112,10 @@ AI 在 TODO 面板实时管理任务清单。任务完成后不只是打个勾 -
 | 功能 | 说明 |
 |------|------|
 | **AI 自动调用工具** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool -- AI 自主决策 |
-| **思考过程展示** | deepseek-reasoner 推理链可折叠卡片（F8） |
+| **思考过程展示** | deepseek-reasoner 推理链默认折叠为一行摘要，展开显示尾部窗口（F8） |
 | **流式 Markdown** | 实时 SSE + 自研渲染器（代码块、表格、链接、标题） |
+| **CJK 软换行** | 聊天气泡与输入框超宽自动折行，缩放时重新折行 |
+| **安全退出** | 窗口关闭 / Ctrl+C 时正确 checkpoint 并关闭 SQLite |
 | **上下文管理** | Token 估算 + 智能压缩，达到压力阈值自动缩容 |
 | **会话持久化** | SQLite 自动保存，可从会话选单打开历史 |
 | **实时状态栏** | 模型、角色、Token 用量、成本估算、上下文压力 % |
@@ -129,7 +133,7 @@ AI 在 TODO 面板实时管理任务清单。任务完成后不只是打个勾 -
 | `F5` | 打开会话（从 `projv_files/sessions/` 选单） |
 | `F6` | 切换主题 |
 | `F7` | 主题编辑器 |
-| `F8` | 折叠/展开思考（reasoning）卡片 |
+| `F8` | 折叠/展开思考（摘要 ↔ 尾部窗口） |
 | `F9` | 折叠/展开 TODO 面板 |
 | `F10` | 切换模型（从 API 拉取列表） |
 | `Tab` | 切换角色 |
