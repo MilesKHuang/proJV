@@ -71,7 +71,7 @@ struct Session {
 
     struct ContextBudget {
         size_t windowTokens = 1'048'576;   // model context window (default: 1M)
-        size_t reservedOutput = 8192;       // space for model output
+        size_t reservedOutput = 16384;      // space for model output
         size_t headroomTokens = 1024;       // safety margin
         size_t availableInput = 0;          // computed: window - reserved - headroom
 

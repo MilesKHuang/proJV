@@ -1020,7 +1020,7 @@ Session::PressureLevel Session::ContextBudget::getPressure(size_t estimatedToken
 Session::ContextBudget Session::computeContextBudget(size_t windowTokens, size_t maxTokens) {
     ContextBudget budget;
     budget.windowTokens = windowTokens;
-    budget.reservedOutput = (maxTokens > 0) ? maxTokens : 8192;
+    budget.reservedOutput = (maxTokens > 0) ? maxTokens : 16384;
     budget.headroomTokens = 1024;
     // availableInput = window - maxOutputTokens - headroom, guaranteed >= 1024
     if (windowTokens > budget.reservedOutput + budget.headroomTokens) {

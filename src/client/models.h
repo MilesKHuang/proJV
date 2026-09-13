@@ -67,7 +67,7 @@ struct ChatRequest {
     std::vector<Message> messages;
     std::vector<ToolDefinition> tools;
     bool stream = true;
-    int maxTokens = 8192;
+    int maxTokens = 65536;
     double temperature = 0.0;
 };
 
@@ -134,7 +134,7 @@ struct AppConfig {
     std::string apiKey;
     std::string model = "deepseek-v4-flash";
     std::string baseUrl = "https://api.deepseek.com";
-    int maxTokens = 8192;
+    int maxTokens = 65536;
     double temperature = 0.0;
     std::string configPath;
     std::string workspacePath;   // file access whitelist; empty = exe dir
@@ -165,10 +165,10 @@ struct AppConfig {
 // Returns the known context-window size in tokens for supported models.
 // Returns 0 for unknown models — callers should fall back to a safe default (64K).
 inline size_t contextWindowForModel(const std::string& model) {
-    if (model == "deepseek-v4-pro" || model == "deepseek-v4-flash") return 1'048'576;
-    if (model == "deepseek-chat" || model == "deepseek-reasoner" || model == "deepseek-r1") return 65'536;
-    // Unknown model → assume conservative 64K
-    return 65'536;
+    (void)model;
+    // DeepSeek models are effectively 1M context. config.toml
+    // "context_window" still allows an explicit override.
+    return 1'048'576;
 }
 
 // --- Model info (fetched from API + pricing) ----------------------
@@ -213,6 +213,7 @@ struct StreamCallbacks {
     std::function<void(const std::string& text)> onThinking;
     std::function<void(const ToolCall& tool)> onToolCall;
     std::function<void()> onFinish;
+    std::function<void(const std::string& reason)> onFinishReason;
     std::function<void(const std::string& error)> onError;
     std::function<void(int promptTokens, int completionTokens)> onUsage;
 };

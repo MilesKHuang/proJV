@@ -50,5 +50,6 @@ if errorlevel 1 (
 )
 
 echo.
-echo Build OK - Output: %BUILD_DIR%\Release\proJV.exe
+echo Build OK - Output: %BUILD_DIR%\Release\proJV_tui.exe
+echo Run it from a terminal (Windows Terminal recommended).
 endlocal

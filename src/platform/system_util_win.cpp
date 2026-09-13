@@ -10,7 +10,9 @@
 #include <filesystem>
 #include <fstream>
 #include <ctime>
+#include <functional>
 #include <mutex>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -44,6 +46,12 @@ public:
         prevHandler_ = this;
     }
 
+    void InstallExitHandler(std::function<void()> onExit) override {
+        exitCallback_ = std::move(onExit);
+        prevHandler_ = this;
+        SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
+    }
+
     std::string GetPathSeparator() override {
         return "\\";
     }
@@ -57,6 +65,18 @@ private:
     static SystemUtilWin* prevHandler_;
     static char           crashExePath_[MAX_PATH];
     static std::mutex     crashMutex_;
+    std::function<void()> exitCallback_;
+
+    static BOOL WINAPI ConsoleCtrlHandler(DWORD ctrl) {
+        if (ctrl == CTRL_CLOSE_EVENT || ctrl == CTRL_C_EVENT || ctrl == CTRL_BREAK_EVENT) {
+            if (prevHandler_ && prevHandler_->exitCallback_) {
+                prevHandler_->exitCallback_();
+            }
+            ExitProcess(0);
+            return TRUE;
+        }
+        return FALSE;
+    }
 
     static LONG WINAPI UnhandledHandler(EXCEPTION_POINTERS* pExp) {
         std::lock_guard<std::mutex> lock(crashMutex_);

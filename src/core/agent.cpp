@@ -35,11 +35,9 @@ static constexpr const char* WS_VIOLATION_GUIDANCE_NO_WS =
 static constexpr const char* QUICK_HELP =
     "### Quick Commands\n\n| Command | Description |\n|---------|-------------|\n"
     "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
-    "| `/save`  | Save session |\n| `/load`  | Load session |\n"
-    "| `/compress` | Summarize early messages |\n";
+    "| `/compress` | Summarize early messages |\n"
+    "\nproJV v0.5.1 — native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
-static constexpr const char* SAVE_TRIGGERED = "Save triggered.";
-static constexpr const char* LOAD_TRIGGERED = "Load triggered.";
 
 static std::string buildToolPathsMessage(const std::string& cpp, const std::string& py) {
     if (cpp.empty() && py.empty()) return TOOL_PATHS_NONE;
@@ -87,17 +85,19 @@ void Agent::startTurn(const std::string& text) {
     if (ensureStorage) ensureStorage();
     { std::lock_guard<std::mutex> lk(todoMutex); todoData.incomingUserPrompt = text; }
     cancelRequested_.store(false, std::memory_order_release);
-    hasUserInput_ = true;
-    queuedUserText_ = text;
+    // Persist the user message synchronously (main thread) so the frontend can
+    // display it immediately on the next redraw, instead of waiting for the
+    // background agent thread's run() to reach it.
+    addPersistedMessage(Message::User(text));
     approvalDone_ = false;
 }
 
 void Agent::run() {
     debugLog("[Agent] run: BEGIN");
-    if (hasUserInput_) { addPersistedMessage(Message::User(queuedUserText_)); hasUserInput_ = false; }
     doCompaction();
     checkContextWarning();
     toolCallDepth_ = 0;
+    reasoningLengthRetries_ = 0;
     phase_ = AgentPhase::Streaming;
     updateSnapshot();
 
@@ -110,6 +110,7 @@ void Agent::run() {
             currentContent_.clear(); currentReasoning_.clear();
             currentToolCalls_.clear(); streamFinished_ = false;
             streamError_ = false; streamErrorMsg_.clear();
+            lastFinishReason_.clear();
             streamPromptTokens_ = streamCompletionTokens_ = 0;
 
             bool ok = client.streamBlocking(req, makeCallbacks());
@@ -195,10 +196,26 @@ void Agent::run() {
                 phase_ = AgentPhase::Idle; updateSnapshot();
             } else if (!currentReasoning_.empty()) {
                 // Stream finished with reasoning but no content.
+                bool hitLength = (lastFinishReason_.find("length") != std::string::npos);
+                if (hitLength && reasoningLengthRetries_ < 2 && !cancelRequested_.load()) {
+                    // Reasoning consumed the whole output budget (max_tokens),
+                    // so no final answer was generated. Retry with a bigger
+                    // budget and an explicit instruction to stop over-thinking.
+                    ++reasoningLengthRetries_;
+                    configMaxTokens = std::min(configMaxTokens * 2, 65536);
+                    addPersistedMessage(Message::System(
+                        "[Auto-recovery] Reasoning consumed the entire output budget "
+                        "(finish_reason=length) and no answer was produced. "
+                        "Answer the user's request now with a concise final response. "
+                        "Do NOT produce a long chain of thought. Keep thinking to a few "
+                        "lines and output the final answer directly."));
+                    phase_ = AgentPhase::Streaming; updateSnapshot();
+                    break;
+                }
                 // Save reasoning so the user can see what happened,
                 // and add a visible placeholder so the UI doesn't
                 // silently jump to Idle.
-                Message asst = Message::Assistant("[Stream ended after reasoning — no response generated]");
+                Message asst = Message::Assistant("[Stream ended after reasoning - no response generated]");
                 asst.reasoningContent = currentReasoning_;
                 addPersistedMessage(asst);
                 phase_ = AgentPhase::Idle; updateSnapshot();
@@ -334,6 +351,15 @@ void Agent::clearSession() {
     toolCallDepth_ = 0; destructiveApproved_.store(false);
     phase_ = AgentPhase::Idle;
     {
+        // R2: new session must not carry over overview/TODO/user-request context.
+        // Previously only the message session was cleared; todoData survived and
+        // kept injecting [OVERVIEW]/[TODO]/[USER REQUEST] system messages via
+        // buildChatRequest(). Reset it here so new chat / open dialog / /clear
+        // all start with a clean todo state.
+        std::lock_guard<std::mutex> lk(todoMutex);
+        todoData = TodoData{};
+    }
+    {
         std::lock_guard<std::mutex> lk(snapshotMutex_);
         status_.state = AgentState::Idle; status_.statusMessage = "Ready";
         status_.streamingText.clear(); status_.reasoningText.clear();
@@ -374,23 +400,32 @@ void Agent::updateSnapshot() {
 StreamCallbacks Agent::makeCallbacks() {
     StreamCallbacks cb; Agent* self = this;
     auto batchCnt = std::make_shared<int>(0);
-    static constexpr int BATCH_INTERVAL = 16; // update UI every ~16 tokens to reduce mutex contention
+    // R1: flush every token so the TUI streams reasoning/content in real time.
+    // (Legacy batched by 16 to reduce mutex contention; the UI reads the
+    // snapshot at most once per frame, far slower than token arrival.)
+    static constexpr int BATCH_INTERVAL = 1;
     cb.onText = [self, batchCnt](const std::string& t) {
         self->currentContent_ += t;
         if (++(*batchCnt) % BATCH_INTERVAL == 0) {
-            std::lock_guard<std::mutex> lk(self->snapshotMutex_);
-            self->status_.state = AgentState::Thinking;
-            self->status_.streamingText = self->currentContent_;
-            self->status_.reasoningText = self->currentReasoning_;
+            {
+                std::lock_guard<std::mutex> lk(self->snapshotMutex_);
+                self->status_.state = AgentState::Thinking;
+                self->status_.streamingText = self->currentContent_;
+                self->status_.reasoningText = self->currentReasoning_;
+            }
+            if (self->onStreamingTick) self->onStreamingTick();
         }
     };
     cb.onThinking = [self, batchCnt](const std::string& t) {
         self->currentReasoning_ += t;
         if (++(*batchCnt) % BATCH_INTERVAL == 0) {
-            std::lock_guard<std::mutex> lk(self->snapshotMutex_);
-            self->status_.state = AgentState::Thinking;
-            self->status_.streamingText = self->currentContent_;
-            self->status_.reasoningText = self->currentReasoning_;
+            {
+                std::lock_guard<std::mutex> lk(self->snapshotMutex_);
+                self->status_.state = AgentState::Thinking;
+                self->status_.streamingText = self->currentContent_;
+                self->status_.reasoningText = self->currentReasoning_;
+            }
+            if (self->onStreamingTick) self->onStreamingTick();
         }
     };
     cb.onToolCall = [self](const ToolCall& call) {
@@ -405,6 +440,9 @@ StreamCallbacks Agent::makeCallbacks() {
             for (auto& e : self->currentToolCalls_) { if (e.index == call.index) { e.arguments += call.arguments; return; } }
             if (!self->currentToolCalls_.empty()) self->currentToolCalls_.back().arguments += call.arguments;
         }
+    };
+    cb.onFinishReason = [self](const std::string& reason) {
+        self->lastFinishReason_ = reason;
     };
     cb.onFinish = [self]() {
         self->streamFinished_ = true;
@@ -579,8 +617,6 @@ bool Agent::handleQuickCommand(const std::string& input) {
     auto e = c.find_last_not_of(" \t\r\n"); c = c.substr(s, e-s+1);
     if (c == "/clear") { clearSession(); addPersistedMessage(Message::Assistant(SESSION_CLEARED)); return true; }
     if (c == "/help") { addPersistedMessage(Message::Assistant(QUICK_HELP)); return true; }
-    if (c == "/save") { saveRequested = true; addPersistedMessage(Message::Assistant(SAVE_TRIGGERED)); return true; }
-    if (c == "/load") { loadRequested = true; addPersistedMessage(Message::Assistant(LOAD_TRIGGERED)); return true; }
     if (c == "/compress") {
         auto msgs = session.getContextMessages();
         size_t ot = 0; for (auto& m : msgs) ot += Session::estimateTokens(m.content);

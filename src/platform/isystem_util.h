@@ -1,6 +1,7 @@
 // proJV -- System utility abstraction
 // Windows: GetModuleFileName / ShellExecute / SEH  /  Linux: /proc/self/exe / xdg-open / sigaction
 #pragma once
+#include <functional>
 #include <string>
 
 class ISystemUtil {
@@ -18,6 +19,11 @@ public:
 
     // Install global crash handler (SEH on Win, sigaction on Linux).
     virtual void InstallCrashHandler() = 0;
+
+    // Install a graceful-exit handler for window close / Ctrl+C. The callback
+    // runs best-effort when the OS asks the process to terminate, so the app
+    // can close the database before the process is reaped.
+    virtual void InstallExitHandler(std::function<void()> onExit) = 0;
 
     // Platform path separator: "\\" or "/"
     virtual std::string GetPathSeparator() = 0;

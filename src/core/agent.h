@@ -50,11 +50,6 @@ public:
     bool handleQuickCommand(const std::string& input);
     bool compactSession();
 
-    bool isSaveRequested() const { return saveRequested; }
-    bool isLoadRequested() const { return loadRequested; }
-    void clearSaveRequested() { saveRequested = false; }
-    void clearLoadRequested() { loadRequested = false; }
-
     void setModel(const std::string& model);
     void setToolPaths(const std::string& cpp, const std::string& python);
     void setRequestParams(int maxTokens, double temperature);
@@ -72,6 +67,9 @@ public:
     }
 
     std::function<void(int prompt, int completion)> onTokenUsage;
+    // Called (from the agent thread) whenever streamed reasoning/content
+    // updates the status snapshot. The TUI uses it to post a redraw event.
+    std::function<void()> onStreamingTick;
     Session::ContextBudget contextBudget;
 
     TodoData copyTodoData() const {
@@ -110,15 +108,14 @@ private:
     AgentStatus status_;
     mutable std::mutex snapshotMutex_;
 
-    std::string queuedUserText_;
-    bool hasUserInput_ = false;
-
     std::string currentContent_;
     std::string currentReasoning_;
     std::vector<ToolCall> currentToolCalls_;
     bool streamFinished_ = false;
     bool streamError_ = false;
     std::string streamErrorMsg_;
+    std::string lastFinishReason_;
+    int reasoningLengthRetries_ = 0;
     int streamPromptTokens_ = 0;
     int streamCompletionTokens_ = 0;
 
@@ -141,8 +138,6 @@ private:
 
     std::atomic<bool> cancelRequested_{false};
 
-    bool saveRequested = false;
-    bool loadRequested = false;
     TodoData todoData;
     mutable std::mutex todoMutex;
 
@@ -153,6 +148,6 @@ private:
     std::string systemPrompt_;
     std::vector<std::string> allowedTools_;
     size_t configContextWindow = 0;
-    int configMaxTokens = 8192;
+    int configMaxTokens = 65536;
     double configTemperature = 0.0;
 };
