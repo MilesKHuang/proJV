@@ -10,7 +10,9 @@
 
 > proJV 的每一行代码，都是 proJV 自己写的。
 
-<!-- 演示 GIF 占位：录屏完成后添加 `assets/demo.gif`。 -->
+<p align="center">
+  <img src="assets/demo.gif" alt="proJV 演示" width="720"/>
+</p>
 
 ---
 

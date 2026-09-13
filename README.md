@@ -10,7 +10,9 @@ Built with **FTXUI + libcurl**, C++20. **Zero package managers.** One `cmake --b
 
 > Every line of code in proJV was written by proJV.
 
-<!-- Demo GIF placeholder: add `assets/demo.gif` once recorded. -->
+<p align="center">
+  <img src="assets/demo.gif" alt="proJV demo" width="720"/>
+</p>
 
 ---
 
