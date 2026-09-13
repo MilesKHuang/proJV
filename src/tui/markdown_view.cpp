@@ -335,8 +335,13 @@ std::vector<std::string> splitLogicalLines(const std::string& text) {
 }  // namespace
 
 ftxui::Element renderPlainText(const std::string& text) {
+    auto lines = splitLogicalLines(text);
+    // Drop a trailing empty line produced by a trailing '\n' (legacy behavior).
+    if (lines.size() > 1 && lines.back().empty()) {
+        lines.pop_back();
+    }
     ftxui::Elements els;
-    for (auto& line : splitLogicalLines(text)) {
+    for (auto& line : lines) {
         els.push_back(line.empty() ? ftxui::text(" ") : wrapParagraph(line));
     }
     if (els.empty()) els.push_back(ftxui::text(" "));
