@@ -62,7 +62,6 @@ public:
     void newChat();
     void switchToDialog(const std::string& dbPath);
     std::vector<std::string> listSessions() const;
-    const std::string& currentSessionPath() const { return storage.currentPath(); }
 
     // Toggle the global reasoning expanded/collapsed state (all history).
     void toggleReasoning();
@@ -81,8 +80,6 @@ public:
     // Called by the renderer after layout with the chat's visible (viewport) rows.
     void setChatViewportRows(int rows) { chatViewportRows_ = rows; }
     int chatFocusRow() const;
-    bool chatFollowBottom() const { return chatFollowBottom_; }
-    int chatScrollRow() const { return chatScrollRow_; }
 
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
     void syncChatFromAgent();

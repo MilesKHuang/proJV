@@ -42,7 +42,6 @@ Color styleColor(Style s) {
         case Style::Ordered:return theme_map::hexToColor(T.mdBullet);
         case Style::HR:     return theme_map::hexToColor(T.mdHR);
         case Style::CodeBlock:   return theme_map::hexToColor(T.mdCode);
-        case Style::TableHeader: return theme_map::hexToColor(T.mdTableHdr);
         case Style::TableCell:   return theme_map::hexToColor(T.text);
         case Style::Normal:
         default:            return theme_map::hexToColor(T.text);
@@ -316,30 +315,13 @@ Element renderMarkdown(const std::string& text) {
     return ftxui::vbox(std::move(els));
 }
 
-ftxui::Element renderPlainText(const std::string& text) {
-    ftxui::Elements lines;
-    std::string cur;
-    for (char c : text) {
-        if (c == '\n') {
-            lines.push_back(cur.empty() ? ftxui::text(" ") : wrapParagraph(cur));
-            cur.clear();
-        } else if (c == '\r') {
-            continue;
-        } else {
-            cur += c;
-        }
-    }
-    if (!cur.empty()) lines.push_back(wrapParagraph(cur));
-    if (lines.empty()) lines.push_back(ftxui::text(" "));
-    return ftxui::vbox(std::move(lines));
-}
-
-ftxui::Element renderSoftWrappedInput(const std::string& text, int cursorByte, bool focused) {
+namespace {
+std::vector<std::string> splitLogicalLines(const std::string& text) {
     std::vector<std::string> lines;
     std::string cur;
     for (char c : text) {
         if (c == '\n') {
-            lines.push_back(cur);
+            lines.push_back(std::move(cur));
             cur.clear();
         } else if (c == '\r') {
             continue;
@@ -347,7 +329,22 @@ ftxui::Element renderSoftWrappedInput(const std::string& text, int cursorByte, b
             cur += c;
         }
     }
-    lines.push_back(cur);
+    lines.push_back(std::move(cur));
+    return lines;
+}
+}  // namespace
+
+ftxui::Element renderPlainText(const std::string& text) {
+    ftxui::Elements els;
+    for (auto& line : splitLogicalLines(text)) {
+        els.push_back(line.empty() ? ftxui::text(" ") : wrapParagraph(line));
+    }
+    if (els.empty()) els.push_back(ftxui::text(" "));
+    return ftxui::vbox(std::move(els));
+}
+
+ftxui::Element renderSoftWrappedInput(const std::string& text, int cursorByte, bool focused) {
+    std::vector<std::string> lines = splitLogicalLines(text);
 
     int cursor = cursorByte < 0 ? 0
         : (cursorByte > static_cast<int>(text.size()) ? static_cast<int>(text.size()) : cursorByte);

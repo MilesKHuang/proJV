@@ -50,11 +50,6 @@ std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
             snprintf(buf, sizeof(buf), "%s (%d lines, %zu bytes)",
                 msg.name.c_str(), lineCount, byteCount);
             d = buf;
-        } else if (msg.name == "exec_shell" || msg.name == "shell" || msg.name == "git_log"
-                   || msg.name == "git_status" || msg.name == "git_diff" || msg.name == "web_search") {
-            char buf[96];
-            snprintf(buf, sizeof(buf), "%s (%zu bytes)", msg.name.c_str(), byteCount);
-            d = buf;
         } else {
             char buf[96];
             snprintf(buf, sizeof(buf), "%s (%zu bytes)", msg.name.c_str(), byteCount);
