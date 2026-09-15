@@ -337,6 +337,13 @@ ChatResponse DeepSeekClient::sendMessage(const ChatRequest& request, std::string
     struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
     CurlGuard guard{curl};
 
+    // A previous cancel() leaves cancelFlag set. streamBlocking() resets it
+    // before every streaming request; sendMessage() must do the same,
+    // otherwise the block write callback aborts the response immediately and
+    // curl reports CURLE_WRITE_ERROR (23) after the server has already
+    // processed the whole prompt.
+    cancelFlag.store(false, std::memory_order_release);
+
     BlockContext blockCtx;
     blockCtx.cancelFlag = &cancelFlag;
 

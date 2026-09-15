@@ -36,7 +36,7 @@ static constexpr const char* QUICK_HELP =
     "### Quick Commands\n\n| Command | Description |\n|---------|-------------|\n"
     "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
     "| `/compress` | Summarize early messages |\n"
-    "\nproJV v0.5.1 — native C++ DeepSeek AI agent (FTXUI).\n";
+    "\nproJV v0.5.2 — native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
 
 static std::string buildToolPathsMessage(const std::string& cpp, const std::string& py) {
@@ -94,12 +94,28 @@ void Agent::startTurn(const std::string& text) {
 
 void Agent::run() {
     debugLog("[Agent] run: BEGIN");
-    doCompaction();
-    checkContextWarning();
-    toolCallDepth_ = 0;
-    reasoningLengthRetries_ = 0;
-    phase_ = AgentPhase::Streaming;
-    updateSnapshot();
+    if (compactRequested_.exchange(false)) {
+        phase_ = AgentPhase::Streaming;
+        updateSnapshot();
+        size_t before = getEstimatedContextTokens();
+        debugLogf("[Compact] request: before=%zu tokens, %zu msgs", before, session.messageCount());
+        doCompaction(true);
+        size_t after = getEstimatedContextTokens();
+        debugLogf("[Compact] request: after=%zu tokens, %zu msgs", after, session.messageCount());
+        addPersistedMessage(Message::Assistant(
+            "### Compressed\n\n"
+            "**Before:** ~" + std::to_string(before) + " tok\n"
+            "**After:** ~"  + std::to_string(after)  + " tok\n"
+            "**Saved:** ~"  + std::to_string(before > after ? before - after : 0) + " tok\n"));
+        phase_ = AgentPhase::Idle;
+    } else {
+        doCompaction();
+        checkContextWarning();
+        toolCallDepth_ = 0;
+        reasoningLengthRetries_ = 0;
+        phase_ = AgentPhase::Streaming;
+        updateSnapshot();
+    }
 
     while (phase_ != AgentPhase::Idle && !cancelRequested_.load()) {
         switch (phase_.load()) {
@@ -132,7 +148,7 @@ void Agent::run() {
                          || err.find("context_length") != std::string::npos
                          || err.find("too long") != std::string::npos
                          || err.find("token") != std::string::npos) {
-                            doCompaction();
+                            doCompaction(true);
                         }
                         req = buildChatRequest();
                         currentContent_.clear(); currentReasoning_.clear();
@@ -458,7 +474,14 @@ StreamCallbacks Agent::makeCallbacks() {
 
 // ========== Compaction ==========
 
-void Agent::doCompaction() { if (!cancelRequested_.load()) if (!compactSession()) session.pruneForContext(effectiveContextWindow()); }
+void Agent::doCompaction(bool force) {
+    if (cancelRequested_.load()) return;
+    contextTokensDirty_ = true;
+    compactSession(force);
+    session.pruneForContext(contextBudget.availableInput);
+    repairSession();
+    contextTokensDirty_ = true;
+}
 
 void Agent::checkContextWarning() {
     auto msgs = session.getContextMessages(); size_t total = 0;
@@ -470,30 +493,54 @@ void Agent::checkContextWarning() {
     if (total >= w * 3 / 4) { char b[256]; snprintf(b,sizeof(b),CONTEXT_WARNING_TEMPLATE,total/1000,w/1000); addPersistedMessage(Message::System(b)); }
 }
 
-bool Agent::compactSession() {
-    if (cancelRequested_.load() || session.messageCount() < 8) return false;
+bool Agent::compactSession(bool force) {
+    if (cancelRequested_.load()) {
+        debugLogf("[Compact] skipped: cancelled");
+        return false;
+    }
+    if (!force && session.messageCount() < 8) {
+        debugLogf("[Compact] skipped: <8 messages (%zu)", session.messageCount());
+        return false;
+    }
     auto msgs = session.getContextMessages();
     size_t est = 0;
     for (auto& m : msgs) est += Session::estimateTokens(m.content) + Session::estimateTokens(m.reasoningContent);
     size_t w = effectiveContextWindow();
-    if (est < w * 4 / 5) return false;
+    if (!force && est < w * 4 / 5) {
+        debugLogf("[Compact] skipped: below threshold (%zu < %zu)", est, w * 4 / 5);
+        return false;
+    }
     auto plan = session.planCompaction(4);
-    if (plan.summarizeIndices.empty()) return false;
+    if (plan.summarizeIndices.empty()) {
+        debugLogf("[Compact] skipped: plan has 0 messages to summarize (all pinned)");
+        return false;
+    }
     std::string input;
     { std::lock_guard<std::mutex> lk(todoMutex);
       std::string tc = buildTodoSystemMessage(todoData), ov = buildOverviewSystemMessage(todoData);
       if (!ov.empty()) input += ov + "\n\n"; if (!tc.empty()) input += tc + "\n\n"; }
     input += session.buildCompactionInput(plan);
-    if (input.size() < 200) return false;
+    if (input.size() < 200) {
+        debugLogf("[Compact] skipped: compaction input too small (%zu bytes)", input.size());
+        return false;
+    }
     ChatRequest req; req.model = model_;
     req.messages.push_back(Message::System(loadPromptFile("compactor.md")));
     req.messages.push_back(Message::User(input)); req.stream = false;
     req.maxTokens = configMaxTokens; req.temperature = 0.0;
     std::string err; ChatResponse resp = client.sendMessage(req, &err);
-    if (!err.empty() || resp.messages.empty()) return false;
+    if (!err.empty() || resp.messages.empty()) {
+        debugLogf("[Compact] LLM call failed: %s", err.empty() ? "empty response" : err.c_str());
+        return false;
+    }
     std::string s = resp.messages.back().content;
-    if (s.size() < 50) return false;
-    session.applyCompaction(plan, s); return true;
+    if (s.size() < 50) {
+        debugLogf("[Compact] summary too short (%zu bytes)", s.size());
+        return false;
+    }
+    session.applyCompaction(plan, s);
+    debugLogf("[Compact] applied: summarized %zu messages -> summary %zu bytes", plan.summarizeIndices.size(), s.size());
+    return true;
 }
 
 // ========== Tool execution ==========
@@ -617,18 +664,5 @@ bool Agent::handleQuickCommand(const std::string& input) {
     auto e = c.find_last_not_of(" \t\r\n"); c = c.substr(s, e-s+1);
     if (c == "/clear") { clearSession(); addPersistedMessage(Message::Assistant(SESSION_CLEARED)); return true; }
     if (c == "/help") { addPersistedMessage(Message::Assistant(QUICK_HELP)); return true; }
-    if (c == "/compress") {
-        auto msgs = session.getContextMessages();
-        size_t ot = 0; for (auto& m : msgs) ot += Session::estimateTokens(m.content);
-        if (ot == 0) ot = 1;
-        size_t ut=0,at=0,ta=0,tr=0;
-        session.compressMessages(ut,at,ta,tr);
-        msgs = session.getContextMessages(); size_t nt = 0;
-        for (auto& m : msgs) nt += Session::estimateTokens(m.content);
-        if (nt == 0) nt = 1;
-        size_t saved = ot - nt;
-        std::string r = "### Compression Report\n\n**Before:** ~"+std::to_string(ot)+" tok\n**After:** ~"+std::to_string(nt)+" tok\n**Saved:** ~"+std::to_string(saved)+" ("+std::to_string(saved*100/ot)+"%)\n\n**Details:**\n- User: "+std::to_string(ut)+"\n- Asst: "+std::to_string(at)+"\n- Args: "+std::to_string(ta)+"\n- Results: "+std::to_string(tr)+"\n";
-        addPersistedMessage(Message::Assistant(r)); return true;
-    }
     return false;
 }

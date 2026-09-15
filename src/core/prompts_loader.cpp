@@ -33,6 +33,8 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "\n"
     "## 3. Available Tools\n"
     "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool\n"
+    "\n"
+    "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 300000 (5 min), max is 600000 (10 min). Long silent commands such as downloads, builds, and `git clone` are allowed until the total timeout; silence alone does NOT mean the command failed. Do not kill long-running commands early and do not discard all output to /dev/null.\n"
     "\n";
 
 // ============================================================================

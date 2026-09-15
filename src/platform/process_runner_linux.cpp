@@ -15,7 +15,6 @@
 #include <cerrno>
 
 static constexpr int kPollMs = 100;
-static constexpr int kIdleMs = 30000;
 
 class ProcessRunnerLinux : public IProcessRunner {
 public:
@@ -165,7 +164,15 @@ public:
             }
 
             auto now = std::chrono::steady_clock::now();
-            if (now > deadline || (now - lastOut) > std::chrono::milliseconds(kIdleMs)) {
+            if (now > deadline) {
+                killpg(pid, SIGKILL);
+                waitpid(pid, &status, 0);
+                killed = true;
+                result.timedOut = true;
+                break;
+            }
+            if (cfg.idleTimeoutMs > 0 &&
+                (now - lastOut) > std::chrono::milliseconds(cfg.idleTimeoutMs)) {
                 killpg(pid, SIGKILL);
                 waitpid(pid, &status, 0);
                 killed = true;

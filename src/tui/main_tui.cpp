@@ -1,6 +1,7 @@
 // proJV TUI -- FTXUI event loop + App wiring (replaces the ImGui/GLFW main loop).
 #include "terminal.h"
 #include "app_tui.h"
+#include "debug_log.h"
 #include "chat_view.h"
 #include "markdown_view.h"
 #include "status_line.h"
@@ -88,6 +89,14 @@ int main() {
     ISystemUtil* sys = CreateSystemUtil();
     SystemUtil::Init(sys);
     IProcessRunner* procRunner = CreateProcessRunner();
+
+    // Route loguru output to a file and silence stderr: FTXUI owns the
+    // terminal, and stray stderr writes corrupt the alternate screen.
+    loguru::g_stderr_verbosity = loguru::Verbosity_OFF;
+    loguru::g_colorlogtostderr = false;
+    std::string logPath = (std::filesystem::path(getExeDir()) / "proJV.log").string();
+    loguru::add_file(logPath.c_str(), loguru::Append, loguru::Verbosity_MAX);
+    debugLogf("[main] log file: %s", logPath.c_str());
 
     TuiApp app;
     app.initialize(procRunner);
@@ -455,7 +464,7 @@ int main() {
         return vbox({
             text("About proJV") | bold,
             separator(),
-            text("proJV v0.5.1"),
+            text("proJV v0.5.2"),
             text("Native C++ DeepSeek AI agent (FTXUI)."),
             separator(),
             about_close->Render(),

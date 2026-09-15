@@ -13,7 +13,6 @@
 #include <cstring>
 
 static constexpr int kPollMs    = 100;
-static constexpr int kIdleMs    = 30000;
 
 class ProcessRunnerWin : public IProcessRunner {
 public:
@@ -167,8 +166,9 @@ public:
                 result.timedOut = true;
                 break;
             }
-            if (std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - lastOut).count() > kIdleMs) {
+            if (cfg.idleTimeoutMs > 0 &&
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - lastOut).count() > cfg.idleTimeoutMs) {
                 if (hJob) TerminateJobObject(hJob, 1);
                 else TerminateProcess(pi.hProcess, 1);
                 killed = true;

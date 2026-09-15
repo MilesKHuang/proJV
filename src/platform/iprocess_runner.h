@@ -5,11 +5,18 @@
 #include <map>
 #include <atomic>
 
+// Unified subprocess timeout policy, shared by every execution path
+// (exec_shell and pytool). Any tool that runs a subprocess must use the
+// same default and must never exceed the same cap.
+constexpr int kDefaultProcessTimeoutMs = 300000; // 5 minutes
+constexpr int kMaxProcessTimeoutMs     = 600000; // 10 minutes
+
 struct ProcessConfig {
     std::string command;            // shell command to execute
     std::string workDir;            // working directory (empty = inherit)
     std::string stdinContent;       // optional stdin data
-    int         timeoutMs = 0;      // 0 = no timeout
+    int         timeoutMs = 0;      // total wall-clock timeout; 0 = no timeout
+    int         idleTimeoutMs = 0;  // max silence between output; 0 = disabled
     bool        inheritEnv = true;  // inherit parent environment
     std::map<std::string, std::string> extraEnv;
 };

@@ -7,7 +7,6 @@
 // ============================================================================
 // Truncation / compaction strings (moved from prompts.h)
 // ============================================================================
-static constexpr const char* CONTEXT_COMPACT_SUMMARY_PREFIX = " [Context compacted: ";
 static constexpr const char* CONTEXT_COMPACT_SUMMARY_FULL_PREFIX =
     "\xe2\x9a\xa0\xef\xb8\x8f [Context compacted: ";
 
@@ -94,14 +93,6 @@ void Session::pruneForContext(size_t maxTokens) {
                 messages[i].content = "[truncated " + std::to_string(messages[i].content.size()) + " bytes]";
                 size_t after = estimateTokens(messages[i].content);
                 total = total > (before - after) ? total - (before - after) : 1;
-            }
-            if (messages[i].role == "assistant" && !messages[i].toolCalls.empty()) {
-                for (auto& tc : messages[i].toolCalls) {
-                    size_t before = estimateTokens(tc.arguments);
-                    tc.arguments = "[truncated]";
-                    size_t after = estimateTokens(tc.arguments);
-                    total = total > (before - after) ? total - (before - after) : 1;
-                }
             }
         }
     }
@@ -197,11 +188,7 @@ void Session::pruneForContext(size_t maxTokens) {
             summary.resize(summary.size() - 2);
         summary += "]";
 
-        size_t sysCount = 0;
-        while (sysCount < messages.size() && messages[sysCount].role == "system")
-            ++sysCount;
-        messages.insert(messages.begin() + sysCount, Message::System(summary));
-        debugLog("[Session] Inserted context compaction summary");
+        debugLogf("[Session] prune detail: %s", summary.c_str());
     }
 
     debugLogf("[Session] Pruned: %zu -> %zu msgs (%zuK -> %zuK tokens)",
@@ -368,35 +355,6 @@ void Session::stripOrphanedToolCalls() {
     }
 }
 
-void Session::compressMessages(size_t& userTrimmed, size_t& assistantTrimmed,
-                                size_t& toolArgsTrimmed, size_t& toolResultsTrimmed) {
-    std::lock_guard<std::mutex> lock(mtx);
-    userTrimmed = assistantTrimmed = toolArgsTrimmed = toolResultsTrimmed = 0;
-
-    for (auto& m : messages) {
-        if (m.role == "user" && m.content.size() > 1000) {
-            std::string suffix = "\n... [truncated " + std::to_string(m.content.size() - 500) + " chars]";
-            m.content = m.content.substr(0, 500) + suffix;
-            ++userTrimmed;
-        } else if (m.role == "assistant" && m.toolCalls.empty() && m.content.size() > 1000) {
-            std::string suffix = "\n... [truncated " + std::to_string(m.content.size() - 500) + " chars]";
-            m.content = m.content.substr(0, 500) + suffix;
-            ++assistantTrimmed;
-        } else if (m.role == "assistant" && !m.toolCalls.empty()) {
-            for (auto& tc : m.toolCalls) {
-                if (tc.arguments.size() > 300) {
-                    tc.arguments = tc.arguments.substr(0, 300) + "... [truncated]";
-                    ++toolArgsTrimmed;
-                }
-            }
-        } else if (m.role == "tool" && m.content.size() > 500) {
-            std::string suffix = "\n... [truncated " + std::to_string(m.content.size() - 500) + " chars]";
-            m.content = m.content.substr(0, 500) + suffix;
-            ++toolResultsTrimmed;
-        }
-    }
-}
-
 void Session::repairOrphanedToolCalls() {
     std::lock_guard<std::mutex> lock(mtx);
 
@@ -483,7 +441,7 @@ void Session::repairOrphanedToolCalls() {
     // Final tally: count tool messages remaining
     size_t toolCount = 0;
     for (const auto& m : messages) if (m.role == "tool") ++toolCount;
-    debugLogf("[Session] repairOrphanedToolCalls: DONE %zu→%zu msgs (%zu removed), %zu tool msgs remain",
+    debugLogf("[Session] repairOrphanedToolCalls: DONE %zu->%zu msgs (%zu removed), %zu tool msgs remain",
         beforeCount, messages.size(), beforeCount - messages.size(), toolCount);
 }
 
@@ -544,90 +502,12 @@ void Session::validateToolCallPairs() const {
     }
 
     if (violations > 0) {
-        LOG_F(ERROR, "[Session] validateToolCallPairs: *** %zu VIOLATION(S) *** in %zu messages (%zu tool msgs) → HTTP 400 WILL OCCUR!",
+        LOG_F(ERROR, "[Session] validateToolCallPairs: *** %zu VIOLATION(S) *** in %zu messages (%zu tool msgs) -> HTTP 400 WILL OCCUR!",
             violations, messages.size(), toolCount);
     } else {
-        debugLogf("[Session] validateToolCallPairs: ALL CLEAR — 0 violations in %zu messages (%zu tool msgs)",
+        debugLogf("[Session] validateToolCallPairs: ALL CLEAR - 0 violations in %zu messages (%zu tool msgs)",
             messages.size(), toolCount);
     }
-}
-
-// -- JSON persistence (DEPRECATED) ------------------------------------
-
-std::string Session::serialize() const {
-    std::lock_guard<std::mutex> lock(mtx);
-    debugLogf("[Session] serialize: %zu messages", messages.size());
-
-    try {
-        nlohmann::json j;
-        nlohmann::json msgs = nlohmann::json::array();
-
-        for (const auto& msg : messages) {
-            nlohmann::json m = msg;
-            msgs.push_back(m);
-        }
-
-        j["messages"] = msgs;
-        std::string result = j.dump();
-        debugLogf("[Session] serialize done: %zu bytes", result.size());
-        return result;
-    }
-    catch (const std::exception& e) {
-        debugLogf("[Session] serialize exception: %s", e.what());
-        return "{\"messages\":[]}";
-    }
-}
-
-bool Session::deserialize(const std::string& json) {
-    std::lock_guard<std::mutex> lock(mtx);
-    messages.clear();
-    debugLogf("[Session] deserialize: %zu bytes", json.size());
-
-    auto parseJson = [](const std::string& input) -> nlohmann::json {
-        try {
-            return nlohmann::json::parse(input);
-        } catch (const nlohmann::json::parse_error&) {
-            std::string cleaned = input;
-            while (!cleaned.empty()) {
-                size_t last = cleaned.find_last_not_of(" \t\r\n");
-                if (last == std::string::npos) break;
-                size_t lineStart = cleaned.rfind('\n', last);
-                size_t contentStart = (lineStart == std::string::npos) ? 0 : lineStart + 1;
-                std::string lastLine = cleaned.substr(contentStart, last - contentStart + 1);
-                size_t firstNonSpace = lastLine.find_first_not_of(" \t");
-                if (firstNonSpace != std::string::npos && lastLine[firstNonSpace] == '/')
-                    cleaned.resize(contentStart);
-                else
-                    break;
-            }
-            debugLog("[Session] deserialize: stripped trailing comment lines (old format)");
-            return nlohmann::json::parse(cleaned);
-        }
-    };
-
-    try {
-        nlohmann::json j = parseJson(json);
-        if (!j.contains("messages") || !j["messages"].is_array()) {
-            debugLog("[Session] deserialize: no messages array found");
-            return false;
-        }
-
-        for (const auto& item : j["messages"]) {
-            Message msg = item.get<Message>();
-            if (!msg.role.empty())
-                messages.push_back(msg);
-        }
-    } catch (const nlohmann::json::parse_error& e) {
-        debugLogf("[Session] deserialize: JSON parse error: %s | input (safe): %s",
-            e.what(), safeForLog(truncateForLog(json, 500)).c_str());
-        return false;
-    } catch (const std::exception& e) {
-        debugLogf("[Session] deserialize: unexpected exception: %s", e.what());
-        return false;
-    }
-
-    debugLogf("[Session] deserialize done: %zu messages", messages.size());
-    return !messages.empty();
 }
 
 // ============================================================================
@@ -731,8 +611,11 @@ bool Session::shouldPinMessage(size_t msgIdx, const WorkingSet& ws) const {
         if (lower.find(m) != std::string::npos) return true;
     }
 
-    // 4) Mentions TODO/checklist
-    if (lower.find("todo") != std::string::npos ||
+    // 4) Mentions explicit TODO/checklist markers. A bare "todo" substring is
+    // deliberately avoided: agent sessions use update_todo so often that the
+    // bare match pins nearly every message and leaves nothing to summarize.
+    if (lower.find("[todo") != std::string::npos ||
+        lower.find("todo:") != std::string::npos ||
         lower.find("checklist") != std::string::npos) return true;
 
     return false;
@@ -793,6 +676,18 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     // 1) Pin the tail (most recent messages)
     for (size_t i = n - keepRecent; i < n; ++i) pinned.insert(i);
 
+    // 1b) Pin the leading system block (system prompt / project context), but
+    // deliberately do NOT pin a previous compaction summary: it must be fed
+    // back into the summarizer so its content is merged into the new summary
+    // instead of being silently dropped.
+    size_t sysCount = 0;
+    while (sysCount < n && msgs[sysCount].role == "system") ++sysCount;
+    for (size_t i = 0; i < sysCount; ++i) {
+        if (msgs[i].content.rfind(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX, 0) == 0)
+            continue;
+        pinned.insert(i);
+    }
+
     // 2) Derive working set from all messages, then pin semantically important ones
     WorkingSet ws = deriveWorkingSet();
     for (size_t i = 0; i < n - keepRecent; ++i) {
@@ -802,6 +697,7 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     // 3) Enforce tool-call pairs
     plan.pinnedIndices.assign(pinned.begin(), pinned.end());
     enforceToolCallPairs(plan);
+    pinned.insert(plan.pinnedIndices.begin(), plan.pinnedIndices.end());
 
     // 4) Ensure at least one user message is in pinned set (API requirement)
     bool hasUser = false;
@@ -814,6 +710,19 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
         }
     }
 
+    // 4b) Previous compaction summaries must NEVER stay pinned. Change 1b
+    // already skips them in the leading system block, but shouldPinMessage()
+    // can still re-pin them because summaries usually contain file paths,
+    // error markers, and TODO text. Drop them here so they are fed back into
+    // the summarizer and merged, keeping exactly one summary message.
+    for (auto it = pinned.begin(); it != pinned.end(); ) {
+        if (*it < n && msgs[*it].role == "system" &&
+            msgs[*it].content.rfind(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX, 0) == 0)
+            it = pinned.erase(it);
+        else
+            ++it;
+    }
+
     // 5) Build summarize list from non-pinned indices
     plan.pinnedIndices.assign(pinned.begin(), pinned.end());
     for (size_t i = 0; i < n; ++i) {
@@ -821,7 +730,7 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
             plan.summarizeIndices.push_back(i);
     }
 
-    debugLogf("[Session] planCompaction: %zu msgs total → %zu pinned, %zu to summarize",
+    debugLogf("[Session] planCompaction: %zu msgs total -> %zu pinned, %zu to summarize",
         n, plan.pinnedIndices.size(), plan.summarizeIndices.size());
     return plan;
 }
@@ -890,7 +799,7 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
     size_t insertAt = sysCount;
 
     // Insert summary as system message
-    std::string fullMsg = "⚠️ [Context compacted: " +
+    std::string fullMsg = std::string(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX) +
         std::to_string(targets.size()) + " messages summarized]\n\n" + summary;
     messages.insert(messages.begin() + insertAt, Message::System(fullMsg));
 
@@ -938,7 +847,7 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
         }
     }
 
-    debugLogf("[Session] Compaction applied: %zu msgs → summary at index %zu",
+    debugLogf("[Session] Compaction applied: %zu msgs -> summary at index %zu",
         targets.size(), insertAt);
 }
 

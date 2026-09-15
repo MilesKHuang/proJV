@@ -38,11 +38,6 @@ struct Session {
     // Logs WARNING with full details on violations. Call before buildRequestBody.
     void validateToolCallPairs() const;
 
-    // In-place message compression: trim long user/assistant messages,
-    // truncate tool call args and tool results. Returns trim counts.
-    void compressMessages(size_t& userTrimmed, size_t& assistantTrimmed,
-                          size_t& toolArgsTrimmed, size_t& toolResultsTrimmed);
-
     // Repair orphaned tool_calls and tool results (for HTTP 400 recovery).
     void repairOrphanedToolCalls();
 
@@ -60,8 +55,6 @@ struct Session {
     // Quick detection: returns true if orphaned tool messages exist (O(n) scan).
     // Does NOT modify messages. Call before buildRequestBody as a cheap check.
     bool hasOrphanedTools() const;
-    std::string serialize() const;
-    bool deserialize(const std::string& json);
 
     // =================================================================
     // Context budget — dynamic window-aware pressure management

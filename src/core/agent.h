@@ -42,13 +42,14 @@ public:
     const Session& getSession() const { return session; }
     void clearSession();
     void newTurn();
+    void requestCompact() { compactRequested_.store(true); }
 
     Session::PressureLevel getContextPressure() const;
     size_t getEstimatedContextTokens() const;
     size_t getContextWindowSize() const { return contextBudget.windowTokens; }
 
     bool handleQuickCommand(const std::string& input);
-    bool compactSession();
+    bool compactSession(bool force = false);
 
     void setModel(const std::string& model);
     void setToolPaths(const std::string& cpp, const std::string& python);
@@ -86,7 +87,7 @@ private:
     std::vector<ToolDefinition> getFilteredToolDefinitions() const;
     StreamCallbacks makeCallbacks();
     ChatRequest buildChatRequest() const;
-    void doCompaction();
+    void doCompaction(bool force = false);
     void checkContextWarning();
     bool hasDestructiveCommand(const ToolCall& call) const;
     ToolResult executeTool(const ToolCall& call);
@@ -137,6 +138,7 @@ private:
     mutable bool contextTokensDirty_ = true;
 
     std::atomic<bool> cancelRequested_{false};
+    std::atomic<bool> compactRequested_{false};
 
     TodoData todoData;
     mutable std::mutex todoMutex;

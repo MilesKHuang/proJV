@@ -199,7 +199,14 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
-    // Other quick commands handled by the backend (/clear /help /compress).
+    if (trimmed == "/compress") {
+        agent->addPersistedMessage(Message::User("/compress"));
+        agent->requestCompact();
+        launchAgentThread();
+        return;
+    }
+
+    // Other quick commands handled by the backend (/clear /help).
     if (agent->handleQuickCommand(trimmed)) {
         // Already persisted; the event that sent it triggers a redraw.
         return;
