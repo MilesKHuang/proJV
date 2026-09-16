@@ -38,6 +38,12 @@ void BigbangParticipant::configure(const AppConfig& cfg, ToolRegistry* tools, in
     client_.setConfig(cfg);
 }
 
+void BigbangParticipant::seedSharedContext(const std::string& text) {
+    if (text.empty()) return;
+    session_.addMessage(Message::System(text));
+    debugLogf("[Bigbang][%s] seeded shared context (%zu chars)", name_.c_str(), text.size());
+}
+
 std::vector<ToolDefinition> BigbangParticipant::toolDefs() const {
     std::vector<ToolDefinition> defs;
     {
@@ -261,12 +267,14 @@ std::string BigbangParticipant::writeDoc(const std::string& userMessage) {
 // Roundtable
 // ---------------------------------------------------------------------------
 
-Roundtable::Roundtable(AppConfig cfg, ToolRegistry* tools, Callbacks cbs)
+Roundtable::Roundtable(AppConfig cfg, ToolRegistry* tools, Callbacks cbs,
+                       std::string sharedContext)
     : cfg_(std::move(cfg)), tools_(tools), cbs_(std::move(cbs)) {
     ensureDefaultBigbangPrompts();
-    auto mk = [this](const char* role, const char* display, bool canDoc) {
+    auto mk = [this, &sharedContext](const char* role, const char* display, bool canDoc) {
         auto p = std::make_unique<BigbangParticipant>(display, loadBigbangPrompt(role), canDoc);
         p->configure(cfg_, tools_, 2);
+        p->seedSharedContext(sharedContext);
         return p;
     };
     parts_[0] = mk("sheldon", "Sheldon", false);

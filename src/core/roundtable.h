@@ -27,6 +27,10 @@ public:
 
     void configure(const AppConfig& cfg, ToolRegistry* tools, int maxFileRounds);
 
+    // Inject a shared-context block (the main session transcript) as an extra
+    // system message so the role can resolve references like "this project".
+    void seedSharedContext(const std::string& text);
+
     // Phase 1/2: propose or integrate. Returns the final statement.
     std::string turn(const std::string& userMessage);
 
@@ -79,7 +83,8 @@ public:
         std::function<void(const std::string& status)> onProgress;
     };
 
-    Roundtable(AppConfig cfg, ToolRegistry* tools, Callbacks cbs);
+    Roundtable(AppConfig cfg, ToolRegistry* tools, Callbacks cbs,
+               std::string sharedContext = "");
 
     // Blocking: runs the whole debate on the calling thread.
     void run(const std::string& topic);

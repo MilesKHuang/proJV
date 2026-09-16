@@ -305,7 +305,29 @@ void TuiApp::startBigbang(const std::string& topic) {
         if (onStreamingTick) onStreamingTick();
     };
 
-    roundtable_ = std::make_unique<Roundtable>(config, &tools, cbs);
+    // Share the main session with the debate roles so they can resolve
+    // references like "this project" / "phase3-5". Full transcript, no cap.
+    std::string board;
+    {
+        auto msgs = agent->getSession().getContextMessages();
+        std::string b;
+        for (const auto& m : msgs) {
+            if (m.role == "system") continue;   // skip role/system prompts
+            if (m.role == "user") {
+                if (!m.content.empty()) b += "USER: " + m.content + "\n\n";
+            } else if (m.role == "assistant") {
+                if (!m.content.empty()) b += "ASSISTANT: " + m.content + "\n\n";
+            } else if (m.role == "tool") {
+                b += "TOOL(" + m.name + "): " + m.content + "\n\n";
+            }
+        }
+        if (!b.empty()) {
+            board = "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
+                    "Reference material only; use it to resolve vague references.]\n\n" + b;
+        }
+    }
+
+    roundtable_ = std::make_unique<Roundtable>(config, &tools, cbs, board);
     roundtableThread_ = std::thread([this, topic]() {
         try {
             roundtable_->run(topic);

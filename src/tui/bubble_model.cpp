@@ -128,6 +128,27 @@ std::vector<Bubble> deriveBubbles(const Message& msg) {
     Bubble cb;
     cb.role = msg.role;
     cb.content = msg.content;
+    // /bigbang projections are plain assistant messages tagged with a role
+    // prefix: "**[Sheldon]** ..." or "**[Sheldon vote]** ...". Detect and strip
+    // the prefix so the chat view can color/name the speaker.
+    if (msg.role == "assistant") {
+        static const char* kRoles[3] = {"Sheldon", "Penny", "Leonard"};
+        for (const char* nm : kRoles) {
+            std::string votePrefix = std::string("**[") + nm + " vote]** ";
+            std::string stmtPrefix = std::string("**[") + nm + "]** ";
+            if (cb.content.rfind(votePrefix, 0) == 0) {
+                cb.speaker = nm;
+                cb.isVote = true;
+                cb.content = cb.content.substr(votePrefix.size());
+                break;
+            }
+            if (cb.content.rfind(stmtPrefix, 0) == 0) {
+                cb.speaker = nm;
+                cb.content = cb.content.substr(stmtPrefix.size());
+                break;
+            }
+        }
+    }
     out.push_back(cb);
     return out;
 }

@@ -131,12 +131,9 @@ int main() {
 
     // Animated "working" spinner: advances only while the agent is busy.
     int spinnerFrame = 0;
-    auto busy = [&] {
-        auto phase = app.getPhase();
-        return phase == AgentPhase::Streaming
-            || phase == AgentPhase::ExecutingTools
-            || phase == AgentPhase::AwaitApproval;
-    };
+    // Agent turns AND /bigbang debates both run on the busy flag, so the
+    // spinner keeps animating during a debate (phase stays Idle then).
+    auto busy = [&] { return app.isBusy(); };
     auto spinner_ticker = std::make_shared<SpinnerTicker>(busy, [&] {
         spinnerFrame = (spinnerFrame + 1) % 8;
     });

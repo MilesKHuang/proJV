@@ -48,8 +48,16 @@ Element label(const std::string& text, Color c) {
 
 // Wrap a message block with a neutral border so role identity comes from the
 // label/text color, not from a rainbow of borders.
-Element frameBlock(Element block) {
-    return std::move(block) | ftxui::borderStyled(P.border);
+// Per-role accent for /bigbang speakers (fixed, theme-independent).
+Color speakerColor(const std::string& s) {
+    if (s == "Sheldon") return Color::RGB(96, 156, 255);   // blue
+    if (s == "Penny")   return Color::RGB(255, 138, 176);  // pink
+    if (s == "Leonard") return Color::RGB(120, 210, 140);  // green
+    return P.text;
+}
+
+Element frameBlock(Element block, Color c) {
+    return std::move(block) | ftxui::borderStyled(c);
 }
 
 // Long chains of thought are shown as a trailing window instead of in full:
@@ -142,6 +150,18 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
                 els.push_back(ftxui::text(reasoningSummary(b.reasoningText)) | ftxui::dim);
             }
             block = ftxui::vbox(std::move(els));
+        } else if (b.role == "assistant" && !b.speaker.empty()) {
+            Color rc = speakerColor(b.speaker);
+            Elements els;
+            els.push_back(label("── " + b.speaker + (b.isVote ? " · vote" : "") + " ──", rc));
+            if (b.isVote) {
+                bool dissent = b.content.rfind("DISSENT", 0) == 0;
+                Color vc = dissent ? Color::RGB(255, 96, 96) : Color::RGB(96, 220, 128);
+                els.push_back(ftxui::text(b.content) | ftxui::color(vc) | ftxui::bold);
+            } else {
+                els.push_back(markdown_view::renderMarkdown(b.content));
+            }
+            block = ftxui::vbox(std::move(els));
         } else if (b.role == "assistant") {
             Elements els;
             if (b.hasReasoning) {
@@ -206,7 +226,8 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
             block = markdown_view::renderPlainText(b.content) | ftxui::color(P.text);
         }
 
-        lines.push_back(frameBlock(std::move(block)));
+        Color borderColor = b.speaker.empty() ? P.border : speakerColor(b.speaker);
+        lines.push_back(frameBlock(std::move(block), borderColor));
     }
 
     return ftxui::vbox(std::move(lines));
