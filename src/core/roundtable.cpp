@@ -93,6 +93,14 @@ ToolCall BigbangParticipant::doRequest(const std::string& toolName, bool force,
     req.tools = toolDefs();
     req.messages = session_.getContextMessages();
 
+    // Test seam: scripted reply instead of a real API call.
+    if (responder_) {
+        outText.clear();
+        lastReasoning_.clear();
+        lastError_.clear();
+        return responder_(toolName, req.messages);
+    }
+
     std::vector<ToolCall> parts;
     bool got = false;
     outText.clear();

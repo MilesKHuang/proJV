@@ -10,6 +10,7 @@ set(TEST_SOURCES
     unit/test_approval_logic.cpp
     unit/test_theme_map.cpp
     unit/test_theme_colors.cpp
+    unit/test_bigbang_roundtable.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
