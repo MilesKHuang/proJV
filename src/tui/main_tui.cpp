@@ -90,13 +90,17 @@ int main() {
     SystemUtil::Init(sys);
     IProcessRunner* procRunner = CreateProcessRunner();
 
-    // Route loguru output to a file and silence stderr: FTXUI owns the
-    // terminal, and stray stderr writes corrupt the alternate screen.
+#ifndef PROJV_RELEASE
+    // Debug builds only: route loguru output to a file and silence stderr
+    // (FTXUI owns the terminal; stray stderr writes corrupt the alternate
+    // screen). Release builds compile in no logging AND must not create a
+    // log file at all -- so skip loguru init entirely under PROJV_RELEASE.
     loguru::g_stderr_verbosity = loguru::Verbosity_OFF;
     loguru::g_colorlogtostderr = false;
     std::string logPath = (std::filesystem::path(getExeDir()) / "proJV.log").string();
     loguru::add_file(logPath.c_str(), loguru::Append, loguru::Verbosity_MAX);
     debugLogf("[main] log file: %s", logPath.c_str());
+#endif
 
     TuiApp app;
     app.initialize(procRunner);
@@ -136,6 +140,10 @@ int main() {
     auto spinner_ticker = std::make_shared<SpinnerTicker>(busy, [&] {
         spinnerFrame = (spinnerFrame + 1) % 8;
     });
+
+    // Idle-edge detector: plays a short system beep once a turn (or debate)
+    // finishes and the app goes idle.
+    bool prevBusy = false;
 
     // Model picker state (F11): names come from the API when available.
     auto model_names = std::make_shared<std::vector<std::string>>();
@@ -276,6 +284,13 @@ int main() {
     auto main_renderer = Renderer(input_comp, [&] {
         app.syncChatFromAgent();
 
+        // Short completion beep on the busy -> idle edge.
+        {
+            bool curBusy = app.isBusy();
+            if (prevBusy && !curBusy) tui::beepIdle();
+            prevBusy = curBusy;
+        }
+
         // Bootstrap the spinner animation loop while the agent is busy.
         if (busy()) screen.RequestAnimationFrame();
 
@@ -347,6 +362,16 @@ int main() {
                     text("  "),
                     spinner(6, spinnerFrame) | color(Color::RGB(224, 200, 96)),
                 });
+            }
+            {
+                std::string ds = app.getDebateStatus();
+                if (!ds.empty()) {
+                    statusEl = hbox({
+                        statusEl,
+                        text("  [bigbang] " + ds)
+                            | color(theme_map::hexToColor(T.phaseAwaitApproval)),
+                    });
+                }
             }
             els.push_back(statusEl);
         }

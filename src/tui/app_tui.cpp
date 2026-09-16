@@ -206,6 +206,23 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
+    // /bigbang <topic>: run the multi-role debate on a background thread.
+    if (trimmed.rfind("/bigbang", 0) == 0) {
+        std::string topic = trimmed.size() > 8 ? trimmed.substr(8) : std::string();
+        auto ts = topic.find_first_not_of(" \t\r\n");
+        topic = (ts == std::string::npos) ? std::string() : topic.substr(ts);
+        if (topic.empty()) {
+            bubble_model::Bubble cb;
+            cb.role = "system";
+            cb.content = "[bigbang] usage: /bigbang <topic>";
+            chatHistory.push_back(cb);
+            resetChatScroll();
+            return;
+        }
+        startBigbang(topic);
+        return;
+    }
+
     // Other quick commands handled by the backend (/clear /help).
     if (agent->handleQuickCommand(trimmed)) {
         // Already persisted; the event that sent it triggers a redraw.
@@ -234,6 +251,74 @@ void TuiApp::joinAgentThread() {
     }
 }
 
+void TuiApp::joinRoundtableThread() {
+    if (roundtableThread_.joinable()) {
+        try { roundtableThread_.join(); } catch (...) {}
+    }
+}
+
+std::string TuiApp::getDebateStatus() const {
+    std::lock_guard<std::mutex> lk(debateMutex_);
+    return debateStatus_;
+}
+
+void TuiApp::startBigbang(const std::string& topic) {
+    if (!agent) return;
+    if (agentThreadRunning_.load()) {
+        pendingQueue_.push_back("/bigbang " + topic);
+        return;
+    }
+    if (agent->ensureStorage) agent->ensureStorage();
+    agent->addPersistedMessage(Message::User("/bigbang " + topic));
+    {
+        std::lock_guard<std::mutex> lk(debateMutex_);
+        debateStatus_ = "Preparing debate...";
+    }
+
+    joinRoundtableThread();
+    agentThreadRunning_.store(true);
+
+    Roundtable::Callbacks cbs;
+    cbs.onStatement = [this](const std::string& role, const std::string& text) {
+        if (agent) agent->addPersistedMessage(Message::Assistant("**[" + role + "]** " + text));
+    };
+    cbs.onVote = [this](const std::string& role, const VoteResult& v) {
+        std::string s = "**[" + role + " vote]** " + (v.agree ? "AGREE" : "DISSENT");
+        if (!v.concerns.empty()) {
+            s += " (concerns: ";
+            for (size_t i = 0; i < v.concerns.size(); ++i) {
+                if (i) s += "; ";
+                s += v.concerns[i];
+            }
+            s += ")";
+        }
+        if (agent) agent->addPersistedMessage(Message::Assistant(s));
+    };
+    cbs.onDoc = [this](const std::string& doc) {
+        if (agent) agent->addPersistedMessage(Message::Assistant(doc));
+    };
+    cbs.onProgress = [this](const std::string& st) {
+        {
+            std::lock_guard<std::mutex> lk(debateMutex_);
+            debateStatus_ = st;
+        }
+        if (onStreamingTick) onStreamingTick();
+    };
+
+    roundtable_ = std::make_unique<Roundtable>(config, &tools, cbs);
+    roundtableThread_ = std::thread([this, topic]() {
+        try {
+            roundtable_->run(topic);
+        } catch (...) {}
+        agentThreadRunning_.store(false);
+        {
+            std::lock_guard<std::mutex> lk(debateMutex_);
+            debateStatus_.clear();
+        }
+        if (onTurnComplete) onTurnComplete();
+    });
+}
+
 void TuiApp::drainPendingQueue() {
     if (agentThreadRunning_.load()) return;
     if (pendingQueue_.empty()) return;
@@ -244,10 +329,13 @@ void TuiApp::drainPendingQueue() {
 
 void TuiApp::cancelTurn() {
     pendingQueue_.clear();
+    if (roundtable_) roundtable_->cancel();
     if (agent) agent->cancel();
 }
 
 void TuiApp::shutdown() {
+    if (roundtable_) roundtable_->cancel();
+    joinRoundtableThread();
     if (agent) agent->cancel();
     joinAgentThread();
     joinModelsThread();
@@ -258,6 +346,8 @@ void TuiApp::shutdown() {
 }
 
 void TuiApp::emergencyShutdown() {
+    if (roundtable_) roundtable_->cancel();
+    joinRoundtableThread();
     if (agent) agent->cancel();
     joinAgentThread();
     // Do not join the models thread: it never touches the DB and might be

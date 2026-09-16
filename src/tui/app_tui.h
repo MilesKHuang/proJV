@@ -6,6 +6,7 @@
 #include "core/storage.h"
 #include "client/deepseek.h"
 #include "core/agent.h"
+#include "core/roundtable.h"
 #include "tools/registry.h"
 #include "tools/python_tool_manager.h"
 #include "tui/bubble_model.h"
@@ -13,6 +14,7 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -90,6 +92,10 @@ public:
     void sendMessage(const std::string& text);
     bool isBusy() const { return agentThreadRunning_.load(); }
     void cancelTurn();
+
+    // Run a /bigbang debate on a background thread.
+    void startBigbang(const std::string& topic);
+    std::string getDebateStatus() const;
     size_t pendingCount() const { return pendingQueue_.size(); }
 
     // Invoked on the agent thread when a turn completes (used to trigger a redraw).
@@ -116,6 +122,7 @@ private:
     void launchAgentThread();
     void joinAgentThread();
     void joinModelsThread();
+    void joinRoundtableThread();
     void drainPendingQueue();
 
     AppConfig config;
@@ -146,6 +153,11 @@ private:
 
     std::thread agentThread_;
     std::atomic<bool> agentThreadRunning_{false};
+
+    std::unique_ptr<Roundtable> roundtable_;
+    std::thread roundtableThread_;
+    std::string debateStatus_;
+    mutable std::mutex debateMutex_;
     std::atomic<int> totalPromptTokens_{0};
     std::atomic<int> totalCompletionTokens_{0};
 };

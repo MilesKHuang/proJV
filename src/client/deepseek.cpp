@@ -183,6 +183,13 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
         body["tools"] = tools;
     }
 
+    if (!request.toolChoice.empty()) {
+        body["tool_choice"] = {
+            {"type", "function"},
+            {"function", { {"name", request.toolChoice} }}
+        };
+    }
+
     return body.dump(2);
 }
 

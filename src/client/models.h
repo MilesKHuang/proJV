@@ -66,6 +66,9 @@ struct ChatRequest {
     std::string model = "deepseek-v4-flash";
     std::vector<Message> messages;
     std::vector<ToolDefinition> tools;
+    // Force the model to call a specific function tool (empty = API default).
+    // Serialized as {"type":"function","function":{"name":<toolChoice>}}.
+    std::string toolChoice;
     bool stream = true;
     int maxTokens = 65536;
     double temperature = 0.0;

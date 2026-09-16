@@ -9,4 +9,8 @@ namespace tui {
 // Must be called before constructing ftxui::ScreenInteractive.
 void initTerminal();
 
+// Short system beep when a turn finishes and the app returns to idle.
+// Windows: MessageBeep. Linux: terminal bell.
+void beepIdle();
+
 } // namespace tui

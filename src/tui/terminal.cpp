@@ -1,6 +1,8 @@
 // proJV TUI -- terminal bootstrap implementation
 #include "terminal.h"
 
+#include <cstdio>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -27,6 +29,15 @@ void initTerminal() {
     }
 #else
     // Linux: UTF-8 locale assumed. Nothing to do.
+#endif
+}
+
+void beepIdle() {
+#ifdef _WIN32
+    MessageBeep(0xFFFFFFFFu);  // MB_OK default sound; non-blocking
+#else
+    std::fputc('\a', stderr);   // best-effort terminal bell
+    std::fflush(stderr);
 #endif
 }
 

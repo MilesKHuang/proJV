@@ -34,6 +34,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/core/project_context.cpp
+    ${SRC_DIR}/core/roundtable.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -125,8 +126,10 @@ if(WIN32)
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
     )
     if(MSVC)
-        add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
-        add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/wd4005>")
+        # Sources are UTF-8; compile the lib as UTF-8 too so Chinese string
+        # literals are encoded correctly. NOTE: must be target_compile_options
+        # (add_compile_options after add_library would NOT apply to proJV_lib).
+        target_compile_options(proJV_lib PRIVATE /utf-8 /wd4005)
     endif()
 
 # ── Platform: Linux ──────────────────────────────────────────────────────

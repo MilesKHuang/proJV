@@ -1,8 +1,11 @@
 # Big Bang 辩论（/bigbang）设计文档
 
-> 版本：v0.8
+> 版本：v0.9
 > 日期：2026-09-16
-> 状态：草案（已完成设计评审，待实现）
+> 状态：已评审（代码核对完成，待实现）
+>
+> v0.9 修订：补充 `BigbangParticipant` 不可拷贝/移动约束、CMakeLists 接入点、`tool_choice` 序列化格式；
+> 修正"Session 无 compaction"的表述；"Plus" 两条独立小改动拆成第十节。
 
 ---
 
@@ -324,6 +327,8 @@ suggested_tweak  (string) 如果要改，建议改什么；同意的话填 "none
 | 9 | 收敛策略 | 不固定轮数，通过投票 `agree` 字段判断；设置轮次上限兜底（默认 8） |
 | 10 | 循环检测 hash 对象 | Leonard 每轮 `statement` 全文（去除首尾空白），不含投票字段 |
 | 11 | 辩论过程持久化 | 每个角色每次 `turn()`/`vote()` 产出的最终结果，实时以投影消息追加进主 `Agent` 的 `Session`/DB（不含文件原文、不含工具调用原始 JSON），见 7.9 |
+| 12 | `ChatRequest.tool_choice` 序列化格式 | 用对象形式 `{"type":"function","function":{"name":"bigbang_turn"}}`（**不是**字符串 `"required"`），锁定到具体工具名 |
+| 13 | `BigbangParticipant` 的容器 | 该结构内含 `DeepSeekClient`（atomic+mutex）与 `Session`（mutex），**不可拷贝、不可移动**；必须用 `std::unique_ptr<BigbangParticipant>` 或 `std::array` 原地构造，**禁止**放进会触发扩容的 `std::vector<BigbangParticipant>` |
 
 ### 7.2 新增模块
 
@@ -331,6 +336,8 @@ suggested_tweak  (string) 如果要改，建议改什么；同意的话填 "none
 |------|------|
 | `src/core/roundtable.h/.cpp` | 编排器：角色管理、并发调度、工具执行代理、收敛判断 |
 | `projv_files/prompts/bigbang/{sheldon,penny,leonard}.md` | 三个角色的 system prompt |
+
+> 构建接入：`src/core/roundtable.cpp` 必须加入根 `CMakeLists.txt` 的 `COMMON_SOURCES`；TUI 新增的辩论视图源文件加入 `proJV_tui` 目标，否则链接失败。prompt 目录由 `getPromptsDir()` 解析到 `{exeDir}/projv_files/prompts/`，无需改 CMake。
 
 ### 7.3 `bigbang_turn` 工具定义（三人共用，叙述+文件请求）
 
@@ -408,6 +415,8 @@ std::string loadBigbangPrompt(const std::string& role); // role = "sheldon"|"pen
 void ensureDefaultBigbangPrompts(); // 在 projv_files/prompts/bigbang/ 下创建默认文件
 ```
 
+> 注意：`BigbangParticipant` 内含 `DeepSeekClient` 与 `Session`，两者都带 `std::atomic`/`std::mutex`，因此该结构**不可拷贝、不可移动**。编排器必须用 `std::unique_ptr<BigbangParticipant>`（或 `std::array` 原地构造）持有。
+
 三个角色的默认文本对应第二节 markdown 内容，作为 `PROMPT_DEFAULT_SHELDON/PENNY/LEONARD` 常量写入 `prompts_loader.cpp`，缺文件时兜底。
 
 ### 7.7 并发调度表
@@ -432,7 +441,7 @@ void ensureDefaultBigbangPrompts(); // 在 projv_files/prompts/bigbang/ 下创�
 | 往返上限 | 单次 `turn()` 内最多 2 次"请求文件 → 回填 → 再请求"往返，超出则强制要求给出 `statement` |
 | 回填方式 | 结果作为 `Message::Tool(toolCallId, "bigbang_turn", 内容)` 加入该角色的 `Session`，走标准 tool-result 流程 |
 
-> 风险：不设单文件长度上限 + 三角色并发各自读取，`BigbangParticipant.session` 目前无 compaction 机制，长时间辩论有 context 溢出风险，详见第九节。
+> 风险：不设单文件长度上限 + 三角色并发各自读取，长时间辩论有 context 溢出风险。`Session` 本身**已具备**压缩机制（`planCompaction`/`applyCompaction`/`ContextBudget` 压力分级），默认只是**未被编排器接入**；若实测溢出，直接复用其现有 compaction 即可，详见第九节。
 
 ### 7.9 辩论过程持久化规则（投影写入主 Session）
 
@@ -510,10 +519,23 @@ void ensureDefaultBigbangPrompts(); // 在 projv_files/prompts/bigbang/ 下创�
 | 用户觉得辩论太慢 | Phase 1/3 并发流式输出，用户实时看到；轮次上限避免无限拖长 |
 | 误把 `BigbangParticipant` 实现成 `Agent` 子类，引入完整工具审批逻辑 | 实现前强制 code review 对照 7.1 决策表，只读工具白名单是唯一允许的例外 |
 | 3 路并发抢占同一个 `agentThreadRunning_` 导致死锁或消息丢失 | 严格按"TUI 集成决策表"实现，辩论线程与 `agentThread_` 二选一运行 |
-| 三人同时请求同一份大文件，Context 迅速膨胀（不设单文件长度上限） | 文件路径数量上限（3个/轮）+ session 内去重缓存；`BigbangParticipant.session` 暂无 compaction 机制，若实测溢出频繁需后续补充 |
+| 三人同时请求同一份大文件，Context 迅速膨胀（不设单文件长度上限） | 文件路径数量上限（3个/轮）+ session 内去重缓存；`Session` 已有压缩机制（`planCompaction`/`applyCompaction`），编排器按需接入即可，无需新写 |
 | 误把角色内部 `Session`（含文件原文/工具调用 JSON）整体持久化到主 DB | 严格按 7.9 节"投影"规则，只持久化 `statement`/投票摘要/最终文档 |
 | `Message.name` 字段被误用于标注角色名，导致重新请求 API 时 400 错误 | 用内容文本前缀 `"**[角色名]** "` 代替，不使用 `Message.name` |
 
-## Plus
-编译release的时后确保不要有Log，以前已经会关掉，现在release依然有Log文件吐出
-进入idle之后可以短短的有个系统提示音
+## 十、附带的独立小改动（Plus）
+
+> 以下两条与 `/bigbang` 无依赖，建议各自单独 commit，不混入辩论实现。
+
+### 10.1 Release 构建禁止产生日志文件
+
+- 现状：`src/debug_log.h` 在 `PROJV_RELEASE` 下已把 `LOG_F`/`debugLog` 等宏置空，但日志文件仍会被创建。
+- 根因：`src/tui/main_tui.cpp` 里 `loguru::add_file(...)`（约 L98）是**无条件调用**；`PROJV_RELEASE` 只禁了"写日志"的宏，没有禁止"打开/创建文件"这一步。
+- 改法：把 loguru 初始化整段（`g_stderr_verbosity` / `g_colorlogtostderr` / `add_file` / 首条 `debugLogf`）包进 `#ifndef PROJV_RELEASE`，Release 下完全不产生 `proJV.log`。
+
+### 10.2 进入 Idle 后的短提示音
+
+- 现状：代码库无任何声音调用。
+- 方案：在 phase 由 busy（Streaming/ExecutingTools/AwaitApproval/辩论中）转为 `Idle` 时触发一次短提示音。Windows 用 `MessageBeep(MB_OK)`（或 `Beep(freq,dur)`），经 platform 层（`ISystemUtil`）封装，Linux 用终端 bell `\a`。
+- 触发点：`TuiApp` 中检测 phase 边沿（上一帧 busy、这一帧 Idle）触发一次，避免重复响。
+- 建议：config.toml 加开关（如 `idle_sound`），默认开。
