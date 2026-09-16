@@ -1,5 +1,6 @@
 #include "roundtable.h"
 #include "core/prompts.h"
+#include "debug_log.h"
 #include "json.hpp"
 
 #include <set>
@@ -73,22 +74,30 @@ std::vector<ToolDefinition> BigbangParticipant::toolDefs() const {
     return defs;
 }
 
-ToolCall BigbangParticipant::requestTool(const std::string& toolName, std::string& outText) {
+ToolCall BigbangParticipant::doRequest(const std::string& toolName, bool force,
+                                       std::string& outText) {
     ChatRequest req;
     req.model = cfg_.model;
     req.maxTokens = cfg_.maxTokens;
     req.temperature = cfg_.temperature;
     req.stream = true;
-    req.toolChoice = toolName;
+    // Thinking-mode models (DeepSeek v4) reject a forced function tool_choice;
+    // force=false falls back to "auto" so the model still picks the tool itself.
+    req.toolChoice = force ? toolName : std::string("auto");
     req.tools = toolDefs();
     req.messages = session_.getContextMessages();
 
     std::vector<ToolCall> parts;
     bool got = false;
     outText.clear();
+    lastReasoning_.clear();
+    lastError_.clear();
 
     StreamCallbacks cb;
     cb.onText = [&outText](const std::string& t) { outText += t; };
+    // Thinking-mode models require reasoning_content to be echoed back on the
+    // next request; capture it so the assistant tool-call message can carry it.
+    cb.onThinking = [this](const std::string& t) { lastReasoning_ += t; };
     cb.onToolCall = [&parts, &got](const ToolCall& tc) {
         int idx = tc.index < 0 ? 0 : tc.index;
         if (static_cast<int>(parts.size()) <= idx) parts.resize(idx + 1);
@@ -98,8 +107,13 @@ ToolCall BigbangParticipant::requestTool(const std::string& toolName, std::strin
         parts[idx].index = idx;
         got = true;
     };
+    cb.onError = [this](const std::string& e) { lastError_ = e; };
 
     client_.streamBlocking(req, cb);
+    if (!lastError_.empty()) {
+        debugLogf("[Bigbang][%s] '%s' failed: %s",
+                  name_.c_str(), toolName.c_str(), lastError_.c_str());
+    }
 
     if (!got || parts.empty()) {
         ToolCall empty;
@@ -110,6 +124,17 @@ ToolCall BigbangParticipant::requestTool(const std::string& toolName, std::strin
         if (p.name == toolName) return p;
     }
     return parts[0];
+}
+
+ToolCall BigbangParticipant::requestTool(const std::string& toolName, std::string& outText) {
+    outText.clear();
+    ToolCall tc = doRequest(toolName, /*force=*/true, outText);
+    if (!tc.valid && lastError_.find("tool_choice") != std::string::npos) {
+        debugLogf("[Bigbang][%s] forced tool_choice rejected, retrying with auto",
+                  name_.c_str());
+        tc = doRequest(toolName, /*force=*/false, outText);
+    }
+    return tc;
 }
 
 std::string BigbangParticipant::executeFileRequests(const std::vector<std::string>& paths) {
@@ -137,6 +162,11 @@ std::string BigbangParticipant::turn(const std::string& userMessage) {
         std::string text;
         ToolCall tc = requestTool("bigbang_turn", text);
         if (!tc.valid) {
+            if (!lastError_.empty()) {
+                std::string err = "[bigbang error] " + lastError_;
+                session_.addMessage(Message::Assistant(err));
+                return err;
+            }
             if (!text.empty()) {
                 session_.addMessage(Message::Assistant(text));
                 return text;
@@ -156,6 +186,7 @@ std::string BigbangParticipant::turn(const std::string& userMessage) {
 
         Message am = Message::Assistant();
         am.toolCalls.push_back(tc);
+        am.reasoningContent = lastReasoning_;
         session_.addMessage(am);
 
         bool finalize = (round >= maxFileRounds_) || files.empty();
@@ -178,7 +209,10 @@ VoteResult BigbangParticipant::vote(const std::string& userMessage) {
     if (!tc.valid) {
         vr.agree = false;
         vr.suggestedTweak = "none";
-        vr.concerns.push_back("[low] (no structured vote) " + text);
+        if (!lastError_.empty())
+            vr.concerns.push_back("[high] bigbang error: " + lastError_);
+        else
+            vr.concerns.push_back("[low] (no structured vote) " + text);
         return vr;
     }
     try {
@@ -193,6 +227,7 @@ VoteResult BigbangParticipant::vote(const std::string& userMessage) {
 
     Message am = Message::Assistant();
     am.toolCalls.push_back(tc);
+    am.reasoningContent = lastReasoning_;
     session_.addMessage(am);
     session_.addMessage(Message::Tool(tc.id, "bigbang_vote", "OK"));
     return vr;
@@ -202,7 +237,10 @@ std::string BigbangParticipant::writeDoc(const std::string& userMessage) {
     session_.addMessage(Message::User(userMessage));
     std::string text;
     ToolCall tc = requestTool("write_bigbang_doc", text);
-    if (!tc.valid) return text;
+    if (!tc.valid) {
+        if (!lastError_.empty()) return "[bigbang error] " + lastError_;
+        return text;
+    }
 
     std::string doc;
     try {
@@ -213,6 +251,7 @@ std::string BigbangParticipant::writeDoc(const std::string& userMessage) {
 
     Message am = Message::Assistant();
     am.toolCalls.push_back(tc);
+    am.reasoningContent = lastReasoning_;
     session_.addMessage(am);
     session_.addMessage(Message::Tool(tc.id, "write_bigbang_doc", "OK"));
     return doc;
@@ -280,6 +319,15 @@ std::string Roundtable::buildResidualConcerns() const {
 }
 
 void Roundtable::run(const std::string& topic) {
+    if (!modelSupportsTools(cfg_.model)) {
+        std::string msg = "[bigbang] model '" + cfg_.model +
+            "' does not support tool calls, so the debate cannot run. "
+            "Switch to a tool-capable model in config.toml.";
+        if (cbs_.onStatement) cbs_.onStatement("system", msg);
+        progress(msg);
+        return;
+    }
+
     std::string voteSummary;
 
     for (int round = 1; round <= maxRounds_ && !cancelRequested_.load(); ++round) {

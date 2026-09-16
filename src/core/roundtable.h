@@ -42,8 +42,13 @@ public:
 private:
     std::vector<ToolDefinition> toolDefs() const;
 
-    // Run one streaming request forced to call `toolName`. Returns the merged
+    // Run one streaming request. `force` requests a specific function
+    // (tool_choice=function); false uses tool_choice=auto. Returns the merged
     // tool call (valid=false when the model produced no tool call).
+    ToolCall doRequest(const std::string& toolName, bool force, std::string& outText);
+
+    // Wrapper: try forcing `toolName`; if the model rejects a forced
+    // tool_choice (thinking mode), retry once with auto.
     ToolCall requestTool(const std::string& toolName, std::string& outText);
 
     std::string executeFileRequests(const std::vector<std::string>& paths);
@@ -56,6 +61,8 @@ private:
     int maxFileRounds_ = 2;
     DeepSeekClient client_;
     Session session_;
+    std::string lastReasoning_;   // reasoning_content of the last request
+    std::string lastError_;       // last HTTP/stream error (empty = ok)
 };
 
 // Orchestrates the /bigbang debate across Sheldon, Penny and Leonard.

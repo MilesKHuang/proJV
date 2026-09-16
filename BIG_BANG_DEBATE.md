@@ -319,7 +319,7 @@ suggested_tweak  (string) 如果要改，建议改什么；同意的话填 "none
 | 1 | 辩论角色的运行载体 | 新增 `BigbangParticipant`，**不复用** `Agent` 类（`Agent` 耦合状态机/工具审批/`todoData`/SQLite 持久化，辩论角色均不需要） |
 | 2 | `DeepSeekClient` 实例数 | 3 个独立实例，各自 `setConfig`（流式解析状态不可跨线程共享） |
 | 3 | `ChatRequest.tools` | 三人共用 `bigbang_turn`（叙述+文件请求）和 `bigbang_vote`（投票，全部扁平字段）；Leonard 额外多一个 `write_bigbang_doc` |
-| 4 | `ChatRequest.tool_choice` | Phase 1/2 强制指定 `bigbang_turn`；Phase 3 强制指定 `bigbang_vote`；Phase 5 对 Leonard 强制指定 `write_bigbang_doc` |
+| 4 | `ChatRequest.tool_choice` | 优先**强制**指定对应工具（`bigbang_turn`/`bigbang_vote`/`write_bigbang_doc`）；若模型为 thinking 模式并拒绝强制 tool_choice（见第九节），自动回退 `auto`，改由 system prompt 的"必须调用 X 工具"约束模型主动调用 |
 | 5 | 文件读取的执行者 | 编排器在收到 `file_requests` 后代为调用只读工具，结果以 `Message::Tool(...)` 回填；角色本身不直接拿到工具执行权限 |
 | 6 | 只读工具白名单 | 仅 `read_file` / `grep_files` / `file_search`，禁止 `exec_shell`/`write_file`/`edit_file` |
 | 7 | `Session` 归属 | 每角色一个独立 `Session`，直接 new，不经过 `Agent`，仅供模型自身推理使用，不持久化。**角色间发言互通**由编排器负责：把上一轮 `statement`/投票结果拼接后传入下一次调用的 `userMessage`，与 `Session` 隔离无关 |
@@ -491,6 +491,15 @@ void ensureDefaultBigbangPrompts(); // 在 projv_files/prompts/bigbang/ 下创�
 | 现有工具执行逻辑 | `ToolRegistry::execute` 内部实现不动，编排器只是新增一个调用方 |
 | 辩论结果处理 | 文档注入对话后由用户自行决定是否执行 |
 
+### 7.13 实测结论（DeepSeek v4 thinking，2026-09-16）
+
+| 结论 | 证据 |
+|------|------|
+| thinking 模式**只接受** `tool_choice` 省略或 `"auto"` | `"required"` 与 `{"type":"function",...}` 均返回 400 `Thinking mode does not support this tool_choice` |
+| `tool_choice="auto"` 下模型仍会**正确调用**指定工具 | 分别对 `bigbang_turn`/`bigbang_vote`/`write_bigbang_doc` 实测，均返回对应 tool_call，参数结构完整 |
+| 数组型参数（`file_requests`/`concerns` 等）**不需要** `items` 子 schema | 无 items 的 array 参数请求 200，工具调用正常 |
+| `reasoning_content` **不是必须回传** | 带/不带 reasoning_content 重放同一 session 均 200；代码仍保留回传，属无害冗余 |
+
 ---
 
 ## 八、实现路径
@@ -510,7 +519,9 @@ void ensureDefaultBigbangPrompts(); // 在 projv_files/prompts/bigbang/ 下创�
 
 | 风险 | 缓解 |
 |------|------|
-| 模型不调用 `bigbang_turn`/`bigbang_vote`，直接输出纯文本 | `tool_choice` 强制指定工具名，从协议层杜绝 |
+| 模型不调用 `bigbang_turn`/`bigbang_vote`，直接输出纯文本 | 优先 `tool_choice` 强制指定工具名；thinking 模式回退 `auto` 时，靠 system prompt 约束 + 无工具调用时回退解析纯文本 |
+| thinking 模式模型（DeepSeek v4）对强制 tool_choice 返回 HTTP 400 `Thinking mode does not support this tool_choice`，导致整场辩论全灭 | `BigbangParticipant::requestTool` 先试强制；命中 `tool_choice` 错误即回退 `auto` 重试一次。**实测**：auto 下模型仍会正确调用三个工具（见 7.13 实测结论） |
+| HTTP/流错误被静默吞掉，表现为"角色不说话 / 全部 (no statement)" | `requestTool` 订阅 `onError`，失败时投影 `[bigbang error] <msg>`，并把 `[high] bigbang error` 写入投票 concerns，不再伪装成"无意见" |
 | `vote` 若设计成嵌套 object 参数，模型输出格式不可控 | 拆成独立 `bigbang_vote` 工具且全部拍平字段，`concerns` 用 `"[severity] issue"` 字符串编码，规避现有 `ToolParameter` 不支持嵌套 schema 的限制 |
 | 文件请求死循环（一直要文件不给结论） | `turn()` 内设往返上限（默认 2 次），超出强制要求给出 `statement` |
 | Sheldon 永远不同意（过度完美主义） | 达到轮次上限强制同意，保留意见写入文档"未解决分歧" |

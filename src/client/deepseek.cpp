@@ -184,10 +184,19 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
     }
 
     if (!request.toolChoice.empty()) {
-        body["tool_choice"] = {
-            {"type", "function"},
-            {"function", { {"name", request.toolChoice} }}
-        };
+        // String tokens ("auto"/"none"/"required") are sent verbatim;
+        // anything else is treated as a forced function name. Note: thinking
+        // models reject the forced-function form ("Thinking mode does not
+        // support this tool_choice") -- see BigbangParticipant::requestTool.
+        if (request.toolChoice == "auto" || request.toolChoice == "none" ||
+            request.toolChoice == "required") {
+            body["tool_choice"] = request.toolChoice;
+        } else {
+            body["tool_choice"] = {
+                {"type", "function"},
+                {"function", { {"name", request.toolChoice} }}
+            };
+        }
     }
 
     return body.dump(2);
