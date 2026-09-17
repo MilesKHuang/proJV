@@ -356,12 +356,20 @@ void Roundtable::run(const std::string& topic) {
             sheldonMsg = "Topic: " + topic + "\n\nCall bigbang_turn with your proposal.";
             pennyMsg = sheldonMsg;
         } else {
-            std::string base = "Topic: " + topic
-                + "\n\nPrevious Leonard compromise:\n" + prevLeonardS_
-                + "\n\nPrevious votes:\n" + voteSummary
-                + "\n\nRevise your proposal based on the above, then call bigbang_turn.";
-            sheldonMsg = base;
-            pennyMsg = base;
+            // Pass round context + previous results. Prompt drives the response.
+            // Each side also receives the OTHER side's previous proposal and is
+            // required by prompt Hard Rules to quote-attack it (forced engagement).
+            std::string common =
+                "Topic: " + topic + "\n\n"
+                "=== Round " + std::to_string(round) + " ===\n\n"
+                "Leonard compromise from previous round:\n" + prevLeonardS_ + "\n\n"
+                "Previous vote results:\n" + voteSummary + "\n\n";
+            sheldonMsg = common
+                + "Penny's previous proposal:\n" + pennyS_ + "\n\n"
+                + "Call bigbang_turn.";
+            pennyMsg = common
+                + "Sheldon's previous proposal:\n" + sheldonS_ + "\n\n"
+                + "Call bigbang_turn.";
         }
 
         std::string s1, s2;
@@ -381,20 +389,25 @@ void Roundtable::run(const std::string& topic) {
 
         progress("Round " + std::to_string(round) + "/" + std::to_string(maxRounds_)
                  + " - integration (Leonard)");
-        std::string combined = "Topic: " + topic
-            + "\n\nSheldon proposal:\n" + s1
-            + "\n\nPenny proposal:\n" + s2;
-        if (round > 1) combined += "\n\nPrevious votes:\n" + voteSummary;
-        combined += "\n\nCall bigbang_turn with your compromise "
-                    "(common ground / disagreements / compromise / steps).";
+        std::string combined =
+            "Topic: " + topic + "\n\n"
+            "=== Round " + std::to_string(round) + " Integrate ===\n\n"
+            "Sheldon:\n" + s1 + "\n\n"
+            "Penny:\n" + s2;
+        if (round > 1) combined += "\n\nPrevious vote results:\n" + voteSummary;
+        combined += "\n\nCall bigbang_turn.";
         leonardS_ = parts_[2]->turn(combined);
         if (cancelRequested_.load()) break;
         if (cbs_.onStatement) cbs_.onStatement("Leonard", leonardS_);
 
         progress("Round " + std::to_string(round) + "/" + std::to_string(maxRounds_) + " - vote");
-        std::string voteMsg = "Topic: " + topic
-            + "\n\nProposal under vote (Leonard compromise):\n" + leonardS_
-            + "\n\nCall bigbang_vote now.";
+        std::string voteMsg =
+            "Topic: " + topic + "\n\n"
+            "=== Round " + std::to_string(round) + " Vote ===\n\n"
+            "Proposal under vote:\n" + leonardS_ + "\n\n"
+            "For reference - Sheldon position:\n" + sheldonS_ + "\n\n"
+            "For reference - Penny position:\n" + pennyS_ + "\n\n"
+            "Call bigbang_vote.";
         {
             std::thread v0([&] { votes_[0] = parts_[0]->vote(voteMsg); });
             std::thread v1([&] { votes_[1] = parts_[1]->vote(voteMsg); });
@@ -428,11 +441,11 @@ void Roundtable::run(const std::string& topic) {
     }
 
     progress("Writing execution document (Leonard)");
-    std::string docMsg = "Topic: " + topic
-        + "\n\nFinal proposal (Leonard compromise, voted):\n" + leonardS_
-        + "\n\nResidual disagreements (write any [high] items into the "
-          "unresolved-disagreements section):\n" + buildResidualConcerns()
-        + "\n\nCall write_bigbang_doc with the structured execution document.";
+    std::string docMsg =
+        "Topic: " + topic + "\n\n"
+        "Final approved proposal:\n" + leonardS_ + "\n\n"
+        "Residual concerns:\n" + buildResidualConcerns() + "\n\n"
+        "Call write_bigbang_doc.";
     lastDoc_ = parts_[2]->writeDoc(docMsg);
 
     if (!lastDoc_.empty() && cbs_.onDoc) cbs_.onDoc(lastDoc_);
