@@ -7,6 +7,7 @@
 #include "client/deepseek.h"
 #include "core/agent.h"
 #include "core/roundtable.h"
+#include "core/skill_runner.h"
 #include "tools/registry.h"
 #include "tools/python_tool_manager.h"
 #include "tui/bubble_model.h"
@@ -95,6 +96,8 @@ public:
 
     // Run a /bigbang debate on a background thread.
     void startBigbang(const std::string& topic);
+    // Run a JSON-configured skill workflow on a background thread.
+    void startSkill(const std::string& name, const std::string& topic);
     std::string getDebateStatus() const;
     size_t pendingCount() const { return pendingQueue_.size(); }
 
@@ -155,6 +158,8 @@ private:
     std::atomic<bool> agentThreadRunning_{false};
 
     std::unique_ptr<Roundtable> roundtable_;
+    std::unique_ptr<SkillRunner> skillRunner_;
+    std::string skillsDir_;
     std::thread roundtableThread_;
     std::string debateStatus_;
     mutable std::mutex debateMutex_;

@@ -52,6 +52,8 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     loadTomlConfig(config, "");
     client.setConfig(config);
     setupTools();
+    skillsDir_ = getProjvDir() + "/skills";
+    SkillRunner::ensureDefaultSkills(skillsDir_);
 
     agent = new Agent(client, tools);
     agent->onTokenUsage = [this](int p, int c) {
@@ -227,6 +229,35 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
+    // /skill [list | <name> <topic>]: run a JSON-configured skill workflow.
+    if (trimmed.rfind("/skill", 0) == 0) {
+        std::string rest = trimmed.size() > 6 ? trimmed.substr(6) : std::string();
+        auto rs = rest.find_first_not_of(" \t\r\n");
+        rest = (rs == std::string::npos) ? std::string() : rest.substr(rs);
+        if (rest.empty() || rest == "list") {
+            auto names = SkillRunner::listSkills(skillsDir_);
+            std::string msg = "[skill] available:";
+            for (auto& n : names) msg += "\n- " + n;
+            if (names.empty()) msg += "\n(none)";
+            bubble_model::Bubble cb; cb.role = "system"; cb.content = msg;
+            chatHistory.push_back(cb); resetChatScroll();
+            return;
+        }
+        auto sp = rest.find_first_of(" \t\r\n");
+        std::string name = (sp == std::string::npos) ? rest : rest.substr(0, sp);
+        std::string skTopic = (sp == std::string::npos) ? std::string() : rest.substr(sp + 1);
+        auto ts = skTopic.find_first_not_of(" \t\r\n");
+        skTopic = (ts == std::string::npos) ? std::string() : skTopic.substr(ts);
+        if (skTopic.empty()) {
+            bubble_model::Bubble cb; cb.role = "system";
+            cb.content = "[skill] usage: /skill <name> <topic>";
+            chatHistory.push_back(cb); resetChatScroll();
+            return;
+        }
+        startSkill(name, skTopic);
+        return;
+    }
+
     // Other quick commands handled by the backend (/clear /help).
     if (agent->handleQuickCommand(trimmed)) {
         // Already persisted; the event that sent it triggers a redraw.
@@ -345,6 +376,72 @@ void TuiApp::startBigbang(const std::string& topic) {
     });
 }
 
+void TuiApp::startSkill(const std::string& name, const std::string& topic) {
+    if (!agent) return;
+    if (agentThreadRunning_.load()) {
+        pendingQueue_.push_back("/skill " + name + " " + topic);
+        return;
+    }
+    if (agent->ensureStorage) agent->ensureStorage();
+    agent->addPersistedMessage(Message::User("/skill " + name + " " + topic));
+    {
+        std::lock_guard<std::mutex> lk(debateMutex_);
+        debateStatus_ = "Preparing skill...";
+    }
+
+    joinRoundtableThread();
+    agentThreadRunning_.store(true);
+
+    SkillRunner::Callbacks cbs;
+    cbs.onEvent = [this](const std::string& role, const std::string& kind, const std::string& text) {
+        std::string content;
+        if (kind == "vote") content = "**[" + role + " vote]** " + text;
+        else if (kind == "document") content = text;
+        else content = "**[" + role + "]** " + text;   // message / system
+        if (agent) agent->addPersistedMessage(Message::Assistant(content));
+    };
+    cbs.onProgress = [this](const std::string& st) {
+        {
+            std::lock_guard<std::mutex> lk(debateMutex_);
+            debateStatus_ = st;
+        }
+        if (onStreamingTick) onStreamingTick();
+    };
+
+    std::string board;
+    {
+        auto msgs = agent->getSession().getContextMessages();
+        std::string b;
+        for (const auto& m : msgs) {
+            if (m.role == "system") continue;
+            if (m.role == "user") {
+                if (!m.content.empty()) b += "USER: " + m.content + "\n\n";
+            } else if (m.role == "assistant") {
+                if (!m.content.empty()) b += "ASSISTANT: " + m.content + "\n\n";
+            } else if (m.role == "tool") {
+                b += "TOOL(" + m.name + "): " + m.content + "\n\n";
+            }
+        }
+        if (!b.empty()) {
+            board = "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
+                    "Reference material only; use it to resolve vague references.]\n\n" + b;
+        }
+    }
+
+    skillRunner_ = std::make_unique<SkillRunner>(config, &tools, cbs, board);
+    roundtableThread_ = std::thread([this, name, topic]() {
+        try {
+            skillRunner_->run(name, topic);
+        } catch (...) {}
+        agentThreadRunning_.store(false);
+        {
+            std::lock_guard<std::mutex> lk(debateMutex_);
+            debateStatus_.clear();
+        }
+        if (onTurnComplete) onTurnComplete();
+    });
+}
+
 void TuiApp::drainPendingQueue() {
     if (agentThreadRunning_.load()) return;
     if (pendingQueue_.empty()) return;
@@ -356,11 +453,13 @@ void TuiApp::drainPendingQueue() {
 void TuiApp::cancelTurn() {
     pendingQueue_.clear();
     if (roundtable_) roundtable_->cancel();
+    if (skillRunner_) skillRunner_->cancel();
     if (agent) agent->cancel();
 }
 
 void TuiApp::shutdown() {
     if (roundtable_) roundtable_->cancel();
+    if (skillRunner_) skillRunner_->cancel();
     joinRoundtableThread();
     if (agent) agent->cancel();
     joinAgentThread();
@@ -374,6 +473,7 @@ void TuiApp::shutdown() {
 
 void TuiApp::emergencyShutdown() {
     if (roundtable_) roundtable_->cancel();
+    if (skillRunner_) skillRunner_->cancel();
     joinRoundtableThread();
     if (agent) agent->cancel();
     joinAgentThread();

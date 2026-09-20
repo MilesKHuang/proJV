@@ -17,12 +17,17 @@ using BigbangResponder =
     std::function<ToolCall(const std::string&, const std::vector<Message>&)>;
 
 // Structured result from a bigbang_vote tool call.
+// Shared type: skill_config.h defines the same struct during the SKILL_ENGINE
+// migration; the guard keeps both headers includable in the same TU.
+#ifndef PROJV_VOTERESULT_DEFINED
+#define PROJV_VOTERESULT_DEFINED
 struct VoteResult {
     bool agree = false;
     std::vector<std::string> agreedPoints;
     std::vector<std::string> concerns;      // each entry "[severity] issue"
     std::string suggestedTweak;
 };
+#endif
 
 // One debate role: independent DeepSeekClient + Session, no Agent coupling.
 // NOTE: holds DeepSeekClient (atomic+mutex) and Session (mutex), so it is
