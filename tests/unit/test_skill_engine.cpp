@@ -64,6 +64,20 @@ const char* CFG_STOP = R"JSON({
 }
 )JSON";
 
+const char* CFG_MULTI = R"JSON({
+  "name": "t_multi",
+  "tools": ["cap_a", "cap_b"],
+  "tool_mode": "auto",
+  "max_tool_iters": 5,
+  "max_rounds": 1,
+  "converge": "none",
+  "agents": [{"id": "a", "display_name": "A", "prompt": "a.md"}],
+  "round_steps": [
+    {"actions": [{"agent": "a", "tool": "emit", "capture": "summary", "into": "a", "emit": "message", "message": "go"}]}
+  ]
+}
+)JSON";
+
 } // namespace
 
 TEST_CASE("engine: tool_mode=auto reaches capability tools, max_tool_iters honored") {
@@ -106,4 +120,28 @@ TEST_CASE("engine: stop_when halts the round loop early") {
     sr.setResponder("a", a);
     sr.run("t_stop", "T");
     CHECK(sr.lastRounds() == 1);   // stopped at round 1, not max_rounds=5
+}
+
+TEST_CASE("engine: a response with multiple tool_calls executes ALL of them") {
+    ensureSysUtil();
+    std::string root = makeSkill("t_multi", CFG_MULTI);
+
+    ToolRegistry reg;
+    int a = 0, b = 0;
+    { ToolDefinition d; d.name = "cap_a"; d.description = "a";
+      reg.registerTool(d, [&a](const std::string&) { ++a; return std::string("a"); }); }
+    { ToolDefinition d; d.name = "cap_b"; d.description = "b";
+      reg.registerTool(d, [&b](const std::string&) { ++b; return std::string("b"); }); }
+
+    int n = 0;
+    SkillRunner::Callbacks cbs;
+    SkillRunner sr(testConfig(), &reg, cbs, "", root);
+    sr.setResponderMulti("a", [&n](const std::string&, const std::vector<Message>&) -> std::vector<ToolCall> {
+        if (++n == 1) return { makeCall("cap_a", nlohmann::json{{"i", 1}}), makeCall("cap_b", nlohmann::json{{"i", 2}}) };
+        return { makeCall("emit", nlohmann::json{{"summary", "done"}}) };
+    });
+    sr.run("t_multi", "T");
+
+    CHECK(a == 1);   // both parallel calls ran, not just the first
+    CHECK(b == 1);
 }

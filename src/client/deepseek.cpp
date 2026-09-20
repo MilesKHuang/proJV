@@ -24,8 +24,8 @@ static constexpr int TOOL_CALL_MARKER_COUNT = 4;
 
 // -- Timeouts ----------------------------------------------------------------
 static constexpr int  kStreamTotalTimeoutSec  = 0;     // 0 = no total cap; idle timeout governs long reasoning
-static constexpr int  kStreamLowSpeedLimit    = 1;     // bytes/sec (very low �?tolerate API pauses)
-static constexpr int  kStreamLowSpeedTime     = 120;   // 2 min below limit �?timeout (was 120s; give reasoner more time)
+static constexpr int  kStreamLowSpeedLimit    = 1;     // bytes/sec (very low -- tolerate API pauses)
+static constexpr int  kStreamLowSpeedTime     = 120;   // 2 min below limit -> timeout (was 120s; give reasoner more time)
 static constexpr int  kConnectTimeoutSec      = 30;
 static constexpr int  kSendTimeoutSec         = 60;    // sending large POST body
 
@@ -51,7 +51,7 @@ static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* us
 
     // If we haven't checked HTTP status yet, skip data until headers are done
     if (!ctx->headerDone) {
-        // Defer �?data before status check means we need to read status
+        // Defer -> data before status check means we need to read status
         ctx->headerDone = true;
     }
 
@@ -59,7 +59,7 @@ static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* us
         return 0; // abort transfer
 
     if (ctx->httpStatus != 200) {
-        // Capture error body instead of discarding it �?
+        // Capture error body instead of discarding it --
         // so Agent can distinguish context-overflow vs other 4xx causes.
         ctx->errorBody.append(ptr, bytes);
         return bytes;
@@ -105,12 +105,12 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdat
     return total;
 }
 
-// -- libcurl progress callback (frequent �?used for cancel detection) --------
+// -- libcurl progress callback (frequent -> used for cancel detection) --------
 static int progressCallback(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
 {
     auto* ctx = static_cast<StreamContext*>(userdata);
     if (ctx->cancelFlag && ctx->cancelFlag->load(std::memory_order_acquire))
-        return 1; // non-zero �?abort transfer
+        return 1; // non-zero -> abort transfer
     return 0;
 }
 
@@ -168,7 +168,7 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
     nlohmann::json msgs = nlohmann::json::array();
     for (const auto& msg : request.messages) {
         nlohmann::json m;
-        to_json(m, msg);  // delegates to models.cpp �?handles content=null for tool_calls, etc.
+        to_json(m, msg);  // delegates to models.cpp -> handles content=null for tool_calls, etc.
         msgs.push_back(m);
     }
     body["messages"] = msgs;
@@ -228,7 +228,7 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
             return (int)res;
         }
 
-        // Network-level error �?retry if we haven't exceeded limit
+        // Network-level error -> retry if we haven't exceeded limit
         if (retries < retryConfig_.maxRetries) {
             ++retries;
             debugLogf("[DeepSeek] curl_easy_perform error %d, retry %d/%d",
@@ -240,7 +240,7 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
     }
 }
 
-// -- Cancel: set flag �?write/progress callbacks will abort ------------------
+// -- Cancel: set flag -> write/progress callbacks will abort ------------------
 void DeepSeekClient::cancel() {
     auto tid = std::this_thread::get_id();
     debugLogf("[DeepSeek] cancel called (thread=%08X)", *(unsigned int*)&tid);
@@ -626,7 +626,7 @@ size_t DeepSeekClient::parseSSEChunk(
         if (delta.contains("content") && delta["content"].is_string()) {
             std::string content = delta["content"].get<std::string>();
             if (!content.empty() && callbacks.onText) {
-                // ── DSML filtering (copied from CodeWhale) ──────────
+                // -- DSML filtering (copied from CodeWhale) ----------
                 if (!dsmlDetected_) {
                     static const char* dsmlMarkers[] = {
                         "<|DSML|>", "<|tool_calls_begin|>",

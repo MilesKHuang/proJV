@@ -258,6 +258,8 @@ void SkillRunner::loadAgents() {
         {
             auto rit = responders_.find(ag.id);
             if (rit != responders_.end()) sa->setResponder(rit->second);
+            auto mit = multiResponders_.find(ag.id);
+            if (mit != multiResponders_.end()) sa->setResponderMulti(mit->second);
         }
         // Every verb tool is available to every agent (skill-local, no conflict
         // with capability tools). This lets request_agent workers -- which have
@@ -393,14 +395,17 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
 
     std::string s;
     if (!r.empty()) {
-        if (a.capture.empty()) s = r;
-        else {
+        bool got = false;
+        if (!a.capture.empty()) {
             try {
                 auto j = nlohmann::json::parse(r);
-                if (j.contains(a.capture) && j[a.capture].is_string())
+                if (j.is_object() && j.contains(a.capture) && j[a.capture].is_string()) {
                     s = j[a.capture].get<std::string>();
+                    got = true;
+                }
             } catch (...) {}
         }
+        if (!got) s = r;   // fallback: raw text (narration / non-JSON reply)
     }
     slots_[a.into] = s;
     if (a.emit == "document") lastDoc_ = s;   // independent of callback presence

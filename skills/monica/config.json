@@ -17,7 +17,7 @@
     {"id": "auditor",    "display_name": "DeadCode Auditor","prompt": "auditor.md"}
   ],
   "round_steps": [
-    {"actions": [
+    {"progress": "Round {{round}}/{{max_rounds}} - supervisor planning", "actions": [
       {"agent": "supervisor", "tool": "emit", "capture": "summary", "into": "supervisor", "emit": "message",
        "message": "Project root: {{topic}}\n\nYou are MONICA, the supervisor. Each round: (1) explore the project, (2) pick the next small batch and dispatch via request_agent to formatter / translator / auditor, (3) collect reports. When everything is processed, reply with summary exactly DONE.\n\n(round {{round}}/{{max_rounds}})"}
     ]}

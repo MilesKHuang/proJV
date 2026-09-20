@@ -14,6 +14,10 @@
 // Test seam: replaces the real API call. Empty == real API path.
 using SubAgentResponder =
     std::function<ToolCall(const std::string& verb, const std::vector<Message>&)>;
+// Multi-call seam: returns zero or more tool calls for one response (tests
+// parallel tool calling). Empty vector == no tool call.
+using SubAgentMultiResponder =
+    std::function<std::vector<ToolCall>(const std::string& verb, const std::vector<Message>&)>;
 
 class SubAgent {
 public:
@@ -27,6 +31,7 @@ public:
         toolInterceptor_ = std::move(cb);
     }
     void setResponder(SubAgentResponder r) { responder_ = std::move(r); }
+    void setResponderMulti(SubAgentMultiResponder r) { multiResponder_ = std::move(r); }
 
     // Run one interaction: returns the verb tool's raw args JSON, a plain-text
     // fallback, an "[error] ..." string, or "" (no tool call and no text).
@@ -41,8 +46,8 @@ public:
     void cancel() { client_.cancel(); }
 
 private:
-    ToolCall doRequest(const std::string& verb, bool force, std::string& outText);
-    ToolCall requestTool(const std::string& verb, bool force, std::string& outText);
+    std::vector<ToolCall> doRequest(const std::string& verb, bool force, std::string& outText);
+    std::vector<ToolCall> requestTool(const std::string& verb, bool force, std::string& outText);
     std::string executeFileRequests(const std::vector<std::string>& paths);
     std::string dispatchSide(const ToolCall& tc);
 
@@ -59,4 +64,5 @@ private:
     std::string lastError_;
     std::function<std::string(const std::string&, const std::string&)> toolInterceptor_;
     SubAgentResponder responder_;
+    SubAgentMultiResponder multiResponder_;
 };

@@ -32,7 +32,7 @@ void SubAgent::seedSharedContext(const std::string& text) {
     session_.addMessage(Message::System(text));
 }
 
-ToolCall SubAgent::doRequest(const std::string& verb, bool force, std::string& outText) {
+std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force, std::string& outText) {
     ChatRequest req;
     req.model = cfg_.model;
     req.maxTokens = cfg_.maxTokens;
@@ -44,11 +44,19 @@ ToolCall SubAgent::doRequest(const std::string& verb, bool force, std::string& o
     req.tools = toolDefs_;
     req.messages = session_.getContextMessages();
 
+    if (multiResponder_) {
+        outText.clear();
+        lastReasoning_.clear();
+        lastError_.clear();
+        return multiResponder_(verb, req.messages);
+    }
     if (responder_) {
         outText.clear();
         lastReasoning_.clear();
         lastError_.clear();
-        return responder_(verb, req.messages);
+        ToolCall c = responder_(verb, req.messages);
+        if (!c.valid) return {};
+        return { c };
     }
 
     std::vector<ToolCall> parts;
@@ -78,24 +86,21 @@ ToolCall SubAgent::doRequest(const std::string& verb, bool force, std::string& o
                   name_.c_str(), verb.c_str(), lastError_.c_str());
     }
 
-    if (!got || parts.empty()) {
-        ToolCall empty;
-        empty.valid = false;
-        return empty;
-    }
-    for (auto& p : parts) if (p.name == verb) return p;
-    return parts[0];
+    // Return ALL calls in this response (parallel tool calling), not just one.
+    std::vector<ToolCall> result;
+    if (got) for (auto& p : parts) if (!p.name.empty()) result.push_back(p);
+    return result;
 }
 
-ToolCall SubAgent::requestTool(const std::string& verb, bool force, std::string& outText) {
+std::vector<ToolCall> SubAgent::requestTool(const std::string& verb, bool force, std::string& outText) {
     outText.clear();
-    ToolCall tc = doRequest(verb, /*force=*/true, outText);
-    if (!tc.valid && lastError_.find("tool_choice") != std::string::npos) {
+    std::vector<ToolCall> calls = doRequest(verb, force, outText);   // honor force
+    if (calls.empty() && force && lastError_.find("tool_choice") != std::string::npos) {
         debugLogf("[Skill][%s] forced tool_choice rejected, retrying with auto",
                   name_.c_str());
-        tc = doRequest(verb, /*force=*/false, outText);
+        calls = doRequest(verb, false, outText);
     }
-    return tc;
+    return calls;
 }
 
 std::string SubAgent::executeFileRequests(const std::vector<std::string>& paths) {
@@ -128,10 +133,12 @@ std::string SubAgent::dispatchSide(const ToolCall& tc) {
 
 std::string SubAgent::turn(const std::string& message, const std::string& verb, bool force) {
     session_.addMessage(Message::User(message));
+    std::string narr;   // last assistant narration text (used if the verb tool never fires)
     for (int r = 0; r < maxToolIters_; ++r) {
         std::string text;
-        ToolCall tc = requestTool(verb, force, text);
-        if (!tc.valid) {
+        std::vector<ToolCall> calls = requestTool(verb, force, text);
+        if (!text.empty()) narr = text;
+        if (calls.empty()) {
             std::string out;
             if (!lastError_.empty()) out = "[error] " + lastError_;
             else if (!text.empty()) out = text;
@@ -140,29 +147,36 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
         }
 
         Message am = Message::Assistant();
-        am.toolCalls.push_back(tc);
+        am.toolCalls = calls;
         am.reasoningContent = lastReasoning_;
         session_.addMessage(am);
 
-        if (tc.name == verb) {
+        int verbIdx = -1;
+        for (int i = 0; i < static_cast<int>(calls.size()); ++i)
+            if (calls[i].name == verb) { verbIdx = i; break; }
+
+        bool finalize = false;
+        if (verbIdx >= 0) {
             std::vector<std::string> files;
             try {
-                auto args = nlohmann::json::parse(tc.arguments);
+                auto args = nlohmann::json::parse(calls[verbIdx].arguments);
                 if (args.contains("file_requests") && args["file_requests"].is_array())
                     for (const auto& v : args["file_requests"])
                         if (v.is_string()) files.push_back(v.get<std::string>());
             } catch (...) {}
-
             if (!files.empty() && r < maxToolIters_ - 1) {
-                session_.addMessage(Message::Tool(tc.id, verb, executeFileRequests(files)));
-                continue;
+                session_.addMessage(Message::Tool(calls[verbIdx].id, verb, executeFileRequests(files)));
+            } else {
+                session_.addMessage(Message::Tool(calls[verbIdx].id, verb, "OK"));
+                finalize = true;
             }
-            session_.addMessage(Message::Tool(tc.id, verb, "OK"));
-            return tc.arguments;   // raw args JSON; no field extraction
         }
-
-        // Side tool (request_agent / registry whitelist).
-        session_.addMessage(Message::Tool(tc.id, tc.name, dispatchSide(tc)));
+        // Every call in the response gets a tool result (no orphan tool_calls).
+        for (int i = 0; i < static_cast<int>(calls.size()); ++i) {
+            if (i == verbIdx) continue;
+            session_.addMessage(Message::Tool(calls[i].id, calls[i].name, dispatchSide(calls[i])));
+        }
+        if (finalize) return calls[verbIdx].arguments;
     }
-    return std::string();
+    return narr;   // loop exhausted without the verb: surface narration so the turn is visible
 }
