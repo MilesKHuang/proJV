@@ -1,4 +1,5 @@
 #include "registry.h"
+#include "platform/iprocess_runner.h"
 #include <cstdio>
 
 void ToolRegistry::registerTool(const ToolDefinition& def, ToolExecutor executor) {
@@ -27,12 +28,14 @@ std::string ToolRegistry::execute(const std::string& name, const std::string& ar
 }
 
 void ToolRegistry::cancelAll() {
-    // Only set the flag -- shell_tool's polling loop will detect it
-    // and use TerminateJobObject to kill the entire process tree.
-    // Do NOT call TerminateProcess here: it kills only cmd.exe and
-    // leaves orphan children holding stdout pipe, causing reader.join()
-    // to block forever in execCommand().
+    // Set the shared cancel flag (Agent reads it to mark the tool result as
+    // cancelled), then actually interrupt the running subprocess. Calling
+    // IProcessRunner::Cancel() makes the runner's wait loop terminate the
+    // whole process tree (TerminateJobObject on Windows / killpg on Linux)
+    // instead of waiting for the timeout. Safe when idle: the runner resets
+    // its cancel flag at the start of every Run().
     cancelRequested_.store(true, std::memory_order_release);
+    if (procRunner_) procRunner_->Cancel();
 }
 
 bool ToolRegistry::isCancelled() const {

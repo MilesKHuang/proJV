@@ -41,6 +41,10 @@ void TuiApp::setupTools() {
 
     pytoolMgr_.emplace(config.pythonPath, ws);
     pytoolMgr_->scanAndRegister(tools, procRunner_);
+
+    // Wire the process runner so ToolRegistry::cancelAll() can interrupt a
+    // running exec_shell / pytool subprocess (Agent::cancel() -> cancelAll()).
+    tools.setProcessRunner(procRunner_);
 }
 
 bool TuiApp::initialize(IProcessRunner* procRunner) {
@@ -361,6 +365,7 @@ void TuiApp::shutdown() {
     if (agent) agent->cancel();
     joinAgentThread();
     joinModelsThread();
+    tools.setProcessRunner(nullptr);  // detach before main deletes the runner
     delete agent;
     agent = nullptr;
     // Explicitly close the DB and checkpoint the WAL on exit (bug fix).
