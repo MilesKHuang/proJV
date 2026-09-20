@@ -287,15 +287,15 @@ void TuiApp::joinAgentThread() {
     }
 }
 
-void TuiApp::joinRoundtableThread() {
-    if (roundtableThread_.joinable()) {
-        try { roundtableThread_.join(); } catch (...) {}
+void TuiApp::joinSkillThread() {
+    if (skillThread_.joinable()) {
+        try { skillThread_.join(); } catch (...) {}
     }
 }
 
-std::string TuiApp::getDebateStatus() const {
-    std::lock_guard<std::mutex> lk(debateMutex_);
-    return debateStatus_;
+std::string TuiApp::getSkillStatus() const {
+    std::lock_guard<std::mutex> lk(skillMutex_);
+    return skillStatus_;
 }
 
 void TuiApp::startSkill(const std::string& name, const std::string& topic) {
@@ -307,11 +307,11 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic) {
     if (agent->ensureStorage) agent->ensureStorage();
     agent->addPersistedMessage(Message::User("/skill " + name + " " + topic));
     {
-        std::lock_guard<std::mutex> lk(debateMutex_);
-        debateStatus_ = "Preparing skill...";
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        skillStatus_ = "Preparing skill...";
     }
 
-    joinRoundtableThread();
+    joinSkillThread();
     agentThreadRunning_.store(true);
 
     SkillRunner::Callbacks cbs;
@@ -324,8 +324,8 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic) {
     };
     cbs.onProgress = [this](const std::string& st) {
         {
-            std::lock_guard<std::mutex> lk(debateMutex_);
-            debateStatus_ = st;
+            std::lock_guard<std::mutex> lk(skillMutex_);
+            skillStatus_ = st;
         }
         if (onStreamingTick) onStreamingTick();
     };
@@ -351,14 +351,14 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic) {
     }
 
     skillRunner_ = std::make_unique<SkillRunner>(config, &tools, cbs, board);
-    roundtableThread_ = std::thread([this, name, topic]() {
+    skillThread_ = std::thread([this, name, topic]() {
         try {
             skillRunner_->run(name, topic);
         } catch (...) {}
         agentThreadRunning_.store(false);
         {
-            std::lock_guard<std::mutex> lk(debateMutex_);
-            debateStatus_.clear();
+            std::lock_guard<std::mutex> lk(skillMutex_);
+            skillStatus_.clear();
         }
         if (onTurnComplete) onTurnComplete();
     });
@@ -380,7 +380,7 @@ void TuiApp::cancelTurn() {
 
 void TuiApp::shutdown() {
     if (skillRunner_) skillRunner_->cancel();
-    joinRoundtableThread();
+    joinSkillThread();
     if (agent) agent->cancel();
     joinAgentThread();
     joinModelsThread();
@@ -393,7 +393,7 @@ void TuiApp::shutdown() {
 
 void TuiApp::emergencyShutdown() {
     if (skillRunner_) skillRunner_->cancel();
-    joinRoundtableThread();
+    joinSkillThread();
     if (agent) agent->cancel();
     joinAgentThread();
     // Do not join the models thread: it never touches the DB and might be

@@ -361,7 +361,7 @@ int main() {
                 });
             }
             {
-                std::string ds = app.getDebateStatus();
+                std::string ds = app.getSkillStatus();
                 if (!ds.empty()) {
                     statusEl = hbox({
                         statusEl,

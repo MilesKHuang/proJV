@@ -95,7 +95,7 @@ public:
 
     // Run a JSON-configured skill workflow on a background thread.
     void startSkill(const std::string& name, const std::string& topic);
-    std::string getDebateStatus() const;
+    std::string getSkillStatus() const;
     size_t pendingCount() const { return pendingQueue_.size(); }
 
     // Invoked on the agent thread when a turn completes (used to trigger a redraw).
@@ -122,7 +122,7 @@ private:
     void launchAgentThread();
     void joinAgentThread();
     void joinModelsThread();
-    void joinRoundtableThread();
+    void joinSkillThread();
     void drainPendingQueue();
 
     AppConfig config;
@@ -156,9 +156,9 @@ private:
 
     std::unique_ptr<SkillRunner> skillRunner_;
     std::string skillsDir_;
-    std::thread roundtableThread_;
-    std::string debateStatus_;
-    mutable std::mutex debateMutex_;
+    std::thread skillThread_;
+    std::string skillStatus_;
+    mutable std::mutex skillMutex_;
     std::atomic<int> totalPromptTokens_{0};
     std::atomic<int> totalCompletionTokens_{0};
 };
