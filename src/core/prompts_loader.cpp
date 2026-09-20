@@ -233,9 +233,10 @@ std::string loadPromptFile(const std::string& filename) {
 
 
 // ============================================================================
-// Big Bang debate role prompts (see BIG_BANG_DEBATE.md section 2)
-// Stored as UTF-8 raw string literals; written to
-// {promptsDir}/bigbang/{sheldon,penny,leonard}.md when missing.
+// Built-in bigbang_debate role prompts. loadBigbangPrompt reads
+// {promptsDir}/bigbang/<role>.md if present, else the built-in default below.
+// The skill engine (ensureDefaultSkills) seeds these into
+// projv_files/skills/bigbang_debate/.
 // ============================================================================
 static const char* PROMPT_DEFAULT_SHELDON = R"BIGBANG(## Who You Are
 You are an architect-reviewer. You exist to prevent technical decisions
@@ -398,27 +399,6 @@ Engineering-realistic. No sugar-coating. 800-1500 chars in Chinese.
 
 static std::string bigbangPromptsDir() {
     return getPromptsDir() + "/bigbang";
-}
-
-void ensureDefaultBigbangPrompts() {
-    std::string dir = bigbangPromptsDir();
-    std::filesystem::create_directories(dir);
-    struct Preset { const char* filename; const char* content; };
-    const Preset presets[] = {
-        {"sheldon.md", PROMPT_DEFAULT_SHELDON},
-        {"penny.md",   PROMPT_DEFAULT_PENNY},
-        {"leonard.md", PROMPT_DEFAULT_LEONARD},
-    };
-    for (const auto& p : presets) {
-        std::string path = dir + "/" + p.filename;
-        if (!std::filesystem::exists(path)) {
-            std::ofstream ofs(path);
-            if (ofs) {
-                ofs << p.content;
-                debugLogf("[Prompts] Created %s from built-in default", p.filename);
-            }
-        }
-    }
 }
 
 std::string loadBigbangPrompt(const std::string& role) {

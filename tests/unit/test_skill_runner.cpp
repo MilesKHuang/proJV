@@ -1,7 +1,6 @@
-// Phase-B parity test: drives the NEW SkillRunner engine with scripted
-// responders and asserts it produces the SAME bytes the OLD Roundtable does
-// (see test_bigbang_messages.cpp). If both equal the same literals, the engine
-// is byte-compatible with /bigbang on the normal path.
+// SkillRunner tests: byte-level parity with the original /bigbang output, plus
+// the convergence contract (unanimous / round cap / loop detection). Scripted
+// responders, no API. The literals below are the frozen reference bytes.
 #include "doctest.h"
 
 #include "core/skill_runner.h"
@@ -128,4 +127,48 @@ TEST_CASE("skill: round-2 repeat matches golden bytes") {
 
     CHECK(sr.converged());
     CHECK(sr.lastRounds() == 2);
+}
+
+TEST_CASE("skill: persistent dissent stops at the round cap and still emits a doc") {
+    ensureSysUtil();
+    SkillRunner::ensureDefaultSkills(getProjvDir() + "/skills");
+    int sc = 0, pc = 0, lc = 0;
+    auto role = [](int* counter, const char* pfx) {
+        return [counter, pfx](const std::string& tool, const std::vector<Message>&) {
+            if (tool == "bigbang_turn") { *counter += 1; return turnCall(std::string(pfx) + std::to_string(*counter)); }
+            if (tool == "bigbang_vote") return voteCall(false);   // never agree
+            if (tool == "write_bigbang_doc") return docCall("# EXEC");
+            return noCall();
+        };
+    };
+    SkillRunner::Callbacks cbs;
+    SkillRunner sr(testConfig(), nullptr, cbs);
+    sr.setResponder("sheldon", role(&sc, "S"));
+    sr.setResponder("penny", role(&pc, "P"));
+    sr.setResponder("leonard", role(&lc, "L"));
+    sr.run("bigbang_debate", "T");
+
+    CHECK(sr.lastRounds() == 8);          // max_rounds from the built-in config
+    CHECK_FALSE(sr.converged());
+    CHECK_FALSE(sr.lastDoc().empty());    // doc is still produced at the cap
+}
+
+TEST_CASE("skill: identical integrator statement twice triggers early stop") {
+    ensureSysUtil();
+    SkillRunner::ensureDefaultSkills(getProjvDir() + "/skills");
+    auto role = [](const std::string& tool, const std::vector<Message>&) {
+        if (tool == "bigbang_turn") return turnCall("CONST");   // constant -> loop detect
+        if (tool == "bigbang_vote") return voteCall(false);     // never agree
+        if (tool == "write_bigbang_doc") return docCall("# EXEC");
+        return noCall();
+    };
+    SkillRunner::Callbacks cbs;
+    SkillRunner sr(testConfig(), nullptr, cbs);
+    sr.setResponder("sheldon", role);
+    sr.setResponder("penny", role);
+    sr.setResponder("leonard", role);
+    sr.run("bigbang_debate", "T");
+
+    CHECK(sr.lastRounds() == 2);   // round-2 leonard == round-1 leonard -> stop
+    CHECK(sr.converged());
 }

@@ -34,7 +34,6 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/core/project_context.cpp
-    ${SRC_DIR}/core/roundtable.cpp
     ${SRC_DIR}/core/sub_agent.cpp
     ${SRC_DIR}/core/skill_runner.cpp
     ${EXTERNAL_DIR}/loguru.cpp

@@ -399,6 +399,7 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
         }
     }
     slots_[a.into] = s;
+    if (a.emit == "document") lastDoc_ = s;   // independent of callback presence
     if (!s.empty() && cbs_.onEvent) {
         if (a.emit == "message")  cbs_.onEvent(display(a.agent), "message", s);
         else if (a.emit == "document") cbs_.onEvent(display(a.agent), "document", s);

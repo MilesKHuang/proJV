@@ -365,7 +365,7 @@ int main() {
                 if (!ds.empty()) {
                     statusEl = hbox({
                         statusEl,
-                        text("  [bigbang] " + ds)
+                        text("  [skill] " + ds)
                             | color(theme_map::hexToColor(T.phaseAwaitApproval)),
                     });
                 }

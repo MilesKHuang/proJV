@@ -225,8 +225,7 @@ void TuiApp::sendMessage(const std::string& text) {
             resetChatScroll();
             return;
         }
-        // Phase C: /bigbang is now an alias for the skill engine. The old
-        // Roundtable is kept compiled (unused) for one commit to allow rollback.
+        // /bigbang is an alias for the built-in bigbang_debate skill.
         startSkill("bigbang_debate", topic);
         return;
     }
@@ -297,85 +296,6 @@ void TuiApp::joinRoundtableThread() {
 std::string TuiApp::getDebateStatus() const {
     std::lock_guard<std::mutex> lk(debateMutex_);
     return debateStatus_;
-}
-
-void TuiApp::startBigbang(const std::string& topic) {
-    if (!agent) return;
-    if (agentThreadRunning_.load()) {
-        pendingQueue_.push_back("/bigbang " + topic);
-        return;
-    }
-    if (agent->ensureStorage) agent->ensureStorage();
-    agent->addPersistedMessage(Message::User("/bigbang " + topic));
-    {
-        std::lock_guard<std::mutex> lk(debateMutex_);
-        debateStatus_ = "Preparing debate...";
-    }
-
-    joinRoundtableThread();
-    agentThreadRunning_.store(true);
-
-    Roundtable::Callbacks cbs;
-    cbs.onStatement = [this](const std::string& role, const std::string& text) {
-        if (agent) agent->addPersistedMessage(Message::Assistant("**[" + role + "]** " + text));
-    };
-    cbs.onVote = [this](const std::string& role, const VoteResult& v) {
-        std::string s = "**[" + role + " vote]** " + (v.agree ? "AGREE" : "DISSENT");
-        if (!v.concerns.empty()) {
-            s += " (concerns: ";
-            for (size_t i = 0; i < v.concerns.size(); ++i) {
-                if (i) s += "; ";
-                s += v.concerns[i];
-            }
-            s += ")";
-        }
-        if (agent) agent->addPersistedMessage(Message::Assistant(s));
-    };
-    cbs.onDoc = [this](const std::string& doc) {
-        if (agent) agent->addPersistedMessage(Message::Assistant(doc));
-    };
-    cbs.onProgress = [this](const std::string& st) {
-        {
-            std::lock_guard<std::mutex> lk(debateMutex_);
-            debateStatus_ = st;
-        }
-        if (onStreamingTick) onStreamingTick();
-    };
-
-    // Share the main session with the debate roles so they can resolve
-    // references like "this project" / "phase3-5". Full transcript, no cap.
-    std::string board;
-    {
-        auto msgs = agent->getSession().getContextMessages();
-        std::string b;
-        for (const auto& m : msgs) {
-            if (m.role == "system") continue;   // skip role/system prompts
-            if (m.role == "user") {
-                if (!m.content.empty()) b += "USER: " + m.content + "\n\n";
-            } else if (m.role == "assistant") {
-                if (!m.content.empty()) b += "ASSISTANT: " + m.content + "\n\n";
-            } else if (m.role == "tool") {
-                b += "TOOL(" + m.name + "): " + m.content + "\n\n";
-            }
-        }
-        if (!b.empty()) {
-            board = "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
-                    "Reference material only; use it to resolve vague references.]\n\n" + b;
-        }
-    }
-
-    roundtable_ = std::make_unique<Roundtable>(config, &tools, cbs, board);
-    roundtableThread_ = std::thread([this, topic]() {
-        try {
-            roundtable_->run(topic);
-        } catch (...) {}
-        agentThreadRunning_.store(false);
-        {
-            std::lock_guard<std::mutex> lk(debateMutex_);
-            debateStatus_.clear();
-        }
-        if (onTurnComplete) onTurnComplete();
-    });
 }
 
 void TuiApp::startSkill(const std::string& name, const std::string& topic) {
@@ -454,13 +374,11 @@ void TuiApp::drainPendingQueue() {
 
 void TuiApp::cancelTurn() {
     pendingQueue_.clear();
-    if (roundtable_) roundtable_->cancel();
     if (skillRunner_) skillRunner_->cancel();
     if (agent) agent->cancel();
 }
 
 void TuiApp::shutdown() {
-    if (roundtable_) roundtable_->cancel();
     if (skillRunner_) skillRunner_->cancel();
     joinRoundtableThread();
     if (agent) agent->cancel();
@@ -474,7 +392,6 @@ void TuiApp::shutdown() {
 }
 
 void TuiApp::emergencyShutdown() {
-    if (roundtable_) roundtable_->cancel();
     if (skillRunner_) skillRunner_->cancel();
     joinRoundtableThread();
     if (agent) agent->cancel();

@@ -4,8 +4,7 @@
 #include <string>
 #include <vector>
 
-// Structured vote (shape == "vote"). Shared with roundtable.h during the
-// migration; the guard keeps both headers includable in the same TU.
+// Structured vote (shape == "vote").
 #ifndef PROJV_VOTERESULT_DEFINED
 #define PROJV_VOTERESULT_DEFINED
 struct VoteResult {
