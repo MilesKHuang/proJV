@@ -25,7 +25,7 @@ public:
     };
 
     SkillRunner(AppConfig cfg, ToolRegistry* tools, Callbacks cbs,
-                std::string sharedContext = "");
+                std::string sharedContext = "", std::string skillsDir = "");
     ~SkillRunner();
 
     // Blocking: runs the whole skill on the calling thread.

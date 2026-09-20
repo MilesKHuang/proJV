@@ -36,6 +36,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/project_context.cpp
     ${SRC_DIR}/core/sub_agent.cpp
     ${SRC_DIR}/core/skill_runner.cpp
+    ${SRC_DIR}/core/skills_builtin.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -50,6 +51,7 @@ set(HEADERS
     ${SRC_DIR}/core/skill_config.h
     ${SRC_DIR}/core/sub_agent.h
     ${SRC_DIR}/core/skill_runner.h
+    ${SRC_DIR}/core/skills_builtin.h
     ${SRC_DIR}/tools/file_tool.h
     ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h

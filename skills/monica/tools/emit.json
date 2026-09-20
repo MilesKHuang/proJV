@@ -1,0 +1,1 @@
+{"name":"emit","description":"Report a short summary and finish this turn.","parameters":[{"name":"summary","type":"string","description":"short summary; exactly DONE only when the whole job is finished","required":true}]}

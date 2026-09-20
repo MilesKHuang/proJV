@@ -12,6 +12,9 @@ set(TEST_SOURCES
     unit/test_theme_colors.cpp
     unit/test_skill_runner.cpp
     unit/test_skill_swarm.cpp
+    unit/test_skill_engine.cpp
+    unit/test_skill_maker.cpp
+    unit/test_skill_monica.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
@@ -42,6 +45,9 @@ target_include_directories(proJV_tests PRIVATE
 )
 
 target_link_libraries(proJV_tests PRIVATE proJV_lib ftxui::dom ftxui::component)
+
+# Example skill repos live in <repo>/skills/ (e.g. monica).
+target_compile_definitions(proJV_tests PRIVATE PROJV_EXAMPLE_SKILLS_DIR="${CMAKE_SOURCE_DIR}/skills")
 
 if(WIN32)
     target_compile_definitions(proJV_tests PRIVATE

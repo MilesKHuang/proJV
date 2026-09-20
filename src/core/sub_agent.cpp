@@ -14,11 +14,11 @@ SubAgent::SubAgent(std::string name, std::string systemPrompt)
 }
 
 void SubAgent::configure(const AppConfig& cfg, ToolRegistry* tools,
-                         const std::vector<std::string>& whitelist, int maxFileRounds) {
+                         const std::vector<std::string>& whitelist, int maxToolIters) {
     cfg_ = cfg;
     tools_ = tools;
     toolWhitelist_ = whitelist;
-    maxFileRounds_ = maxFileRounds;
+    maxToolIters_ = maxToolIters;
     client_.setConfig(cfg);
 }
 
@@ -128,7 +128,7 @@ std::string SubAgent::dispatchSide(const ToolCall& tc) {
 
 std::string SubAgent::turn(const std::string& message, const std::string& verb, bool force) {
     session_.addMessage(Message::User(message));
-    for (int r = 0; r <= maxFileRounds_; ++r) {
+    for (int r = 0; r < maxToolIters_; ++r) {
         std::string text;
         ToolCall tc = requestTool(verb, force, text);
         if (!tc.valid) {
@@ -153,7 +153,7 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
                         if (v.is_string()) files.push_back(v.get<std::string>());
             } catch (...) {}
 
-            if (!files.empty() && r < maxFileRounds_) {
+            if (!files.empty() && r < maxToolIters_ - 1) {
                 session_.addMessage(Message::Tool(tc.id, verb, executeFileRequests(files)));
                 continue;
             }

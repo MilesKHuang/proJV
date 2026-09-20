@@ -464,3 +464,61 @@ write_bigbang_doc.json : {"name":"write_bigbang_doc","parameters":[{"name":"doc_
 **蜂群** (有限): `dynamic_dispatch:true`, `max_recursion:3`, `converge:"none"`, `round_steps` 单步让 manager 用 `request_agent` 调度.
 
 > 关键结论: 从圆桌到 kanban, **引擎零改动, 只换 config**. 工具名 (`speak`/`check`) 由各技能自己的 `tools/*.json` 定义, 引擎不预置任何工作流专属语义.
+
+---
+
+## 11. 实现订正 (v1.2) -- 代码为准
+
+规格 (§1-§9) 与已落地实现存在以下差异, 以本节为准.
+
+### 11.1 新增/修订的 DSL 字段
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `dispatch_tool` | `""` | `request_agent` 目标的 verb 工具; 空则取该 agent 首个工具 |
+| `max_tool_iters` | 3 | 单次 `turn()` 允许的工具调用次数 (旧实现写死 2->3 次) |
+| `tool_mode` | `"verb"` | `verb`=锁定 action 工具; `auto`=模型可用 registry 中任意工具 |
+| `stop_when` | 无 | `{"slot":"x","equals":"y"}`: 该槽等于 y 时停止轮循环 |
+
+默认值刻意保持旧行为 -> bigbang 配置零改动, 对拍测试不受影响.
+
+### 11.2 工具位置 (修订 §3.6)
+
+发言工具为**技能本地**:  `projv_files/skills/<name>/tools/*.json`
+(原 §3.6 写作共享 `skills/tools/`, 已改. 技能本地 -> 工具池确定、无跨技能重名.)
+
+### 11.3 新增模板变量
+
+`{{skills_dir}}` = 技能的根目录 (便于 skill_maker 知道写到哪).
+
+### 11.4 SkillRunner 构造
+
+`SkillRunner(cfg, tools, cbs, sharedContext="", skillsDir="")`; `skillsDir` 空则 `getProjvDir()+"/skills"` (测试可指向任意技能目录).
+
+### 11.5 蜂群实测边界 (修订 §2 的"有限"表述)
+
+经 `test_skill_swarm.cpp` 实测: 之前蜂群**实际不可用** (`request_agent` 目标取不到 verb). 修复后:
+
+| 能力 | 结论 |
+|------|------|
+| manager -> request_agent -> worker 派发 | 通 |
+| 每轮派发数 | <= `max_tool_iters` (默认 3) |
+| 并行扇出 | 无 (一条响应里的多 tool_call 只取 parts[0]) |
+| 方式 | 串行、阻塞、固定角色池 |
+
+### 11.6 内置与示例技能
+
+| 技能 | 类型 | 位置 |
+|------|------|------|
+| `bigbang_debate` | 内置 | `ensureDefaultSkills` 播种 |
+| `skill_maker` | 内置 | `skills_builtin.cpp` 播种 (creator 用 `write_file` 造技能, verifier 只读校验) |
+| `monica` | 示例 (可独立成 repo) | 仓库 `skills/monica/`; 拷入 `projv_files/skills/` 即用 |
+
+### 11.7 测试 (自动可跑)
+
+`tests/unit/`: bigbang 对拍 (test_skill_runner), 蜂群 (test_skill_swarm), 引擎能力 (test_skill_engine), skill_maker (test_skill_maker), monica (test_skill_monica). 合计 **79 用例 / 370 断言** 全绿.
+
+### 11.8 明确的"不做"(接 §2)
+
+- 死代码**自动删除**: 不做 (LLM 调用图不可靠); `monica` 的 auditor 仅**报告**.
+- 引擎级 `foreach`/动态文件集: 不做 (由 supervisor 的轮循环 + request_agent 承担).

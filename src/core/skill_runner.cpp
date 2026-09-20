@@ -3,6 +3,7 @@
 #include "core/sub_agent.h"
 #include "core/prompts.h"
 #include "core/config.h"
+#include "core/skills_builtin.h"
 #include "json.hpp"
 #include "debug_log.h"
 
@@ -115,6 +116,12 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         out.dynamicDispatch = j.value("dynamic_dispatch", false);
         out.maxRecursion = j.value("max_recursion", 3);
         out.dispatchTool = j.value("dispatch_tool", std::string(""));
+        out.maxToolIters = j.value("max_tool_iters", 3);
+        out.toolMode = j.value("tool_mode", std::string("verb"));
+        if (j.contains("stop_when") && j["stop_when"].is_object()) {
+            out.stopWhenSlot = j["stop_when"].value("slot", std::string(""));
+            out.stopWhenValue = j["stop_when"].value("equals", std::string(""));
+        }
         if (j.contains("tools") && j["tools"].is_array())
             for (const auto& t : j["tools"]) if (t.is_string()) out.tools.push_back(t.get<std::string>());
         if (j.contains("agents") && j["agents"].is_array())
@@ -160,10 +167,10 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
 
 // ---- lifecycle -----------------------------------------------------------
 SkillRunner::SkillRunner(AppConfig cfg, ToolRegistry* tools, Callbacks cbs,
-                         std::string sharedContext)
+                         std::string sharedContext, std::string skillsDir)
     : cfg_(std::move(cfg)), tools_(tools), cbs_(std::move(cbs)),
       sharedContext_(std::move(sharedContext)) {
-    skillsDir_ = getProjvDir() + "/skills";
+    skillsDir_ = skillsDir.empty() ? (getProjvDir() + "/skills") : skillsDir;
 }
 
 SkillRunner::~SkillRunner() = default;
@@ -188,6 +195,8 @@ void SkillRunner::ensureDefaultSkills(const std::string& skillsDir) {
     writeIfMissing(tdir + "/bigbang_turn.json", TOOL_TURN_JSON);
     writeIfMissing(tdir + "/bigbang_vote.json", TOOL_VOTE_JSON);
     writeIfMissing(tdir + "/write_bigbang_doc.json", TOOL_DOC_JSON);
+
+    seedBuiltinSkills(skillsDir);
 }
 
 std::vector<std::string> SkillRunner::listSkills(const std::string& skillsDir) {
@@ -244,7 +253,7 @@ void SkillRunner::loadAgents() {
         std::string prompt((std::istreambuf_iterator<char>(f)), {});
 
         auto sa = std::make_unique<SubAgent>(ag.displayName, prompt);
-        sa->configure(cfg_, tools_, config_.tools, 2);
+        sa->configure(cfg_, tools_, config_.tools, config_.maxToolIters);
         sa->seedSharedContext(sharedContext_);
         {
             auto rit = responders_.find(ag.id);
@@ -328,6 +337,9 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
         if (!whenMatches(st.when, round)) continue;
         if (!st.progress.empty() && cbs_.onProgress) cbs_.onProgress(fill(st.progress, round, {}));
 
+        // force = "verb" mode: pin the action tool; "auto": let the model choose
+        // (needed for capability tools). dynamic_dispatch always implies auto.
+        const bool force = (config_.toolMode != "auto") && !config_.dynamicDispatch;
         std::vector<std::string> results(st.actions.size());
         if (st.parallel && st.actions.size() > 1) {
             std::vector<std::thread> th;
@@ -336,14 +348,14 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                 th.emplace_back([&, i] {
                     const SkillAction& a = st.actions[i];
                     results[i] = agents_[a.agent]->turn(fill(a.message, round, a.vars),
-                                                        a.tool, !config_.dynamicDispatch);
+                                                        a.tool, force);
                 });
             for (auto& t : th) t.join();
         } else {
             for (size_t i = 0; i < st.actions.size(); ++i) {
                 const SkillAction& a = st.actions[i];
                 results[i] = agents_[a.agent]->turn(fill(a.message, round, a.vars),
-                                                    a.tool, !config_.dynamicDispatch);
+                                                    a.tool, force);
             }
         }
         for (size_t i = 0; i < st.actions.size(); ++i)
@@ -400,6 +412,10 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
 
 // ---- stop rule / when ----------------------------------------------------
 bool SkillRunner::stopRule(int round) const {
+    if (!config_.stopWhenSlot.empty()) {
+        auto it = slots_.find(config_.stopWhenSlot);
+        if (it != slots_.end() && it->second == config_.stopWhenValue) return true;
+    }
     if (!config_.loopDetect.empty() && round > 1) {
         auto it = slots_.find(config_.loopDetect);
         auto pit = prevSlots_.find(config_.loopDetect);
@@ -445,6 +461,7 @@ std::string SkillRunner::fill(const std::string& tmpl, int round,
         else if (key == "round_context") val = roundContext_;
         else if (key == "residual_concerns") val = residualConcerns();
         else if (key == "round_outputs") val = roundOutputs();
+        else if (key == "skills_dir") val = skillsDir_;
         else {
             auto vit = vars.find(key);
             if (vit != vars.end()) val = vit->second;

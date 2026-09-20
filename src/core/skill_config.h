@@ -50,6 +50,10 @@ struct SkillConfig {
     bool dynamicDispatch = false;
     int maxRecursion = 3;
     std::string dispatchTool;            // verb used for request_agent targets ("" = first tool)
+    int maxToolIters = 3;                // tool-call iterations per turn (default preserves old behavior)
+    std::string toolMode = "verb";       // "verb" (force the action tool) | "auto" (model may use any tool)
+    std::string stopWhenSlot;            // optional: stop the round loop when stopWhenSlot == stopWhenValue
+    std::string stopWhenValue;
     std::vector<SkillStep> roundSteps;
     std::vector<SkillStep> onConverge;
 

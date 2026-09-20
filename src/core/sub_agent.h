@@ -20,7 +20,7 @@ public:
     SubAgent(std::string name, std::string systemPrompt);
 
     void configure(const AppConfig& cfg, ToolRegistry* tools,
-                   const std::vector<std::string>& whitelist, int maxFileRounds);
+                   const std::vector<std::string>& whitelist, int maxToolIters);
     void registerToolDef(const ToolDefinition& def);
     void seedSharedContext(const std::string& text);
     void setToolInterceptor(std::function<std::string(const std::string&, const std::string&)> cb) {
@@ -51,7 +51,7 @@ private:
     AppConfig cfg_;
     ToolRegistry* tools_ = nullptr;
     std::vector<std::string> toolWhitelist_;
-    int maxFileRounds_ = 2;
+    int maxToolIters_ = 3;
     DeepSeekClient client_;
     Session session_;
     std::vector<ToolDefinition> toolDefs_;
