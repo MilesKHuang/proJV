@@ -114,6 +114,7 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         out.loopDetect = j.value("loop_detect", std::string(""));
         out.dynamicDispatch = j.value("dynamic_dispatch", false);
         out.maxRecursion = j.value("max_recursion", 3);
+        out.dispatchTool = j.value("dispatch_tool", std::string(""));
         if (j.contains("tools") && j["tools"].is_array())
             for (const auto& t : j["tools"]) if (t.is_string()) out.tools.push_back(t.get<std::string>());
         if (j.contains("agents") && j["agents"].is_array())
@@ -182,7 +183,7 @@ void SkillRunner::ensureDefaultSkills(const std::string& skillsDir) {
     writeIfMissing(sdir + "/sheldon.md", loadBigbangPrompt("sheldon"));
     writeIfMissing(sdir + "/penny.md",   loadBigbangPrompt("penny"));
     writeIfMissing(sdir + "/leonard.md", loadBigbangPrompt("leonard"));
-    std::string tdir = skillsDir + "/tools";
+    std::string tdir = sdir + "/tools";
     fs::create_directories(tdir, ec);
     writeIfMissing(tdir + "/bigbang_turn.json", TOOL_TURN_JSON);
     writeIfMissing(tdir + "/bigbang_vote.json", TOOL_VOTE_JSON);
@@ -205,23 +206,11 @@ std::vector<std::string> SkillRunner::listSkills(const std::string& skillsDir) {
 void SkillRunner::loadAgents() {
     std::string sdir = skillsDir_ + "/" + config_.name;
 
-    // Verb tools per agent: derived from the program (no can_write_doc needed).
-    std::map<std::string, std::vector<std::string>> perAgent;
-    auto scan = [&perAgent](const std::vector<SkillStep>& steps) {
-        for (const auto& st : steps)
-            for (const auto& a : st.actions) {
-                auto& v = perAgent[a.agent];
-                if (std::find(v.begin(), v.end(), a.tool) == v.end()) v.push_back(a.tool);
-            }
-    };
-    scan(config_.roundSteps);
-    scan(config_.onConverge);
-
     // Verb tool defs from tools/*.json.
     std::map<std::string, ToolDefinition> jsonDefs;
     {
         std::error_code ec;
-        for (auto& e : fs::directory_iterator(skillsDir_ + "/tools", ec)) {
+        for (auto& e : fs::directory_iterator(sdir + "/tools", ec)) {
             if (ec) break;
             if (!e.is_regular_file() || e.path().extension() != ".json") continue;
             std::ifstream f(e.path());
@@ -261,7 +250,10 @@ void SkillRunner::loadAgents() {
             auto rit = responders_.find(ag.id);
             if (rit != responders_.end()) sa->setResponder(rit->second);
         }
-        for (const auto& t : perAgent[ag.id]) if (jsonDefs.count(t)) sa->registerToolDef(jsonDefs[t]);
+        // Every verb tool is available to every agent (skill-local, no conflict
+        // with capability tools). This lets request_agent workers -- which have
+        // no explicit action in the program -- still have a verb to answer with.
+        for (const auto& kv : jsonDefs) sa->registerToolDef(kv.second);
         for (const auto& t : config_.tools) if (regDefs.count(t)) sa->registerToolDef(regDefs[t]);
 
         if (config_.dynamicDispatch) {
@@ -528,12 +520,8 @@ std::string SkillRunner::display(const std::string& agentId) const {
 std::string SkillRunner::handleRequestAgent(const std::string& id, const std::string& msg, int depth) {
     (void)depth;
     if (!agents_.count(id)) return "[error] unknown agent '" + id + "'";
-    std::string verb;
-    for (const auto& st : config_.roundSteps)
-        for (const auto& a : st.actions) if (a.agent == id) { verb = a.tool; break; }
-    if (verb.empty())
-        for (const auto& st : config_.onConverge)
-            for (const auto& a : st.actions) if (a.agent == id) { verb = a.tool; break; }
+    std::string verb = config_.dispatchTool;
+    if (verb.empty()) verb = agents_[id]->firstToolName();
     if (verb.empty()) return "[error] no tool for agent '" + id + "'";
     return agents_[id]->turn(msg, verb, /*force=*/false);
 }

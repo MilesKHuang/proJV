@@ -32,6 +32,12 @@ public:
     // fallback, an "[error] ..." string, or "" (no tool call and no text).
     std::string turn(const std::string& message, const std::string& verb, bool force);
 
+    // First registered tool name (used as the default verb for request_agent
+    // targets that have no explicit action in the program).
+    std::string firstToolName() const {
+        return toolDefs_.empty() ? std::string() : toolDefs_.front().name;
+    }
+
     void cancel() { client_.cancel(); }
 
 private:

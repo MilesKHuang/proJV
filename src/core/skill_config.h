@@ -49,6 +49,7 @@ struct SkillConfig {
     std::string loopDetect;              // text slot; "" = off
     bool dynamicDispatch = false;
     int maxRecursion = 3;
+    std::string dispatchTool;            // verb used for request_agent targets ("" = first tool)
     std::vector<SkillStep> roundSteps;
     std::vector<SkillStep> onConverge;
 
