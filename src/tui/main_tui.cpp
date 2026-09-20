@@ -398,7 +398,7 @@ int main() {
         }
         {
             // Compact keycap hint bar: colored keycaps replace the long "F1 about"
-            // labels and the · separators, so the line stays short.
+            // labels and the - separators, so the line stays short.
             const auto& T = ThemeManager::instance().current();
             Color capFg = theme_map::hexToColor(T.text);
             Color capBg = theme_map::hexToColor(T.buttonActive);

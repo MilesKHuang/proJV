@@ -14,7 +14,7 @@ static constexpr const char* TOOL_WRITE_FILE_DESC =
 static constexpr const char* TOOL_GREP_FILES_DESC =
     "Search for a pattern in workspace files. Returns matching lines with context.";
 
-// MAX_WRITE_CONTENT_SIZE — write_file size limit
+// MAX_WRITE_CONTENT_SIZE -- write_file size limit
 static constexpr size_t MAX_WRITE_CONTENT_SIZE = 8 * 1024;
 
 // Workspace violation constants
@@ -44,7 +44,7 @@ static const std::vector<std::string> kSkipDirs = {
 // -- Path resolution -----------------------------------------------
 // Resolve a path against the workspace: relative paths become absolute
 // under the workspace; absolute paths are normalized. Never resolves
-// against CWD — CWD is the exe dir, not the workspace.
+// against CWD -- CWD is the exe dir, not the workspace.
 static std::string resolveWorkspacePath(const std::string& path, const std::string& workspace) {
     try {
         fs::path inputPath(path);
@@ -99,7 +99,7 @@ static std::string validateFilePath(const std::string& rawPath, const std::strin
             std::error_code ec;
             fs::path canonical = fs::weakly_canonical(rawPath, ec);
             if (!ec && canonical != fs::path(outResolved) && isPathInWorkspace(canonical.string(), workspace)) {
-                // False alarm — canonical form is within workspace; update resolved
+                // False alarm -- canonical form is within workspace; update resolved
                 outResolved = canonical.string();
                 return "";
             }
@@ -126,7 +126,7 @@ static std::string readFileContent(const std::string& path) {
 // -- Friendly error: search workspace for same-named files ------------
 // When a read_file fails because the path is wrong, this searches the
 // workspace for files with the same filename and suggests correct paths.
-// This is the "safety net" — even without project context injection,
+// This is the "safety net" -- even without project context injection,
 // the LLM gets immediate feedback about where the file actually lives.
 static std::string findSimilarFiles(const std::string& failedPath,
                                      const std::string& workspace) {

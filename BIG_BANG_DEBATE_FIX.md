@@ -1,47 +1,47 @@
-# Big Bang 辩论修正方案 v3
+﻿# Big Bang Debate Fix Plan v3
 
-> 版本：v3.1
-> 日期：2026-09-17
-> v3.1 修订：新增"强制交锋"（重提案消息附带对方原提案，prompt 要求引用对方原句逐点攻击）；放宽提案/整合阶段字数上限。
-> 原则：**Prompt 用 Hard Rules 刻出不可逾越的边界。矛盾从禁令互斥自然生长。编排器只做流程调度，不制造矛盾。**
+> Version: v3.1
+> Date: 2026-09-17
+> v3.1 revision: added "forced engagement" (re-proposal messages carry the other side's original proposal; the prompt requires quoting the other side's exact words and attacking point by point); relaxed the character limit for the proposal/integration phases.
+> Principle: **The prompt uses Hard Rules to carve out impassable boundaries. Contradictions grow naturally from mutually exclusive prohibitions. The orchestrator only does process scheduling; it does not manufacture contradictions.**
 
 ---
 
-## 一、问题诊断
+## 1. Problem Diagnosis
 
-症结：当前三个角色的 prompt 是一篇"角色介绍"，不是一套"行为约束"。
+The crux: the current prompts for the three roles are a "character introduction", not a set of "behavioral constraints".
 
-对比一下：
+Compare:
 
 ```
-当前 Sheldon prompt（节选）：
-"你习惯性地认为自己是屋子里最懂技术的人，说话带一种'我来纠正一下事实'的姿态。"
+Current Sheldon prompt (excerpt):
+"You habitually assume you are the most technically knowledgeable person in the room, and you speak with a 'let me correct the facts' attitude."
 
-如果是 Hard Rules 风格：
+If it were in Hard Rules style:
 "NEVER agree to a plan that removes error handling for known edge cases."
 ```
 
-AI 服从短句禁令，不服从长段叙事。当前 prompt 花了大量 token 描述角色怎么说话、什么性格，但没刻下"什么事绝对不能做"的硬边界。
+AI obeys short imperative prohibitions, not long narrative passages. The current prompt spends a lot of tokens describing how the character speaks and what personality they have, but it does not carve out the hard boundary of "what must absolutely never be done".
 
 ---
 
-## 二、修正原则
+## 2. Fix Principles
 
-1. **Prompt 只写 Hard Rules**：一行一条，短句，绝对化。不写"你应该关注 X"，写"NEVER ignore X"。
-2. **矛盾是禁令互斥的自然结果**：不是"三个人价值观不同"——是"Sheldon 永远不能做的事 = Penny 被命令必须做的事"。
-3. **编排器消息简化**：只传轮次信息和上轮客观结果，不注入任何"你应该怎么想"的观点。
-4. **收敛逻辑不变**：保持原始的 `allAgree || loopDetect`，不追加 hollowConsensus 等补丁检测。
-5. **换 prompt 即可换场景**：未来想用三人和声（如代码审查），只需换三份 prompt，编排器零改动。
+1. **The prompt contains only Hard Rules**: one per line, short, absolute. Do not write "you should pay attention to X"; write "NEVER ignore X".
+2. **Contradiction is the natural result of mutually exclusive prohibitions**: it is not "three people with different values" -- it is "what Sheldon can never do = what Penny is commanded to do".
+3. **Simplify orchestrator messages**: pass only round information and the previous round's objective results; inject no "what you should think" opinion.
+4. **Convergence logic unchanged**: keep the original `allAgree || loopDetect`; do not add patch checks like hollowConsensus.
+5. **Swap the prompt to swap the scenario**: to later use a three-person chorus (e.g. code review), just swap the three prompts; zero changes to the orchestrator.
 
 ---
 
-## 三、变更 1：重写三个 System Prompt
+## 3. Change 1: Rewrite the Three System Prompts
 
-> 修改文件：`src/core/prompts_loader.cpp`
-> 替换：`PROMPT_DEFAULT_SHELDON`、`PROMPT_DEFAULT_PENNY`、`PROMPT_DEFAULT_LEONARD` 三个常量
-> 注意：`projv_files/prompts/bigbang/*.md` 已有文件不会被自动覆盖，需手动删除后重启，或手动替换。
+> File to modify: `src/core/prompts_loader.cpp`
+> Replace: the three constants `PROMPT_DEFAULT_SHELDON`, `PROMPT_DEFAULT_PENNY`, `PROMPT_DEFAULT_LEONARD`
+> Note: existing files in `projv_files/prompts/bigbang/*.md` will not be overwritten automatically; delete them manually and restart, or replace them manually.
 
-### 3.1 Sheldon — 架构完整性优先
+### 3.1 Sheldon -- Architectural Integrity First
 
 ```
 ## Who You Are
@@ -85,7 +85,7 @@ Call bigbang_vote.
 Engineer. Direct. No fluff. 800-1500 chars in Chinese.
 ```
 
-### 3.2 Penny — 交付速度优先
+### 3.2 Penny -- Delivery Speed First
 
 ```
 ## Who You Are
@@ -131,7 +131,7 @@ Call bigbang_vote.
 Direct. Impatient with jargon. 600-1200 chars in Chinese.
 ```
 
-### 3.3 Leonard — 稳扎稳打，本迭代落地
+### 3.3 Leonard -- Steady, Land It This Iteration
 
 ```
 ## Who You Are
@@ -181,11 +181,11 @@ Engineering-realistic. No sugar-coating. 800-1500 chars in Chinese.
 
 ---
 
-## 四、变更 2：编排器消息简化（`src/core/roundtable.cpp`）
+## 4. Change 2: Simplify Orchestrator Messages (`src/core/roundtable.cpp`)
 
-> 原则：不注入"你应该怎么想"，只传"这是上轮的客观结果，该你了"。观点由 prompt 的 Hard Rules 驱动。
+> Principle: do not inject "what you should think"; pass only "here is the previous round's objective result, it is your turn". Opinions are driven by the prompt's Hard Rules.
 
-### 4.1 第一轮提案 — 不变
+### 4.1 First-Round Proposals -- Unchanged
 
 ```cpp
 // L354-357: KEEP AS-IS. Prompt handles the stance; orchestrator just dispatches.
@@ -195,13 +195,13 @@ if (round == 1) {
 }
 ```
 
-### 4.2 重提案轮次 — 移除观点引导 + 强制交锋
+### 4.2 Re-Proposal Rounds -- Remove Opinion Steering + Force Engagement
 
-> 强制交锋：每方除了拿到 Leonard 折中方案和投票结果，还拿到**对方上一轮的原提案**。
-> prompt 的 Hard Rules 要求引用对方原提案中最不可接受的一句并逐点攻击，杜绝"各说各话的假反驳"。
-> 需要在 `roundtable.h` 新增 `prevSheldonS_` / `prevPennyS_` 成员，与现有 `prevLeonardS_` 一样在每轮 Phase 1 结束后更新。
+> Forced engagement: besides receiving Leonard's compromise and the vote results, each side also receives the **other side's original proposal from the previous round**.
+> The prompt's Hard Rules require quoting the single most unacceptable line from the other side's original proposal and attacking it point by point, eliminating "fake rebuttals where each side talks past the other".
+> Requires adding `prevSheldonS_` / `prevPennyS_` members to `roundtable.h`, updated after each round's Phase 1 just like the existing `prevLeonardS_`.
 
-**改前** (L358-365):
+**Before** (L358-365):
 ```cpp
 } else {
     std::string base = "Topic: " + topic
@@ -213,7 +213,7 @@ if (round == 1) {
 }
 ```
 
-**改后**:
+**After**:
 ```cpp
 } else {
     // Pass round context + previous results. Prompt drives the response.
@@ -231,12 +231,12 @@ if (round == 1) {
         + "Sheldon's previous proposal:\n" + prevSheldonS_ + "\n\n"
         + "Call bigbang_turn.";
 }
-// prevSheldonS_ / prevPennyS_ 在每轮 Phase 1 结束后、与 prevLeonardS_ 一同更新。
+// prevSheldonS_ / prevPennyS_ are updated after each round's Phase 1, together with prevLeonardS_.
 ```
 
-### 4.3 Leonard 整合阶段 — 移除格式指令
+### 4.3 Leonard Integration Phase -- Remove Format Instructions
 
-**改前** (L384-390):
+**Before** (L384-390):
 ```cpp
 std::string combined = "Topic: " + topic
     + "\n\nSheldon proposal:\n" + s1
@@ -246,7 +246,7 @@ combined += "\n\nCall bigbang_turn with your compromise "
             "(common ground / disagreements / compromise / steps).";
 ```
 
-**改后**:
+**After**:
 ```cpp
 std::string combined =
     "Topic: " + topic + "\n\n"
@@ -257,29 +257,29 @@ if (round > 1) combined += "\n\nPrevious vote results:\n" + voteSummary;
 combined += "\n\nCall bigbang_turn.";
 ```
 
-### 4.4 投票阶段 — 附带双方原方案作为对照
+### 4.4 Vote Phase -- Attach Both Sides' Original Proposals for Reference
 
-**改前** (L394-397):
+**Before** (L394-397):
 ```cpp
 std::string voteMsg = "Topic: " + topic
     + "\n\nProposal under vote (Leonard compromise):\n" + leonardS_
     + "\n\nCall bigbang_vote now.";
 ```
 
-**改后**:
+**After**:
 ```cpp
 std::string voteMsg =
     "Topic: " + topic + "\n\n"
     "=== Round " + std::to_string(round) + " Vote ===\n\n"
     "Proposal under vote:\n" + leonardS_ + "\n\n"
-    "For reference — Sheldon position:\n" + sheldonS_ + "\n\n"
-    "For reference — Penny position:\n" + pennyS_ + "\n\n"
+    "For reference -- Sheldon position:\n" + sheldonS_ + "\n\n"
+    "For reference -- Penny position:\n" + pennyS_ + "\n\n"
     "Call bigbang_vote.";
 ```
 
-### 4.5 执行文档阶段 — 简化消息
+### 4.5 Execution Document Phase -- Simplify the Message
 
-**改前** (L430-436):
+**Before** (L430-436):
 ```cpp
 std::string docMsg = "Topic: " + topic
     + "\n\nFinal proposal (Leonard compromise, voted):\n" + leonardS_
@@ -288,7 +288,7 @@ std::string docMsg = "Topic: " + topic
     + "\n\nCall write_bigbang_doc with the structured execution document.";
 ```
 
-**改后**:
+**After**:
 ```cpp
 std::string docMsg =
     "Topic: " + topic + "\n\n"
@@ -299,9 +299,9 @@ std::string docMsg =
 
 ---
 
-## 五、变更 3：收敛逻辑 — 不变
+## 5. Change 3: Convergence Logic -- Unchanged
 
-> L413-422 保持原样。不追加 hollowConsensus 等检测——如果 prompt 的 Hard Rules 生效，反对票会自然出现。编排器不需要判断"是不是假同意"。
+> Keep L413-422 as is. Do not add checks like hollowConsensus -- if the prompt's Hard Rules take effect, dissenting votes will appear naturally. The orchestrator does not need to judge "whether it is fake agreement".
 
 ```cpp
 bool allAgree = votes_[0].agree && votes_[1].agree && votes_[2].agree;
@@ -319,41 +319,41 @@ if (allAgree || loopDetect) {
 
 ---
 
-## 六、变更总结
+## 6. Change Summary
 
-| 文件 | 改动内容 | 改动量 |
+| File | Change | Size |
 |------|---------|--------|
-| `src/core/prompts_loader.cpp` | 三个 `PROMPT_DEFAULT_*` 常量替换为 Hard Rules 风格 | ~120 行替换 |
-| `src/core/roundtable.cpp` | L358-365 重提案消息改为"移除观点引导 + 附带对方原提案强制交锋"；L384-390 Leonard 整合消息简化；L394-397 投票消息附带原方案；L430-436 文档消息简化 | ~30 行修改 |
-| `src/core/roundtable.h` | 新增 `prevSheldonS_` / `prevPennyS_` 成员 | 2 行 |
-| 收敛逻辑 | 不变 | 0 行 |
-| 工具定义 / TUI / 测试 | 不变 | 0 行 |
+| `src/core/prompts_loader.cpp` | Replace the three `PROMPT_DEFAULT_*` constants with Hard Rules style | ~120 lines replaced |
+| `src/core/roundtable.cpp` | L358-365 re-proposal message changed to "remove opinion steering + attach the other side's original proposal for forced engagement"; L384-390 simplify Leonard's integration message; L394-397 attach original proposals to the vote message; L430-436 simplify the document message | ~30 lines changed |
+| `src/core/roundtable.h` | Add `prevSheldonS_` / `prevPennyS_` members | 2 lines |
+| Convergence logic | Unchanged | 0 lines |
+| Tool definitions / TUI / tests | Unchanged | 0 lines |
 
 ---
 
-## 七、三个角色禁令的天然互斥
+## 7. The Natural Mutual Exclusion of the Three Roles' Prohibitions
 
-每条禁令都是硬切口。当 Leonard 的折中方案同时触犯双方的禁令时，投票不会全票通过：
+Every prohibition is a hard cut. When Leonard's compromise violates both sides' prohibitions at the same time, the vote will not pass unanimously:
 
-| Sheldon 禁令 | Penny 禁令 | 撞车点 |
+| Sheldon's prohibition | Penny's prohibition | Collision point |
 |-------------|-----------|--------|
-| NEVER accept removing error handling for known edge cases | NEVER accept a new abstraction layer without 2 concrete call sites today | Sheldon 要的错误处理层 = Penny 眼中的无调用方抽象层 |
-| ALWAYS list 3 edge cases | ALWAYS give the fastest path, one plan only | Sheldon 必须分析 → Penny 禁止分析 |
-| IF a plan removes a boundary you named, vote AGAINST | IF a plan contains "future-proof", vote AGAINST | Sheldon 的边界层 = Penny 要砍掉的"过度设计" |
-| NEVER accept "we'll fix it later" for thread safety | NEVER agree to a plan > 1 week of coding | Sheldon 要求线程安全 = Penny 认为超出工期 |
+| NEVER accept removing error handling for known edge cases | NEVER accept a new abstraction layer without 2 concrete call sites today | The error-handling layer Sheldon wants = the call-site-less abstraction layer in Penny's eyes |
+| ALWAYS list 3 edge cases | ALWAYS give the fastest path, one plan only | Sheldon must analyze -> Penny forbids analysis |
+| IF a plan removes a boundary you named, vote AGAINST | IF a plan contains "future-proof", vote AGAINST | Sheldon's boundary layer = the "over-engineering" Penny wants to cut |
+| NEVER accept "we'll fix it later" for thread safety | NEVER agree to a plan > 1 week of coding | Sheldon demands thread safety = Penny considers it beyond the schedule |
 
-每次 Leonard 出折中方案，必然至少触发一方的禁令——不是因为编排器让他们吵，是他们的 Hard Rules 禁止他们同意。
+Every time Leonard produces a compromise, it inevitably triggers at least one side's prohibition -- not because the orchestrator makes them argue, but because their Hard Rules forbid them from agreeing.
 
 ---
 
-## 八、预期行为变化
+## 8. Expected Behavior Changes
 
-| 改前 | 改后 |
+| Before | After |
 |------|------|
-| Sheldon/Penny 用不同修辞说同一方案 | 禁令互斥导致两份方案有实质差异 |
-| 两人互不回应、只对着 Leonard 折中发言 | 第二轮起必须引用对方原提案逐点攻击，交锋落到实处 |
-| 字数上限逼模型砍内容，方案细节装不下 | 提案/整合阶段放宽到 800-1500 字符，格式要求的内容有空间落地 |
-| Leonard 找共同点、拼凑方案 | Leonard 做工程仲裁——"这次迭代我们做到什么程度" |
-| 投票是走过场 | 每个角色有明确的"触犯禁令 = 必须反对"的决策条件 |
-| 编排器消息充满观点引导 | 编排器消息像发会议通知——只说"这是上轮结果，该你了" |
-| 方案绑定 Sheldon/Penny/Leonard 人设 | 换三份 prompt 即可换角色组合（如安全/性能/可读性审查） |
+| Sheldon/Penny describe the same plan with different rhetoric | Mutually exclusive prohibitions produce two substantively different plans |
+| The two do not respond to each other, only speak to Leonard's compromise | From round 2 on, each must quote the other's original proposal and attack point by point; engagement becomes real |
+| The character cap forces the model to cut content; plan details do not fit | The proposal/integration phases are relaxed to 800-1500 chars, leaving room for the required format content |
+| Leonard finds common ground and stitches together a plan | Leonard makes an engineering ruling -- "how far do we get this iteration" |
+| Voting is a formality | Each role has an explicit decision condition of "violating a prohibition = must oppose" |
+| Orchestrator messages are full of opinion steering | Orchestrator messages read like meeting notices -- saying only "here is the previous round's result, it is your turn" |
+| Plans are bound to the Sheldon/Penny/Leonard personas | Swapping the three prompts swaps the role combination (e.g. security/performance/readability review) |

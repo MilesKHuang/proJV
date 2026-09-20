@@ -144,13 +144,13 @@ struct AppConfig {
     std::string cppCompilerPath; // C++ compiler path (e.g. MSBuild.exe, cl.exe)
     std::string pythonPath;      // Python interpreter path
 
-    // Model pricing: map of prefix → {input_price, output_price}
+    // Model pricing: map of prefix -> {input_price, output_price}
     // Parsed from [model_prices] section in config.toml
     std::vector<ModelPriceEntry> modelPrices;
 
     // Context window: 0 = auto-detect from model name, >0 = explicit override
     // Set via config.toml "context_window" key. Default 0 enables auto-detection
-    // from the model→window mapping in contextWindowForModel().
+    // from the model->window mapping in contextWindowForModel().
     size_t contextWindow = 0;
 
     // Theme name: empty = auto-detect from projv_theme/ (first found).
@@ -164,9 +164,9 @@ struct AppConfig {
     bool save();
 };
 
-// -- Model → context window mapping (used when config.contextWindow == 0) --
+// -- Model -> context window mapping (used when config.contextWindow == 0) --
 // Returns the known context-window size in tokens for supported models.
-// Returns 0 for unknown models — callers should fall back to a safe default (64K).
+// Returns 0 for unknown models -- callers should fall back to a safe default (64K).
 inline size_t contextWindowForModel(const std::string& model) {
     (void)model;
     // DeepSeek models are effectively 1M context. config.toml
@@ -204,9 +204,9 @@ struct AgentStatus {
     std::string statusMessage; // "Working...", "Thinking...", etc.
 
     // Tool execution progress (updated per-tool during ExecutingTool)
-    int toolProgressCurrent = 0;   // 当前执行到第几个 tool（从 1 开始）
-    int toolProgressTotal = 0;     // 本轮一共多少个 tool
-    std::string currentToolName;   // 正在执行的 tool 名称
+    int toolProgressCurrent = 0;   // index of the tool currently executing (1-based)
+    int toolProgressTotal = 0;     // total tools in this round
+    std::string currentToolName;   // name of the tool being executed
 };
 
 // --- Callbacks for streaming ----------------------------------------

@@ -71,7 +71,7 @@ bool Storage::openDatabase(const std::string& path) {
         writeDb_->exec("PRAGMA journal_mode = WAL;");
         writeDb_->exec("PRAGMA foreign_keys = ON;");
 
-        // 确保 schema 完整（兼容旧版本缺少 reasoning_content 列等）
+        // Ensure the schema is complete (tolerate older versions missing columns such as reasoning_content).
         if (!ensureTables()) {
             debugLog("[Storage] openDatabase: ensureTables failed");
             writeDb_.reset();

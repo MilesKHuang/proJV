@@ -1,6 +1,6 @@
 // proJV TUI -- chat view: render chat history as labeled, color-coded blocks.
 //
-// Each message is a bordered block: a "── Role ──" label, then the content
+// Each message is a bordered block: a "-- Role --" label, then the content
 // (markdown for assistant replies, plain text otherwise). Borders stay neutral
 // and the text color follows the theme's semantic grading, matching the
 // legacy GUI text-color mapping (see theme_popup.cpp in the pre-TUI code).

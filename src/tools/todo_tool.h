@@ -26,7 +26,7 @@ struct TodoData {
 // data and mtx are from Agent; the tool executor locks mtx when mutating data.
 void registerTodoTool(ToolRegistry& registry, TodoData* data, std::mutex* mtx);
 
-// Build system message content for 【USER REQUEST ON-GOING】 injection
+// Build system message content for [USER REQUEST ON-GOING] injection
 std::string buildUserRequestSystemMessage(const TodoData& data);
 
 // Build system message content for TODO injection

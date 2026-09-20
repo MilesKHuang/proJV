@@ -133,7 +133,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 }
             }
 
-            // Guard against oversized content — suggest chunking with append
+            // Guard against oversized content -- suggest chunking with append
             if (content.size() > MAX_MD_CONTENT_SIZE) {
                 size_t chunkSize = MAX_MD_CONTENT_SIZE;
                 size_t totalSize = content.size();

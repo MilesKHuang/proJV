@@ -57,7 +57,7 @@ struct Session {
     bool hasOrphanedTools() const;
 
     // =================================================================
-    // Context budget — dynamic window-aware pressure management
+    // Context budget -- dynamic window-aware pressure management
     // =================================================================
 
     enum class PressureLevel { Low, Medium, High, Critical };
@@ -68,8 +68,8 @@ struct Session {
         size_t headroomTokens = 1024;       // safety margin
         size_t availableInput = 0;          // computed: window - reserved - headroom
 
-        double compactionTrigger = 0.75;    // 75% → trigger LLM compaction
-        double criticalTrigger = 0.90;      // 90% → emergency pruning
+        double compactionTrigger = 0.75;    // 75% -> trigger LLM compaction
+        double criticalTrigger = 0.90;      // 90% -> emergency pruning
 
         PressureLevel getPressure(size_t estimatedTokens) const;
     };

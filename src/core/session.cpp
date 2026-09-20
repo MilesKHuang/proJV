@@ -405,7 +405,7 @@ void Session::repairOrphanedToolCalls() {
                         }
                     }
                     // Name fallback ONLY when toolCallId is empty (legacy tool msgs without IDs).
-                    // If a toolCallId exists, it MUST match by ID — never by name,
+                    // If a toolCallId exists, it MUST match by ID -- never by name,
                     // because name-matching can wrongly link an orphan tool msg to
                     // an unrelated earlier assistant that happened to use the same tool.
                     if (!hasPrecedingToolCall && !it->name.empty() && it->toolCallId.empty()) {
@@ -511,7 +511,7 @@ void Session::validateToolCallPairs() const {
 }
 
 // ============================================================================
-// Compaction — WorkingSet + semantic pinning + LLM summary
+// Compaction -- WorkingSet + semantic pinning + LLM summary
 // ============================================================================
 
 #include <regex>
@@ -623,7 +623,7 @@ bool Session::shouldPinMessage(size_t msgIdx, const WorkingSet& ws) const {
 
 void Session::enforceToolCallPairs(CompactionPlan& plan) const {
     auto msgs = getContextMessages();
-    // Build maps: tool_call_id → message index
+    // Build maps: tool_call_id -> message index
     std::map<std::string, size_t> callIdToIdx;
     std::map<std::string, size_t> resultIdToIdx;
 
@@ -666,7 +666,7 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     CompactionPlan plan;
     size_t n = msgs.size();
     if (n <= keepRecent) {
-        // Not enough messages — pin everything
+        // Not enough messages -- pin everything
         for (size_t i = 0; i < n; ++i) plan.pinnedIndices.push_back(i);
         return plan;
     }
@@ -803,9 +803,9 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
         std::to_string(targets.size()) + " messages summarized]\n\n" + summary;
     messages.insert(messages.begin() + insertAt, Message::System(fullMsg));
 
-    // Repair orphaned tool calls inline (no lock — mtx is already held).
+    // Repair orphaned tool calls inline (no lock -- mtx is already held).
     // We cannot call repairOrphanedToolCalls() here because it tries to
-    // lock mtx again, causing a double-lock (undefined behavior → crash).
+    // lock mtx again, causing a double-lock (undefined behavior -> crash).
     // Compaction already enforces pairs via enforceToolCallPairs, so
     // orphaned pairs after compaction are rare; do a quick inline scan.
     {
@@ -852,7 +852,7 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
 }
 
 // ============================================================================
-// hasOrphanedTools — O(n) quick detection, does NOT modify messages
+// hasOrphanedTools -- O(n) quick detection, does NOT modify messages
 // ============================================================================
 
 bool Session::hasOrphanedTools() const {
@@ -914,7 +914,7 @@ bool Session::hasOrphanedTools() const {
 }
 
 // ============================================================================
-// ContextBudget — pressure level computation
+// ContextBudget -- pressure level computation
 // ============================================================================
 
 Session::PressureLevel Session::ContextBudget::getPressure(size_t estimatedTokens) const {
@@ -935,7 +935,7 @@ Session::ContextBudget Session::computeContextBudget(size_t windowTokens, size_t
     if (windowTokens > budget.reservedOutput + budget.headroomTokens) {
         budget.availableInput = windowTokens - budget.reservedOutput - budget.headroomTokens;
     } else {
-        // Window too small for meaningful reserve — set minimum
+        // Window too small for meaningful reserve -- set minimum
         budget.availableInput = windowTokens / 2;
     }
     return budget;

@@ -13,11 +13,11 @@
 //   VLOG_F(1, "verbose level 1");
 //
 // Compatibility shims (existing code):
-//   debugLog(msg)          → LOG_F(INFO, "%s", (msg).c_str())
-//   debugLogf(fmt, ...)    → LOG_F(INFO, fmt, __VA_ARGS__)
-//   truncateForLog(s, n)   → unchanged (utility)
-//   safeForLog(s)          → unchanged (utility)
-//   sanitizeUTF8(s)        → unchanged (utility)
+//   debugLog(msg)          -> LOG_F(INFO, "%s", (msg).c_str())
+//   debugLogf(fmt, ...)    -> LOG_F(INFO, fmt, __VA_ARGS__)
+//   truncateForLog(s, n)   -> unchanged (utility)
+//   safeForLog(s)          -> unchanged (utility)
+//   sanitizeUTF8(s)        -> unchanged (utility)
 
 #include <loguru.hpp>
 
@@ -27,7 +27,7 @@ inline const char* _dbg_str(const std::string& s) { return s.c_str(); }
 inline const char* _dbg_str(const char* s) { return s; }
 
 #ifdef PROJV_RELEASE
-// Disable all loguru macros in Release builds — no log output of any kind
+// Disable all loguru macros in Release builds -- no log output of any kind
 #undef LOG_F
 #define LOG_F(level, ...)       ((void)0)
 #undef DLOG_F

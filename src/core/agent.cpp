@@ -136,7 +136,7 @@ void Agent::run() {
                 std::string err = streamError_ ? streamErrorMsg_ : "stream failed";
                 if (err.find("HTTP 4") != std::string::npos) {
                     // Retry up to 3 times with compaction between attempts.
-                    // HTTP 400 is often caused by context overflow — compaction
+                    // HTTP 400 is often caused by context overflow -- compaction
                     // / repair can shrink the request enough to succeed.
                     static constexpr int MAX_HTTP_RETRIES = 3;
                     int httpRetry = 0;
@@ -579,7 +579,7 @@ bool Agent::hasDestructiveCommand(const ToolCall& call) const {
         // "remove-item" variants (PowerShell)
         {"remove-item ",1},{"remove-item;",1},{"remove-item|",1},
         {"remove-item>",1},{"remove-item)",1},{"remove-item&",1},
-        // "ri" (PowerShell shorthand for Remove-Item — requires token boundary)
+        // "ri" (PowerShell shorthand for Remove-Item -- requires token boundary)
         {"ri ",1},{"ri;",1},{"ri|",1},{"ri>",1},
         // destructive commands (no boundary check)
         {"format ",1},{"diskpart",0},{"taskkill",0},{"shutdown",0}
