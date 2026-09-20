@@ -225,7 +225,9 @@ void TuiApp::sendMessage(const std::string& text) {
             resetChatScroll();
             return;
         }
-        startBigbang(topic);
+        // Phase C: /bigbang is now an alias for the skill engine. The old
+        // Roundtable is kept compiled (unused) for one commit to allow rollback.
+        startSkill("bigbang_debate", topic);
         return;
     }
 
