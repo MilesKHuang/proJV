@@ -22,5 +22,10 @@
        "message": "Project root: {{topic}}\n\nYou are MONICA, the supervisor. Each round: (1) explore the project, (2) pick the next small batch and dispatch via request_agent to formatter / translator / auditor, (3) collect reports. When everything is processed, reply with summary exactly DONE.\n\n(round {{round}}/{{max_rounds}})"}
     ]}
   ],
-  "on_converge": []
+  "on_converge": [
+    {"progress": "Writing final report", "actions": [
+      {"agent": "supervisor", "tool": "emit", "capture": "summary", "into": "report", "emit": "message",
+       "message": "Produce the FINAL consolidated report now, as ONE message: list everything you found across all rounds (dead code, unused includes, unused params, write-only fields, duplicated code, stale comments), grouped by file, in Markdown. This message IS the deliverable. Do not reply only DONE."}
+    ]}
+  ]
 }
