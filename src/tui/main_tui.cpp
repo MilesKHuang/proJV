@@ -6,6 +6,7 @@
 #include "markdown_view.h"
 #include "status_line.h"
 #include "status_bar.h"
+#include "speaker_colors.h"
 #include "todo_view.h"
 #include "config_view.h"
 #include "theme_editor_view.h"
@@ -61,9 +62,51 @@ ftxui::Element observeHeight(ftxui::Element child, std::function<void(int)> on_h
         ftxui::unpack(std::move(child)), std::move(on_height));
 }
 
-// Right-dock Agent status panel: one compact line per live skill agent
-// (id/display name, last narration, message count).
-ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& agents) {
+// Map a subagent activity to the theme color of its state word (mirrors
+// status_line::render for the main agent).
+std::string ThemeColors::*panelActivityColor(SkillRunner::AgentActivity a) {
+    switch (a) {
+        case SkillRunner::AgentActivity::Working: return &ThemeColors::phaseStreaming;
+        case SkillRunner::AgentActivity::Error:   return &ThemeColors::statusError;
+        case SkillRunner::AgentActivity::Idle:
+        default:                                   return &ThemeColors::statusIdle;
+    }
+}
+
+const char* panelActivityLabel(SkillRunner::AgentActivity a) {
+    switch (a) {
+        case SkillRunner::AgentActivity::Working: return "working";
+        case SkillRunner::AgentActivity::Error:   return "error";
+        case SkillRunner::AgentActivity::Idle:
+        default:                                   return "idle";
+    }
+}
+
+// Truncate a UTF-8 string to at most `maxCols` terminal columns (CJK = 2
+// columns, ASCII = 1). Appends ".." when clipped. Byte-safe on UTF-8.
+std::string truncateToCols(const std::string& s, int maxCols) {
+    int cols = 0;
+    size_t i = 0, last = 0;
+    while (i < s.size()) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t len = 1; int w = 1;
+        if (c >= 0xF0) { len = 4; w = 2; }
+        else if (c >= 0xE0) { len = 3; w = 2; }
+        else if (c >= 0xC0) { len = 2; w = 1; }
+        if (cols + w > maxCols) break;
+        cols += w; i += len; last = i;
+    }
+    std::string out = s.substr(0, last);
+    if (last < s.size()) out += "..";
+    return out;
+}
+
+// Right-dock Agent panel: two lines per live skill agent.
+//   line 1: [name] <state> (+spinner) -- colored like the main status line
+//   line 2: dim, truncated last narration (the agent's last bubble text)
+ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& agents,
+                                int spinnerFrame) {
+    const auto& T = ThemeManager::instance().current();
     ftxui::Elements els;
     els.push_back(ftxui::text("Agents") | ftxui::bold);
     els.push_back(ftxui::separator());
@@ -72,14 +115,28 @@ ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& a
         return ftxui::vbox(std::move(els));
     }
     for (const auto& a : agents) {
+        // Line 1: identity + state + live icon, tinted by activity.
+        ftxui::Color stateColor = theme_map::hexToColor(T.*panelActivityColor(a.activity));
+        ftxui::Color nameColor = speaker_colors::forRole(a.displayName);
+        ftxui::Elements line1;
+        line1.push_back(ftxui::text("[" + a.displayName + "]")
+                        | ftxui::bold | ftxui::color(nameColor));
+        line1.push_back(ftxui::text(" " + std::string(panelActivityLabel(a.activity)))
+                        | ftxui::color(stateColor));
+        if (a.activity == SkillRunner::AgentActivity::Working) {
+            line1.push_back(ftxui::text(" "));
+            line1.push_back(ftxui::spinner(6, spinnerFrame) | ftxui::color(stateColor));
+        }
+        els.push_back(ftxui::hbox(std::move(line1)));
+
+        // Line 2: dim, truncated last narration.
         std::string st = a.status;
         auto nl = st.find('\n');                       // first line only
         if (nl != std::string::npos) st = st.substr(0, nl);
-        if (st.size() > 56) st = st.substr(0, 53) + "...";
-        if (st.empty()) st = a.busy ? "working..." : "idle";
-        std::string line = "[" + a.displayName + "] " + st
-            + "  (" + std::to_string(a.msgCount) + ")";
-        els.push_back(ftxui::text(line));
+        if (st.empty())
+            st = (a.activity == SkillRunner::AgentActivity::Working) ? "working..." : "(idle)";
+        els.push_back(ftxui::text(truncateToCols(st, 34))
+                      | ftxui::dim | ftxui::color(theme_map::hexToColor(T.textDisabled)));
     }
     return ftxui::vbox(std::move(els));
 }
@@ -365,7 +422,7 @@ int main() {
                 todo_view::renderTodoPanel(app.copyTodoData())
                     | flex | yframe | vscroll_indicator,
                 separator(),
-                renderAgentPanel(app.skillAgentStatuses()),
+                renderAgentPanel(app.skillAgentStatuses(), spinnerFrame),
             }) | size(WIDTH, EQUAL, 36);
             mainArea = hbox({
                 std::move(chatColumn) | flex,

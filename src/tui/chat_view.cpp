@@ -7,6 +7,7 @@
 #include "chat_view.h"
 
 #include "markdown_view.h"
+#include "speaker_colors.h"
 #include "theme_map.h"
 #include "theme_manager.h"
 
@@ -48,14 +49,6 @@ Element label(const std::string& text, Color c) {
 
 // Wrap a message block with a neutral border so role identity comes from the
 // label/text color, not from a rainbow of borders.
-// Per-role accent for skill speakers (fixed, theme-independent).
-Color speakerColor(const std::string& s) {
-    if (s == "Sheldon") return Color::RGB(96, 156, 255);   // blue
-    if (s == "Penny")   return Color::RGB(255, 138, 176);  // pink
-    if (s == "Leonard") return Color::RGB(120, 210, 140);  // green
-    return P.text;
-}
-
 Element frameBlock(Element block, Color c) {
     return std::move(block) | ftxui::borderStyled(c);
 }
@@ -151,7 +144,7 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
             }
             block = ftxui::vbox(std::move(els));
         } else if (b.role == "assistant" && !b.speaker.empty()) {
-            Color rc = speakerColor(b.speaker);
+            Color rc = speaker_colors::forRole(b.speaker);
             Elements els;
             els.push_back(label("── " + b.speaker + (b.isVote ? " · vote" : "") + " ──", rc));
             if (b.isVote) {
@@ -226,7 +219,7 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
             block = markdown_view::renderPlainText(b.content) | ftxui::color(P.text);
         }
 
-        Color borderColor = b.speaker.empty() ? P.border : speakerColor(b.speaker);
+        Color borderColor = b.speaker.empty() ? P.border : speaker_colors::forRole(b.speaker);
         lines.push_back(frameBlock(std::move(block), borderColor));
     }
 

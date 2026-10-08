@@ -4,6 +4,9 @@
 #include "tui/bubble_model.h"
 #include "models.h"
 
+#include <set>
+#include <string>
+
 using namespace bubble_model;
 
 namespace {
@@ -109,6 +112,39 @@ TEST_CASE("formatToolMsg: tool_result summary (read_file)") {
     CHECK(role == "tool_result");
     // "line1\nline2\nline3" = 17 bytes, 2 newlines.
     CHECK(text == "read_file (2 lines, 17 bytes)  -> line1");
+}
+
+TEST_CASE("deriveBubbles: registered skill role is detected and stripped") {
+    std::set<std::string> roles = {"Supervisor", "DeadCode Auditor"};
+
+    auto b = deriveBubbles(Message::Assistant("**[Supervisor]** round 1 summary"), roles);
+    REQUIRE(b.size() == 1);
+    CHECK(b[0].speaker == "Supervisor");
+    CHECK_FALSE(b[0].isVote);
+    CHECK(b[0].content == "round 1 summary");
+
+    auto v = deriveBubbles(Message::Assistant("**[DeadCode Auditor vote]** AGREE"), roles);
+    REQUIRE(v.size() == 1);
+    CHECK(v[0].speaker == "DeadCode Auditor");
+    CHECK(v[0].isVote);
+    CHECK(v[0].content == "AGREE");
+}
+
+TEST_CASE("deriveBubbles: unregistered bold markdown is not a speaker") {
+    std::set<std::string> roles = {"Supervisor"};
+    const std::string text = "**[Note]** this is bold, not a role";
+    auto b = deriveBubbles(Message::Assistant(text), roles);
+    REQUIRE(b.size() == 1);
+    CHECK(b[0].speaker.empty());
+    CHECK_FALSE(b[0].isVote);
+    CHECK(b[0].content == text);
+}
+
+TEST_CASE("deriveBubbles: empty registry disables speaker detection") {
+    auto b = deriveBubbles(Message::Assistant("**[Sheldon]** proposal"));
+    REQUIRE(b.size() == 1);
+    CHECK(b[0].speaker.empty());
+    CHECK(b[0].content == "**[Sheldon]** proposal");
 }
 
 TEST_CASE("formatToolMsg: tool_result summary (exec_shell)") {

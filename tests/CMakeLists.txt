@@ -4,6 +4,7 @@ set(TEST_SOURCES
     unit/test_main.cpp
     unit/test_agent_request.cpp
     unit/test_bubble_model.cpp
+    unit/test_speaker_colors.cpp
     unit/test_markdown_text.cpp
     unit/test_deepseek_sse.cpp
     unit/test_status_line.cpp
@@ -21,6 +22,7 @@ set(TEST_SOURCES
     golden/test_markdown_render.cpp
     golden/test_theme_editor.cpp
     ${SRC_DIR}/tui/bubble_model.cpp
+    ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/markdown_text.cpp
     ${SRC_DIR}/tui/markdown_view.cpp

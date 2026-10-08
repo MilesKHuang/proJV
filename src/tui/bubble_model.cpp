@@ -63,7 +63,8 @@ std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
     }
 }
 
-std::vector<Bubble> deriveBubbles(const Message& msg) {
+std::vector<Bubble> deriveBubbles(const Message& msg,
+                                  const std::set<std::string>& knownRoles) {
     std::vector<Bubble> out;
 
     // Skip system messages (visual noise; /workspace special-cased).
@@ -129,23 +130,23 @@ std::vector<Bubble> deriveBubbles(const Message& msg) {
     cb.role = msg.role;
     cb.content = msg.content;
     // Skill role projections are plain assistant messages tagged with a role
-    // prefix: "**[Sheldon]** ..." or "**[Sheldon vote]** ...". Detect and strip
-    // the prefix so the chat view can color/name the speaker.
-    if (msg.role == "assistant") {
-        static const char* kRoles[3] = {"Sheldon", "Penny", "Leonard"};
-        for (const char* nm : kRoles) {
-            std::string votePrefix = std::string("**[") + nm + " vote]** ";
-            std::string stmtPrefix = std::string("**[") + nm + "]** ";
-            if (cb.content.rfind(votePrefix, 0) == 0) {
-                cb.speaker = nm;
-                cb.isVote = true;
-                cb.content = cb.content.substr(votePrefix.size());
-                break;
+    // prefix: "**[<name>]** ..." or "**[<name> vote]** ...". A prefix is treated
+    // as a speaker ONLY when <name> is in the registry (knownRoles), so ordinary
+    // bold markdown like "**[Note]**" is never misread. No name is hard-coded.
+    if (msg.role == "assistant" && !knownRoles.empty() &&
+        cb.content.rfind("**[", 0) == 0) {
+        size_t close = cb.content.find("]** ", 3);   // "]** " is 4 chars
+        if (close != std::string::npos) {
+            std::string name = cb.content.substr(3, close - 3);
+            bool isVote = false;
+            if (name.size() > 5 && name.compare(name.size() - 5, 5, " vote") == 0) {
+                isVote = true;
+                name = name.substr(0, name.size() - 5);
             }
-            if (cb.content.rfind(stmtPrefix, 0) == 0) {
-                cb.speaker = nm;
-                cb.content = cb.content.substr(stmtPrefix.size());
-                break;
+            if (knownRoles.count(name)) {
+                cb.speaker = name;
+                cb.isVote = isVote;
+                cb.content = cb.content.substr(close + 4);   // skip "]** "
             }
         }
     }

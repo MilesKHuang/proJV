@@ -139,14 +139,24 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     return true;
 }
 
+void TuiApp::harvestSpeakers() {
+    // The active skill's role display names are the registry of known speakers.
+    // Harvested each frame (cheap, mutex-guarded) so it tracks skills as they
+    // start; entries persist for the rest of the app run.
+    for (const auto& a : skillAgentStatuses()) {
+        if (!a.displayName.empty()) knownSpeakers_.insert(a.displayName);
+    }
+}
+
 void TuiApp::buildBubblesFromMessages() {
     if (!agent) return;
     chatHistory.clear();
     lastMessageId_ = 0;
+    harvestSpeakers();
 
     auto msgs = agent->getNewMessagesSince(0);
     for (const auto& msg : msgs) {
-        auto derived = bubble_model::deriveBubbles(msg);
+        auto derived = bubble_model::deriveBubbles(msg, knownSpeakers_);
         chatHistory.insert(chatHistory.end(), derived.begin(), derived.end());
         if (msg.id > lastMessageId_) lastMessageId_ = msg.id;
     }
@@ -154,13 +164,14 @@ void TuiApp::buildBubblesFromMessages() {
 
 void TuiApp::syncChatFromAgent() {
     if (!agent) return;
+    harvestSpeakers();
 
     auto newMsgs = agent->getNewMessagesSince(lastMessageId_);
     if (!newMsgs.empty()) {
         resetChatScroll();  // new content -> scroll back to bottom
     }
     for (const auto& msg : newMsgs) {
-        auto derived = bubble_model::deriveBubbles(msg);
+        auto derived = bubble_model::deriveBubbles(msg, knownSpeakers_);
         chatHistory.insert(chatHistory.end(), derived.begin(), derived.end());
         if (msg.id > lastMessageId_) lastMessageId_ = msg.id;
     }

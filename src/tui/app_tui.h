@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -120,6 +121,7 @@ public:
 
 private:
     void setupTools();
+    void harvestSpeakers();
     void buildBubblesFromMessages();
     void launchAgentThread();
     void joinAgentThread();
@@ -137,6 +139,9 @@ private:
 
     std::vector<bubble_model::Bubble> chatHistory;
     int64_t lastMessageId_ = 0;
+    // Registry of active skill role display names. bubble_model::deriveBubbles
+    // tags a "**[<name>]** " prefix as a speaker only when <name> is in here.
+    std::set<std::string> knownSpeakers_;
     int chatScrollRow_ = 0;        // real rendered-row target (0 = top)
     bool chatFollowBottom_ = true; // stick to the newest content
     int chatContentRows_ = 0;      // real rendered rows from the last layout

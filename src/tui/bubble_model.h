@@ -8,6 +8,7 @@
 
 #include "models.h"
 
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,13 @@ std::pair<std::string, std::string> formatToolMsg(const Message& msg);
 
 // Derive one or more bubbles from a single Message. Pure function, 1:1 with
 // the legacy App::deriveBubblesFromMessage.
-std::vector<Bubble> deriveBubbles(const Message& msg);
+//
+// `knownRoles` is the registry of active skill role names. An assistant message
+// whose first token is "**[<name>]** ..." or "**[<name> vote]** ..." is tagged
+// as a speaker ONLY when <name> is registered, so ordinary bold markdown
+// ("**[Note]** ...") is never misread as a role. Empty registry => no speaker
+// detection (plain messages pass through untouched).
+std::vector<Bubble> deriveBubbles(const Message& msg,
+                                  const std::set<std::string>& knownRoles = {});
 
 } // namespace bubble_model

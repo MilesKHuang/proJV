@@ -478,6 +478,9 @@ std::vector<SkillRunner::AgentSnapshot> SkillRunner::agentStatuses() const {
             s.msgCount = kv.second->messageCount();
             s.busy = kv.second->busy();
             s.status = kv.second->lastNarration();
+            if (s.busy) s.activity = AgentActivity::Working;
+            else if (s.status.rfind("[error]", 0) == 0) s.activity = AgentActivity::Error;
+            else s.activity = AgentActivity::Idle;
         }
         out.push_back(std::move(s));
     }

@@ -161,6 +161,7 @@ add_executable(proJV_tui
     ${SRC_DIR}/tui/app_tui.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/bubble_model.cpp
+    ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/markdown_text.cpp
     ${SRC_DIR}/tui/markdown_view.cpp
     ${SRC_DIR}/tui/status_line.cpp

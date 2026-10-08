@@ -44,6 +44,11 @@ public:
     int lastRounds() const { return lastRounds_; }
     const std::string& lastDoc() const { return lastDoc_; }
 
+    // Coarse activity state for the TUI agent sidebar. Mirrors the main
+    // agent's status line (idle / working / error) so each role can show a
+    // colored state word + a live spinner while it is busy.
+    enum class AgentActivity { Idle, Working, Error };
+
     // Snapshot of one agent's live state (for the TUI sidebar).
     struct AgentSnapshot {
         std::string id;
@@ -51,6 +56,7 @@ public:
         std::string status;   // last narration summary
         int msgCount = 0;
         bool busy = false;
+        AgentActivity activity = AgentActivity::Idle;
     };
     // Mutex-protected copy of the agent pool; safe to call from the TUI thread.
     std::vector<AgentSnapshot> agentStatuses() const;
