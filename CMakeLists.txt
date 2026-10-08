@@ -192,6 +192,19 @@ if(MSVC)
     target_compile_options(proJV_tui PRIVATE /utf-8)
 endif()
 
+# ── Deploy example skills next to the runtime exe ────────────────────────
+# The engine reads skills from {exeDir}/projv_files/skills/. Repo example
+# skills live in <repo>/skills/ (bigbang, monica). Copy them next to the built
+# exe after linking, so a plain run finds them and any release that ships
+# projv_files/ carries them too. Installing a skill is just copying its folder
+# into projv_files/skills/; uninstalling is deleting it. No special-casing.
+add_custom_command(TARGET proJV_tui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/skills"
+            "$<TARGET_FILE_DIR:proJV_tui>/projv_files/skills"
+    COMMENT "Deploying example skills -> projv_files/skills/"
+)
+
 # ── Tests ────────────────────────────────────────────────────────────────
 option(PROJV_BUILD_TESTS "Build proJV unit tests" ON)
 if(PROJV_BUILD_TESTS)
