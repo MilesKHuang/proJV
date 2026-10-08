@@ -48,7 +48,7 @@ Element label(const std::string& text, Color c) {
 
 // Wrap a message block with a neutral border so role identity comes from the
 // label/text color, not from a rainbow of borders.
-// Per-role accent for /bigbang speakers (fixed, theme-independent).
+// Per-role accent for skill speakers (fixed, theme-independent).
 Color speakerColor(const std::string& s) {
     if (s == "Sheldon") return Color::RGB(96, 156, 255);   // blue
     if (s == "Penny")   return Color::RGB(255, 138, 176);  // pink

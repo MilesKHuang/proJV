@@ -25,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace ftxui;
 
@@ -58,6 +59,29 @@ private:
 ftxui::Element observeHeight(ftxui::Element child, std::function<void(int)> on_height) {
     return std::make_shared<ObserveHeightNode>(
         ftxui::unpack(std::move(child)), std::move(on_height));
+}
+
+// Right-dock Agent status panel: one compact line per live skill agent
+// (id/display name, last narration, message count).
+ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& agents) {
+    ftxui::Elements els;
+    els.push_back(ftxui::text("Agents") | ftxui::bold);
+    els.push_back(ftxui::separator());
+    if (agents.empty()) {
+        els.push_back(ftxui::text("(no skill running)") | ftxui::dim);
+        return ftxui::vbox(std::move(els));
+    }
+    for (const auto& a : agents) {
+        std::string st = a.status;
+        auto nl = st.find('\n');                       // first line only
+        if (nl != std::string::npos) st = st.substr(0, nl);
+        if (st.size() > 56) st = st.substr(0, 53) + "...";
+        if (st.empty()) st = a.busy ? "working..." : "idle";
+        std::string line = "[" + a.displayName + "] " + st
+            + "  (" + std::to_string(a.msgCount) + ")";
+        els.push_back(ftxui::text(line));
+    }
+    return ftxui::vbox(std::move(els));
 }
 
 // Advances a spinner frame only while the agent is busy. FTXUI only calls
@@ -131,7 +155,7 @@ int main() {
 
     // Animated "working" spinner: advances only while the agent is busy.
     int spinnerFrame = 0;
-    // Agent turns AND /bigbang debates both run on the busy flag, so the
+    // Agent turns AND skill runs both share the busy flag, so the
     // spinner keeps animating during a debate (phase stays Idle then).
     auto busy = [&] { return app.isBusy(); };
     auto spinner_ticker = std::make_shared<SpinnerTicker>(busy, [&] {
@@ -333,14 +357,20 @@ int main() {
                     | vscroll_indicator | yframe,
                 [&](int rows) { app.setChatViewportRows(rows); });
 
-        // TODO lives in a right-side dock (legacy GUI layout), not a bottom strip.
+        // Right-side dock: TODO panel on top, live Agent status below
+        // (legacy GUI layout, not a bottom strip).
         Element mainArea;
         if (show_todo) {
+            Element dock = vbox({
+                todo_view::renderTodoPanel(app.copyTodoData())
+                    | flex | yframe | vscroll_indicator,
+                separator(),
+                renderAgentPanel(app.skillAgentStatuses()),
+            }) | size(WIDTH, EQUAL, 36);
             mainArea = hbox({
                 std::move(chatColumn) | flex,
                 separator(),
-                todo_view::renderTodoPanel(app.copyTodoData())
-                    | size(WIDTH, EQUAL, 36) | yframe | vscroll_indicator,
+                std::move(dock),
             });
         } else {
             mainArea = std::move(chatColumn) | flex;

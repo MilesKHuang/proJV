@@ -1,7 +1,7 @@
 ﻿# SKILL_ENGINE -- Multi-Agent Workflow Engine Design (v1.1)
 
 > Purpose: a single extension point -- drop in one JSON (+prompts/tools) and get a multi-agent workflow, with zero C++ changes. Covers the roundtable / expert panel / brainstorming / Kanban / swarm family, implemented in a **unified, simplified, bounded** way; **byte-for-byte compatible on the normal path** with the existing `/bigbang`.
-> Relationship: `bigbang_debate` is this engine's **built-in skill #1**, not a special case.
+> Relationship: `bigbang` is an **example skill** in repo `skills/bigbang/` (install = copy into `projv_files/skills/`), exactly like `monica`; the engine treats every skill uniformly.
 > v1.1: incorporates review fixes (Bug A/B + C-G + derived tool registration + event text spec). This document is self-contained and does not depend on any older document.
 
 ---
@@ -284,9 +284,9 @@ return false
 
 ---
 
-## 5. bigbang Compatibility (built-in skill #1)
+## 5. bigbang Compatibility (example skill)
 
-1. **Config instance:** `bigbang_debate` is the JSON in 8; the program = propose/integrate/vote, stop = `all_agree`, post program = doc.
+1. **Config instance:** `bigbang` is the JSON in 8 (config `name` = `bigbang`, folder `skills/bigbang/`); the program = propose/integrate/vote, stop = `all_agree`, post program = doc.
 2. **Byte baseline (self-contained):** the five message types in 8 are **byte-for-byte equal** to the C++ concatenation in the old `roundtable.cpp run()`; for `voteSummary`/`residualConcerns`/`<<display>>` prefixes see 4.3/4.4. Zero deviation on the normal path; for exception-path deviations see the 4.2 table.
 3. **Four-phase migration (low risk):** coexist (new engine + `/skill`, old `/bigbang` untouched) -> golden-master comparison (drive the old `Roundtable` with a scripted responder, record the actual messages sent, assert `fillTemplate(config) == original string`) -> switch the alias (`/bigbang` -> `startSkill("bigbang_debate")`) -> delete the old code (roundtable.* + prompts dead code).
 4. **Regression protection:** the old 3 convergence contracts (unanimous convergence / round cap still emits a doc / loop-detect) are rewritten as SkillRunner tests in phase D to lock them down.
@@ -302,12 +302,12 @@ return false
 | `src/core/skill_runner.{h,cpp}` | new (interpreter + templates + seeding + scheduling) | A |
 | `src/tui/app_tui.{h,cpp}` | modify (`/skill` routing + `onEvent` callback + `startSkill`) | A/C/D |
 | `src/core/roundtable.{h,cpp}` | delete | D |
-| `src/core/prompts_loader.cpp` / `prompts.h` | delete bigbang dead code (content migrated into `ensureDefaultSkills` seeding) | D |
+| `src/core/prompts_loader.cpp` / `prompts.h` | delete bigbang dead code (content moved to repo `skills/bigbang/`) | D |
 | `src/tui/main_tui.cpp` | `[bigbang]` -> `[skill]` | D |
 | `tests/unit/test_skill_{messages,runner}.cpp` | new (golden master + convergence contracts) | B/D |
 | `CMakeLists.txt` / `tests/CMakeLists.txt` | modify | A/D |
 
-No new dependencies on the engine side; reuses `ToolRegistry` / `Session` / `DeepSeekClient`; does not change IProcessRunner or the TUI render path. Skill files (config/prompts/tools) are seeded at runtime by `ensureDefaultSkills()` into `projv_files/skills/`, removing the dependency on the exe directory.
+No new dependencies on the engine side; reuses `ToolRegistry` / `Session` / `DeepSeekClient`; does not change IProcessRunner or the TUI render path. Skill files (config/prompts/tools) live in the repo as `skills/<name>/` and are copied into `projv_files/skills/` to install. Only `skill_maker` is still seeded at runtime by `ensureDefaultSkills()` (via `seedBuiltinSkills`).
 
 ---
 
@@ -316,7 +316,7 @@ No new dependencies on the engine side; reuses `ToolRegistry` / `Session` / `Dee
 | # | Verification item | Phase |
 |---|--------|------|
 | 1 | Golden master: the five bigbang message types are byte-for-byte equal (normal path) | B |
-| 2 | `/bigbang` UX unchanged (bubbles/status bar/Esc) | C |
+| 2 | `/skill bigbang <topic>` UX (bubbles/status bar/Esc) | C |
 | 3 | Three convergence contracts (unanimous / round cap emits doc / loop-detect) | D |
 | 4 | Whitelist effective: debate roles cannot `exec_shell`/`write_file` | A |
 | 5 | Generalization: renaming bigbang tools to `speak` is equivalent with only a config change | A |
@@ -332,13 +332,13 @@ No new dependencies on the engine side; reuses `ToolRegistry` / `Session` / `Dee
 
 ---
 
-## 8. `skills/bigbang_debate/config.json` (built-in skill #1)
+## 8. `skills/bigbang/config.json` (example skill)
 
 > Byte-aligned with the old `roundtable.cpp` normal path. The fields `capture/into/shape/emit` are the generalized form; vote has no `into` (stored by agent).
 
 ```json
 {
-  "name": "bigbang_debate",
+  "name": "bigbang",
   "description": "Three-role engineering debate: propose, integrate, vote, emit an execution doc.",
   "tools": ["read_file", "grep_files", "file_search"],
   "agents": [
@@ -510,7 +510,7 @@ Measured via `test_skill_swarm.cpp`: the swarm was previously **effectively unus
 
 | Skill | Type | Location |
 |------|------|------|
-| `bigbang_debate` | built-in | seeded by `ensureDefaultSkills` |
+| `bigbang` | example (repo `skills/bigbang/`) | copy into `projv_files/skills/`; not seeded |
 | `skill_maker` | built-in | seeded by `skills_builtin.cpp` (the creator builds skills with `write_file`, the verifier validates read-only) |
 | `monica` | example (can stand alone as a repo) | repo `skills/monica/`; copy into `projv_files/skills/` and it works |
 
@@ -523,3 +523,8 @@ Measured via `test_skill_swarm.cpp`: the swarm was previously **effectively unus
 - **Automatic deletion** of dead code: not done (LLM call graphs are unreliable); `monica`'s auditor only **reports**.
 - Engine-level `foreach`/dynamic file sets: not done (handled by the supervisor's round loop + request_agent).
 
+### 11.9 Multi-Agent UX update (v1.3)
+
+- `bigbang` is a plain example skill folder `skills/bigbang/` (same shape as `monica`); it is **not** seeded. Install = copy the folder into `projv_files/skills/`. The `/bigbang` command was removed; use `/skill bigbang <topic>`.
+- config `name` must equal the folder name (`bigbang`); `loadAgents()` resolves `skillsDir_/<name>/` for `tools/` and prompt files.
+- The TUI right dock (F9) shows a live Agent panel under the TODO panel: `TuiApp::skillAgentStatuses()` -> `SkillRunner::agentStatuses()` (mutex-guarded copy; per-agent `lastNarration()`/`busy()`/`messageCount()`).

@@ -18,10 +18,21 @@ Bring a project to a clean, consistent state:
 2. Choose a SMALL batch (<= 3 files) one worker can handle this round.
 3. Dispatch via request_agent(agent_id, message). One dispatch per turn if unsure.
 4. Collect each worker's report.
-5. When every file is processed and reported, set your summary to exactly: DONE
+5. Emit ONE line of round report, of the form:
+   "Round {n}/{max}: formatted X files / translated Y comments / scanned Z files, <result>"
+   This is a single line. Do NOT paste file lists or multi-line detail here.
+6. When every file is processed and reported, set your summary to exactly: DONE
+
+## Summary (emit) rules
+- The per-round summary is a SINGLE line (the round report above). Detail and
+  per-file lists go to disk via write_file / md_file, never into the summary.
+- The final round's summary is exactly "DONE" and nothing else -- this is the
+  stop signal. The consolidated final report is produced as a separate final
+  step (see the on-converge message); it is the deliverable, one message,
+  grouped by file, which may list the report's file path.
 
 ## Hard Rules
 - NEVER edit files directly; use only request_agent.
 - Keep batches small; prefer steady progress over one huge round.
-- Your emit summary MUST be exactly "DONE", and ONLY when the project is done.
+- Round summaries are ONE line; the completion summary is exactly "DONE".
 - ASCII/English in your summaries.

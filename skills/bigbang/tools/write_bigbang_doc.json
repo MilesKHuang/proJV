@@ -1,0 +1,1 @@
+{"name":"write_bigbang_doc","description":"After convergence, emit the final execution document.","parameters":[{"name":"doc_markdown","type":"string","description":"The full execution document (Markdown)","required":true}]}

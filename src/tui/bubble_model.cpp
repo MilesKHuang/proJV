@@ -128,7 +128,7 @@ std::vector<Bubble> deriveBubbles(const Message& msg) {
     Bubble cb;
     cb.role = msg.role;
     cb.content = msg.content;
-    // /bigbang projections are plain assistant messages tagged with a role
+    // Skill role projections are plain assistant messages tagged with a role
     // prefix: "**[Sheldon]** ..." or "**[Sheldon vote]** ...". Detect and strip
     // the prefix so the chat view can color/name the speaker.
     if (msg.role == "assistant") {

@@ -212,24 +212,6 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
-    // /bigbang <topic>: run the multi-role debate on a background thread.
-    if (trimmed.rfind("/bigbang", 0) == 0) {
-        std::string topic = trimmed.size() > 8 ? trimmed.substr(8) : std::string();
-        auto ts = topic.find_first_not_of(" \t\r\n");
-        topic = (ts == std::string::npos) ? std::string() : topic.substr(ts);
-        if (topic.empty()) {
-            bubble_model::Bubble cb;
-            cb.role = "system";
-            cb.content = "[bigbang] usage: /bigbang <topic>";
-            chatHistory.push_back(cb);
-            resetChatScroll();
-            return;
-        }
-        // /bigbang is an alias for the built-in bigbang_debate skill.
-        startSkill("bigbang_debate", topic);
-        return;
-    }
-
     // /skill [list | <name> <topic>]: run a JSON-configured skill workflow.
     if (trimmed.rfind("/skill", 0) == 0) {
         std::string rest = trimmed.size() > 6 ? trimmed.substr(6) : std::string();
@@ -296,6 +278,12 @@ void TuiApp::joinSkillThread() {
 std::string TuiApp::getSkillStatus() const {
     std::lock_guard<std::mutex> lk(skillMutex_);
     return skillStatus_;
+}
+
+std::vector<SkillRunner::AgentSnapshot> TuiApp::skillAgentStatuses() const {
+    std::lock_guard<std::mutex> lk(skillMutex_);
+    if (!skillRunner_) return {};
+    return skillRunner_->agentStatuses();
 }
 
 void TuiApp::startSkill(const std::string& name, const std::string& topic) {

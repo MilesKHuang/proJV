@@ -54,7 +54,6 @@ bool hasEvent(const std::vector<std::string>& ev, const std::string& s) {
 
 TEST_CASE("skill: round-1 unanimous matches golden bytes + events") {
     ensureSysUtil();
-    SkillRunner::ensureDefaultSkills(getProjvDir() + "/skills");
 
     std::vector<std::string> cap[3];
     std::vector<std::string> events;
@@ -72,11 +71,11 @@ TEST_CASE("skill: round-1 unanimous matches golden bytes + events") {
         events.push_back(role + "|" + kind + "|" + text);
     };
 
-    SkillRunner sr(testConfig(), nullptr, cbs);
+    SkillRunner sr(testConfig(), nullptr, cbs, "", PROJV_EXAMPLE_SKILLS_DIR);
     sr.setResponder("sheldon", role(0, "S1", true));
     sr.setResponder("penny", role(1, "P1", true));
     sr.setResponder("leonard", role(2, "L1", true));
-    sr.run("bigbang_debate", "T");
+    sr.run("bigbang", "T");
 
     CHECK(cap[0][0] == "Topic: T\n\nCall bigbang_turn with your proposal.");
     CHECK(cap[1][0] == "Topic: T\n\nCall bigbang_turn with your proposal.");
@@ -94,7 +93,6 @@ TEST_CASE("skill: round-1 unanimous matches golden bytes + events") {
 
 TEST_CASE("skill: round-2 repeat matches golden bytes") {
     ensureSysUtil();
-    SkillRunner::ensureDefaultSkills(getProjvDir() + "/skills");
 
     std::vector<std::string> cap[3];
     int sc = 0, pc = 0, lc = 0;
@@ -108,11 +106,11 @@ TEST_CASE("skill: round-2 repeat matches golden bytes") {
         };
     };
     SkillRunner::Callbacks cbs;
-    SkillRunner sr(testConfig(), nullptr, cbs);
+    SkillRunner sr(testConfig(), nullptr, cbs, "", PROJV_EXAMPLE_SKILLS_DIR);
     sr.setResponder("sheldon", role(0, &sc, "S"));
     sr.setResponder("penny", role(1, &pc, "P"));
     sr.setResponder("leonard", role(2, &lc, "L"));
-    sr.run("bigbang_debate", "T");
+    sr.run("bigbang", "T");
 
     const std::string VS1 =
         "Sheldon: dissent (concerns: none); tweak: none\n"
@@ -131,7 +129,6 @@ TEST_CASE("skill: round-2 repeat matches golden bytes") {
 
 TEST_CASE("skill: persistent dissent stops at the round cap and still emits a doc") {
     ensureSysUtil();
-    SkillRunner::ensureDefaultSkills(getProjvDir() + "/skills");
     int sc = 0, pc = 0, lc = 0;
     auto role = [](int* counter, const char* pfx) {
         return [counter, pfx](const std::string& tool, const std::vector<Message>&) {
@@ -142,11 +139,11 @@ TEST_CASE("skill: persistent dissent stops at the round cap and still emits a do
         };
     };
     SkillRunner::Callbacks cbs;
-    SkillRunner sr(testConfig(), nullptr, cbs);
+    SkillRunner sr(testConfig(), nullptr, cbs, "", PROJV_EXAMPLE_SKILLS_DIR);
     sr.setResponder("sheldon", role(&sc, "S"));
     sr.setResponder("penny", role(&pc, "P"));
     sr.setResponder("leonard", role(&lc, "L"));
-    sr.run("bigbang_debate", "T");
+    sr.run("bigbang", "T");
 
     CHECK(sr.lastRounds() == 8);          // max_rounds from the built-in config
     CHECK_FALSE(sr.converged());
@@ -155,7 +152,6 @@ TEST_CASE("skill: persistent dissent stops at the round cap and still emits a do
 
 TEST_CASE("skill: identical integrator statement twice triggers early stop") {
     ensureSysUtil();
-    SkillRunner::ensureDefaultSkills(getProjvDir() + "/skills");
     auto role = [](const std::string& tool, const std::vector<Message>&) {
         if (tool == "bigbang_turn") return turnCall("CONST");   // constant -> loop detect
         if (tool == "bigbang_vote") return voteCall(false);     // never agree
@@ -163,11 +159,11 @@ TEST_CASE("skill: identical integrator statement twice triggers early stop") {
         return noCall();
     };
     SkillRunner::Callbacks cbs;
-    SkillRunner sr(testConfig(), nullptr, cbs);
+    SkillRunner sr(testConfig(), nullptr, cbs, "", PROJV_EXAMPLE_SKILLS_DIR);
     sr.setResponder("sheldon", role);
     sr.setResponder("penny", role);
     sr.setResponder("leonard", role);
-    sr.run("bigbang_debate", "T");
+    sr.run("bigbang", "T");
 
     CHECK(sr.lastRounds() == 2);   // round-2 leonard == round-1 leonard -> stop
     CHECK(sr.converged());

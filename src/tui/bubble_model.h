@@ -20,7 +20,7 @@ struct Bubble {
     std::string content;
     std::string reasoningText; // reasoning_content from deepseek-reasoner
     bool hasReasoning = false;
-    std::string speaker;       // /bigbang role: "Sheldon" | "Penny" | "Leonard" (else empty)
+    std::string speaker;       // skill role: "Sheldon" | "Penny" | "Leonard" (else empty)
     bool isVote = false;       // true for a "**[Role vote]**" line
 };
 

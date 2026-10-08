@@ -117,7 +117,7 @@ Component makeWelcome(TuiApp& app, std::function<void()> onSaved) {
             hbox({ text("API Key: "), input->Render() | size(WIDTH, EQUAL, 44) }),
             hbox({ saveBtn->Render() }),
             separator(),
-            text("Commands: /help, /workspace, /clear, /compress") | dim,
+            text("Commands: /help, /workspace, /clear, /compress, /skill") | dim,
         }) | border;
     });
 }

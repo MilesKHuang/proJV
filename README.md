@@ -146,7 +146,7 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 | `Enter` | Send message |
 | `Esc` | Cancel turn (busy) / quit (idle) |
 
-Quick commands: `/help`, `/workspace`, `/clear`, `/compress`.
+Quick commands: `/help`, `/workspace`, `/clear`, `/compress`, `/skill <name> <topic>` (run an installed multi-agent skill; `/skill list` shows what is installed).
 
 ---
 

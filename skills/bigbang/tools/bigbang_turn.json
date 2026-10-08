@@ -1,0 +1,1 @@
+{"name":"bigbang_turn","description":"Statement of this turn. List up to 3 file paths in file_requests if you must read code first.","parameters":[{"name":"statement","type":"string","description":"This turn's statement or proposal","required":true},{"name":"file_requests","type":"array","description":"Up to 3 file paths to read first","required":false}]}

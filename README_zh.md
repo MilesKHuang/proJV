@@ -146,7 +146,7 @@ AI 在 TODO 面板实时管理任务清单，面板停靠在右侧（`F9`）并�
 | `Enter` | 发送消息 |
 | `Esc` | 忙时取消本轮 / 空闲时退出 |
 
-快捷命令：`/help`、`/workspace`、`/clear`、`/compress`。
+快捷命令：`/help`、`/workspace`、`/clear`、`/compress`、`/skill <name> <topic>`（运行已安装的多 Agent 技能；`/skill list` 查看已装技能）。
 
 ---
 

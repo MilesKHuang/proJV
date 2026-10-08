@@ -10,6 +10,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,17 @@ public:
     int lastRounds() const { return lastRounds_; }
     const std::string& lastDoc() const { return lastDoc_; }
 
+    // Snapshot of one agent's live state (for the TUI sidebar).
+    struct AgentSnapshot {
+        std::string id;
+        std::string displayName;
+        std::string status;   // last narration summary
+        int msgCount = 0;
+        bool busy = false;
+    };
+    // Mutex-protected copy of the agent pool; safe to call from the TUI thread.
+    std::vector<AgentSnapshot> agentStatuses() const;
+
     // Directory helpers / seeding (mirror ensureDefaultPrompts).
     static std::vector<std::string> listSkills(const std::string& skillsDir);
     static void ensureDefaultSkills(const std::string& skillsDir);
@@ -61,6 +73,7 @@ private:
     std::string voteLine(const VoteResult& vr) const;
     std::string display(const std::string& agentId) const;
     std::string handleRequestAgent(const std::string& id, const std::string& msg, int depth);
+    SubAgent* agentById(const std::string& id);
 
     AppConfig cfg_;
     ToolRegistry* tools_ = nullptr;
@@ -71,6 +84,7 @@ private:
     SkillConfig config_;
 
     std::map<std::string, std::unique_ptr<SubAgent>> agents_;
+    mutable std::mutex snapMutex_;    // guards agents_ / displayNames_ for agentStatuses()
     std::map<std::string, Responder> responders_;
     std::map<std::string, MultiResponder> multiResponders_;
     std::map<std::string, std::string> slots_;       // text slots (this round)

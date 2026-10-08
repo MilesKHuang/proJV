@@ -1,7 +1,6 @@
 // SKILL_ENGINE -- SkillRunner implementation (see SKILL_ENGINE.md v1.1).
 #include "skill_runner.h"
 #include "core/sub_agent.h"
-#include "core/prompts.h"
 #include "core/config.h"
 #include "core/skills_builtin.h"
 #include "json.hpp"
@@ -25,79 +24,7 @@ std::vector<std::string> strArr(const nlohmann::json& j, const char* key) {
     return out;
 }
 
-void writeIfMissing(const std::string& path, const std::string& content) {
-    std::error_code ec;
-    if (fs::exists(path, ec)) return;
-    std::ofstream ofs(path, std::ios::binary);
-    if (ofs) ofs << content;
-}
-
-// Built-in verb tool defs for bigbang_debate.
-const char* TOOL_TURN_JSON = R"JSON({"name":"bigbang_turn","description":"Statement of this turn. List up to 3 file paths in file_requests if you must read code first.","parameters":[{"name":"statement","type":"string","description":"This turn's statement or proposal","required":true},{"name":"file_requests","type":"array","description":"Up to 3 file paths to read first","required":false}]})JSON";
-const char* TOOL_VOTE_JSON = R"JSON({"name":"bigbang_vote","description":"Vote on the current proposal. Only in the vote phase.","parameters":[{"name":"agree","type":"boolean","description":"Agree with the proposal","required":true},{"name":"agreed_points","type":"array","description":"Points you agree with","required":false},{"name":"concerns","type":"array","description":"Format: '[high|medium|low] issue'","required":false},{"name":"suggested_tweak","type":"string","description":"A concrete tweak, or 'none'","required":true}]})JSON";
-const char* TOOL_DOC_JSON = R"JSON({"name":"write_bigbang_doc","description":"After convergence, emit the final execution document.","parameters":[{"name":"doc_markdown","type":"string","description":"The full execution document (Markdown)","required":true}]})JSON";
-
 } // namespace
-
-// ---- Built-in skill #1 config (bytes aligned with roundtable.cpp) --------
-static const char* BIGBANG_CONFIG_JSON = R"JSON({
-  "name": "bigbang_debate",
-  "description": "Three-role engineering debate: propose, integrate, vote, emit an execution doc.",
-  "tools": ["read_file", "grep_files", "file_search"],
-  "agents": [
-    {"id": "sheldon", "display_name": "Sheldon", "prompt": "sheldon.md"},
-    {"id": "penny",   "display_name": "Penny",   "prompt": "penny.md"},
-    {"id": "leonard", "display_name": "Leonard", "prompt": "leonard.md"}
-  ],
-  "max_rounds": 8,
-  "converge": "all_agree",
-  "loop_detect": "leonard",
-  "round_steps": [
-    {"when": "round==1", "parallel": true,
-     "progress": "Round {{round}}/{{max_rounds}} - proposals (Sheldon + Penny)",
-     "actions": [
-       {"agent": "sheldon", "tool": "bigbang_turn", "capture": "statement", "into": "sheldon", "emit": "message",
-        "message": "Topic: {{topic}}\n\nCall bigbang_turn with your proposal."},
-       {"agent": "penny", "tool": "bigbang_turn", "capture": "statement", "into": "penny", "emit": "message",
-        "message": "Topic: {{topic}}\n\nCall bigbang_turn with your proposal."}
-     ]},
-    {"when": "round>1", "parallel": true,
-     "progress": "Round {{round}}/{{max_rounds}} - proposals (Sheldon + Penny)",
-     "actions": [
-       {"agent": "sheldon", "tool": "bigbang_turn", "capture": "statement", "into": "sheldon", "emit": "message",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} ===\n\nLeonard compromise from previous round:\n{{leonard.prev}}\n\nPrevious vote results:\n{{round_context}}\n\nPenny's previous proposal:\n{{penny.prev}}\n\nCall bigbang_turn."},
-       {"agent": "penny", "tool": "bigbang_turn", "capture": "statement", "into": "penny", "emit": "message",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} ===\n\nLeonard compromise from previous round:\n{{leonard.prev}}\n\nPrevious vote results:\n{{round_context}}\n\nSheldon's previous proposal:\n{{sheldon.prev}}\n\nCall bigbang_turn."}
-     ]},
-    {"when": "round==1", "progress": "Round {{round}}/{{max_rounds}} - integration (Leonard)",
-     "actions": [
-       {"agent": "leonard", "tool": "bigbang_turn", "capture": "statement", "into": "leonard", "emit": "message",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} Integrate ===\n\nSheldon:\n{{sheldon.current}}\n\nPenny:\n{{penny.current}}\n\nCall bigbang_turn."}
-     ]},
-    {"when": "round>1", "progress": "Round {{round}}/{{max_rounds}} - integration (Leonard)",
-     "actions": [
-       {"agent": "leonard", "tool": "bigbang_turn", "capture": "statement", "into": "leonard", "emit": "message",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} Integrate ===\n\nSheldon:\n{{sheldon.current}}\n\nPenny:\n{{penny.current}}\n\nPrevious vote results:\n{{round_context}}\n\nCall bigbang_turn."}
-     ]},
-    {"parallel": true, "progress": "Round {{round}}/{{max_rounds}} - vote",
-     "actions": [
-       {"agent": "sheldon", "tool": "bigbang_vote", "shape": "vote", "emit": "vote",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} Vote ===\n\nProposal under vote:\n{{leonard.current}}\n\nFor reference - Sheldon position:\n{{sheldon.current}}\n\nFor reference - Penny position:\n{{penny.current}}\n\nCall bigbang_vote."},
-       {"agent": "penny", "tool": "bigbang_vote", "shape": "vote", "emit": "vote",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} Vote ===\n\nProposal under vote:\n{{leonard.current}}\n\nFor reference - Sheldon position:\n{{sheldon.current}}\n\nFor reference - Penny position:\n{{penny.current}}\n\nCall bigbang_vote."},
-       {"agent": "leonard", "tool": "bigbang_vote", "shape": "vote", "emit": "vote",
-        "message": "Topic: {{topic}}\n\n=== Round {{round}} Vote ===\n\nProposal under vote:\n{{leonard.current}}\n\nFor reference - Sheldon position:\n{{sheldon.current}}\n\nFor reference - Penny position:\n{{penny.current}}\n\nCall bigbang_vote."}
-     ]}
-  ],
-  "on_converge": [
-    {"progress": "Writing execution document (Leonard)",
-     "actions": [
-       {"agent": "leonard", "tool": "write_bigbang_doc", "capture": "doc_markdown", "emit": "document",
-        "message": "Topic: {{topic}}\n\nFinal approved proposal:\n{{leonard.current}}\n\nResidual concerns:\n{{residual_concerns}}\n\nCall write_bigbang_doc."}
-     ]}
-  ]
-}
-)JSON";
 
 // ---- SkillConfig::loadFromJson -------------------------------------------
 bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::string& err) {
@@ -177,6 +104,7 @@ SkillRunner::~SkillRunner() = default;
 
 void SkillRunner::cancel() {
     cancelRequested_.store(true);
+    std::lock_guard<std::mutex> lk(snapMutex_);
     for (auto& kv : agents_) if (kv.second) kv.second->cancel();
 }
 
@@ -184,18 +112,6 @@ void SkillRunner::cancel() {
 void SkillRunner::ensureDefaultSkills(const std::string& skillsDir) {
     std::error_code ec;
     fs::create_directories(skillsDir, ec);
-    std::string sdir = skillsDir + "/bigbang_debate";
-    fs::create_directories(sdir, ec);
-    writeIfMissing(sdir + "/config.json", BIGBANG_CONFIG_JSON);
-    writeIfMissing(sdir + "/sheldon.md", loadBigbangPrompt("sheldon"));
-    writeIfMissing(sdir + "/penny.md",   loadBigbangPrompt("penny"));
-    writeIfMissing(sdir + "/leonard.md", loadBigbangPrompt("leonard"));
-    std::string tdir = sdir + "/tools";
-    fs::create_directories(tdir, ec);
-    writeIfMissing(tdir + "/bigbang_turn.json", TOOL_TURN_JSON);
-    writeIfMissing(tdir + "/bigbang_vote.json", TOOL_VOTE_JSON);
-    writeIfMissing(tdir + "/write_bigbang_doc.json", TOOL_DOC_JSON);
-
     seedBuiltinSkills(skillsDir);
 }
 
@@ -291,8 +207,11 @@ void SkillRunner::loadAgents() {
             });
         }
 
-        displayNames_[ag.id] = ag.displayName;
-        agents_[ag.id] = std::move(sa);
+        {
+            std::lock_guard<std::mutex> lk(snapMutex_);
+            displayNames_[ag.id] = ag.displayName;
+            agents_[ag.id] = std::move(sa);
+        }
     }
 }
 
@@ -349,15 +268,15 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
             for (size_t i = 0; i < st.actions.size(); ++i)
                 th.emplace_back([&, i] {
                     const SkillAction& a = st.actions[i];
-                    results[i] = agents_[a.agent]->turn(fill(a.message, round, a.vars),
-                                                        a.tool, force);
+                    if (SubAgent* ag = agentById(a.agent))
+                        results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
                 });
             for (auto& t : th) t.join();
         } else {
             for (size_t i = 0; i < st.actions.size(); ++i) {
                 const SkillAction& a = st.actions[i];
-                results[i] = agents_[a.agent]->turn(fill(a.message, round, a.vars),
-                                                    a.tool, force);
+                if (SubAgent* ag = agentById(a.agent))
+                    results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
             }
         }
         for (size_t i = 0; i < st.actions.size(); ++i)
@@ -535,15 +454,42 @@ std::string SkillRunner::voteLine(const VoteResult& vr) const {
 }
 
 std::string SkillRunner::display(const std::string& agentId) const {
+    std::lock_guard<std::mutex> lk(snapMutex_);
     auto it = displayNames_.find(agentId);
     return it != displayNames_.end() ? it->second : agentId;
 }
 
+SubAgent* SkillRunner::agentById(const std::string& id) {
+    std::lock_guard<std::mutex> lk(snapMutex_);
+    auto it = agents_.find(id);
+    return it == agents_.end() ? nullptr : it->second.get();
+}
+
+std::vector<SkillRunner::AgentSnapshot> SkillRunner::agentStatuses() const {
+    std::vector<AgentSnapshot> out;
+    std::lock_guard<std::mutex> lk(snapMutex_);
+    out.reserve(agents_.size());
+    for (const auto& kv : agents_) {
+        AgentSnapshot s;
+        s.id = kv.first;
+        auto dn = displayNames_.find(kv.first);
+        s.displayName = dn != displayNames_.end() ? dn->second : kv.first;
+        if (kv.second) {
+            s.msgCount = kv.second->messageCount();
+            s.busy = kv.second->busy();
+            s.status = kv.second->lastNarration();
+        }
+        out.push_back(std::move(s));
+    }
+    return out;
+}
+
 std::string SkillRunner::handleRequestAgent(const std::string& id, const std::string& msg, int depth) {
     (void)depth;
-    if (!agents_.count(id)) return "[error] unknown agent '" + id + "'";
+    SubAgent* ag = agentById(id);
+    if (!ag) return "[error] unknown agent '" + id + "'";
     std::string verb = config_.dispatchTool;
-    if (verb.empty()) verb = agents_[id]->firstToolName();
+    if (verb.empty()) verb = ag->firstToolName();
     if (verb.empty()) return "[error] no tool for agent '" + id + "'";
-    return agents_[id]->turn(msg, verb, /*force=*/false);
+    return ag->turn(msg, verb, /*force=*/false);
 }

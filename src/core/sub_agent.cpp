@@ -8,6 +8,14 @@
 #include <set>
 #include <utility>
 
+namespace {
+// Clears the busy flag on every exit path of turn().
+struct BusyFlag {
+    std::atomic<bool>* flag;
+    ~BusyFlag() { flag->store(false, std::memory_order_relaxed); }
+};
+} // namespace
+
 SubAgent::SubAgent(std::string name, std::string systemPrompt)
     : name_(std::move(name)), systemPrompt_(std::move(systemPrompt)) {
     session_.addMessage(Message::System(systemPrompt_));
@@ -30,6 +38,11 @@ void SubAgent::registerToolDef(const ToolDefinition& def) {
 void SubAgent::seedSharedContext(const std::string& text) {
     if (text.empty()) return;
     session_.addMessage(Message::System(text));
+}
+
+void SubAgent::setNarration(const std::string& s) {
+    std::lock_guard<std::mutex> lk(narrMutex_);
+    lastNarration_ = s;
 }
 
 std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force, std::string& outText) {
@@ -132,17 +145,19 @@ std::string SubAgent::dispatchSide(const ToolCall& tc) {
 }
 
 std::string SubAgent::turn(const std::string& message, const std::string& verb, bool force) {
+    busy_.store(true, std::memory_order_relaxed);
+    BusyFlag busyGuard{&busy_};
     session_.addMessage(Message::User(message));
     std::string narr;   // last assistant narration text (used if the verb tool never fires)
     for (int r = 0; r < maxToolIters_; ++r) {
         std::string text;
         std::vector<ToolCall> calls = requestTool(verb, force, text);
-        if (!text.empty()) narr = text;
+        if (!text.empty()) { narr = text; setNarration(text); }
         if (calls.empty()) {
             std::string out;
             if (!lastError_.empty()) out = "[error] " + lastError_;
             else if (!text.empty()) out = text;
-            if (!out.empty()) session_.addMessage(Message::Assistant(out));
+            if (!out.empty()) { session_.addMessage(Message::Assistant(out)); setNarration(out); }
             return out;
         }
 

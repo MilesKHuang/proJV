@@ -7,7 +7,9 @@
 #include "core/session.h"
 #include "tools/registry.h"
 
+#include <atomic>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -45,6 +47,14 @@ public:
 
     void cancel() { client_.cancel(); }
 
+    // Read-only status for the TUI agent sidebar (concurrency-safe).
+    int messageCount() const { return static_cast<int>(session_.messageCount()); }
+    bool busy() const { return busy_.load(std::memory_order_relaxed); }
+    std::string lastNarration() const {
+        std::lock_guard<std::mutex> lk(narrMutex_);
+        return lastNarration_;
+    }
+
 private:
     std::vector<ToolCall> doRequest(const std::string& verb, bool force, std::string& outText);
     std::vector<ToolCall> requestTool(const std::string& verb, bool force, std::string& outText);
@@ -60,8 +70,13 @@ private:
     DeepSeekClient client_;
     Session session_;
     std::vector<ToolDefinition> toolDefs_;
+    void setNarration(const std::string& s);
+
     std::string lastReasoning_;
     std::string lastError_;
+    std::atomic<bool> busy_{false};
+    mutable std::mutex narrMutex_;
+    std::string lastNarration_;
     std::function<std::string(const std::string&, const std::string&)> toolInterceptor_;
     SubAgentResponder responder_;
     SubAgentMultiResponder multiResponder_;

@@ -1,0 +1,57 @@
+{
+  "name": "bigbang",
+  "description": "Three-role engineering debate: propose, integrate, vote, emit an execution doc.",
+  "tools": ["read_file", "grep_files", "file_search"],
+  "agents": [
+    {"id": "sheldon", "display_name": "Sheldon", "prompt": "sheldon.md"},
+    {"id": "penny",   "display_name": "Penny",   "prompt": "penny.md"},
+    {"id": "leonard", "display_name": "Leonard", "prompt": "leonard.md"}
+  ],
+  "max_rounds": 8,
+  "converge": "all_agree",
+  "loop_detect": "leonard",
+  "round_steps": [
+    {"when": "round==1", "parallel": true,
+     "progress": "Round {{round}}/{{max_rounds}} - proposals (Sheldon + Penny)",
+     "actions": [
+       {"agent": "sheldon", "tool": "bigbang_turn", "capture": "statement", "into": "sheldon", "emit": "message",
+        "message": "Topic: {{topic}}\n\nCall bigbang_turn with your proposal."},
+       {"agent": "penny", "tool": "bigbang_turn", "capture": "statement", "into": "penny", "emit": "message",
+        "message": "Topic: {{topic}}\n\nCall bigbang_turn with your proposal."}
+     ]},
+    {"when": "round>1", "parallel": true,
+     "progress": "Round {{round}}/{{max_rounds}} - proposals (Sheldon + Penny)",
+     "actions": [
+       {"agent": "sheldon", "tool": "bigbang_turn", "capture": "statement", "into": "sheldon", "emit": "message",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} ===\n\nLeonard compromise from previous round:\n{{leonard.prev}}\n\nPrevious vote results:\n{{round_context}}\n\nPenny's previous proposal:\n{{penny.prev}}\n\nCall bigbang_turn."},
+       {"agent": "penny", "tool": "bigbang_turn", "capture": "statement", "into": "penny", "emit": "message",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} ===\n\nLeonard compromise from previous round:\n{{leonard.prev}}\n\nPrevious vote results:\n{{round_context}}\n\nSheldon's previous proposal:\n{{sheldon.prev}}\n\nCall bigbang_turn."}
+     ]},
+    {"when": "round==1", "progress": "Round {{round}}/{{max_rounds}} - integration (Leonard)",
+     "actions": [
+       {"agent": "leonard", "tool": "bigbang_turn", "capture": "statement", "into": "leonard", "emit": "message",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} Integrate ===\n\nSheldon:\n{{sheldon.current}}\n\nPenny:\n{{penny.current}}\n\nCall bigbang_turn."}
+     ]},
+    {"when": "round>1", "progress": "Round {{round}}/{{max_rounds}} - integration (Leonard)",
+     "actions": [
+       {"agent": "leonard", "tool": "bigbang_turn", "capture": "statement", "into": "leonard", "emit": "message",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} Integrate ===\n\nSheldon:\n{{sheldon.current}}\n\nPenny:\n{{penny.current}}\n\nPrevious vote results:\n{{round_context}}\n\nCall bigbang_turn."}
+     ]},
+    {"parallel": true, "progress": "Round {{round}}/{{max_rounds}} - vote",
+     "actions": [
+       {"agent": "sheldon", "tool": "bigbang_vote", "shape": "vote", "emit": "vote",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} Vote ===\n\nProposal under vote:\n{{leonard.current}}\n\nFor reference - Sheldon position:\n{{sheldon.current}}\n\nFor reference - Penny position:\n{{penny.current}}\n\nCall bigbang_vote."},
+       {"agent": "penny", "tool": "bigbang_vote", "shape": "vote", "emit": "vote",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} Vote ===\n\nProposal under vote:\n{{leonard.current}}\n\nFor reference - Sheldon position:\n{{sheldon.current}}\n\nFor reference - Penny position:\n{{penny.current}}\n\nCall bigbang_vote."},
+       {"agent": "leonard", "tool": "bigbang_vote", "shape": "vote", "emit": "vote",
+        "message": "Topic: {{topic}}\n\n=== Round {{round}} Vote ===\n\nProposal under vote:\n{{leonard.current}}\n\nFor reference - Sheldon position:\n{{sheldon.current}}\n\nFor reference - Penny position:\n{{penny.current}}\n\nCall bigbang_vote."}
+     ]}
+  ],
+  "on_converge": [
+    {"progress": "Writing execution document (Leonard)",
+     "actions": [
+       {"agent": "leonard", "tool": "write_bigbang_doc", "capture": "doc_markdown", "emit": "document",
+        "message": "Topic: {{topic}}\n\nFinal approved proposal:\n{{leonard.current}}\n\nResidual concerns:\n{{residual_concerns}}\n\nCall write_bigbang_doc."}
+     ]}
+  ]
+}

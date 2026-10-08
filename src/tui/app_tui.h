@@ -96,6 +96,8 @@ public:
     // Run a JSON-configured skill workflow on a background thread.
     void startSkill(const std::string& name, const std::string& topic);
     std::string getSkillStatus() const;
+    // Snapshot of the live skill agent pool for the sidebar (see START/agents).
+    std::vector<SkillRunner::AgentSnapshot> skillAgentStatuses() const;
     size_t pendingCount() const { return pendingQueue_.size(); }
 
     // Invoked on the agent thread when a turn completes (used to trigger a redraw).
