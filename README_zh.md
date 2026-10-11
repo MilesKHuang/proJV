@@ -107,6 +107,22 @@ AI 在 TODO 面板实时管理任务清单，面板停靠在右侧（`F9`）并�
 
 两套内置（Obsidian / Light），外加 6 套精选主题可由 `projv_files/theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `projv_files/config.toml`，下次启动即恢复。
 
+### 6. 多 Agent 技能（`/skill`）
+
+一个技能就是一个把多 Agent 工作流变成**数据**的文件夹。丢进 `projv_files/skills/` 即可运行 -- 不用重编译、不用改代码。引擎对所有文件夹一视同仁：没有内置技能，也没有代码特例。
+
+```
+projv_files/skills/
+└── bigbang/
+    ├── config.json        # agents、round_steps、收敛条件
+    ├── sheldon.md         # 每个 agent 一个 system prompt
+    ├── penny.md
+    ├── leonard.md
+    └── tools/             # agent 可调用的 verb 工具
+```
+
+用 `/skill <name> <topic>` 运行；`/skill list` 查看已安装技能。内置两个示例 -- `bigbang`（三角色工程辩论 -> 一份执行文档）和 `monica`（supervisor 驱动的项目整理）。内置的 `skill_maker` 可以帮你写新技能并自检。安装 = 复制文件夹；卸载 = 删除文件夹。
+
 ---
 
 ## 功能总览
@@ -123,6 +139,7 @@ AI 在 TODO 面板实时管理任务清单，面板停靠在右侧（`F9`）并�
 | **上下文管理** | Token 估算 + 智能压缩，达到压力阈值自动缩容 |
 | **会话持久化** | SQLite 自动保存，可从会话选单打开历史 |
 | **实时状态栏** | 模型、角色、Token 用量、成本估算、上下文压力 % |
+| **多 Agent 技能** | 从 `projv_files/skills/` 安装 `/skill` 工作流；内置 bigbang + monica 示例；内置 `skill_maker` |
 | **工具审批** | 破坏性操作确认后放行 |
 
 ---
@@ -193,12 +210,14 @@ make -j$(nproc)
 ```
 proJV/
 ├── CMakeLists.txt
-├── projv_files/               # 运行时数据目录
+├── projv_files/               # 运行时数据目录（exe + 此目录 = 开箱即用）
 │   ├── config.toml            # 配置文件（首次保存时自动创建）
-│   ├── prompts/               # System Prompt .md 文件
+│   ├── prompts/               # System Prompt .md 文件（首次运行自动生成）
 │   ├── theme/                 # 可安装的主题 JSON
 │   ├── pytool/                # Python 工具（diagram_tool 等）
+│   ├── skills/                # 可安装的多 Agent 技能（bigbang、monica）
 │   └── sessions/              # SQLite 会话数据库
+├── skills/                    # 示例技能源（构建时部署到 projv_files/skills/）
 ├── external/                  # 静态依赖：FTXUI, SQLiteCpp, libcurl, json.hpp, toml.hpp, loguru
 ├── src/
 │   ├── tui/main_tui.cpp       # 入口 + FTXUI 事件循环

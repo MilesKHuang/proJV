@@ -107,6 +107,22 @@ The AI manages a real-time TODO panel that docks on the right (`F9`) and soft-wr
 
 Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_files/theme/`. Every color is editable in a visual editor with live preview and JSON import/export. Your choice is auto-saved to `projv_files/config.toml` and restored on next launch.
 
+### 6. Multi-Agent Skills (`/skill`)
+
+A skill is a folder that turns a multi-agent workflow into **data**. Drop it into `projv_files/skills/` and it becomes runnable -- no recompile, no code change. The engine treats every folder the same: no built-in skills, no special cases.
+
+```
+projv_files/skills/
+└── bigbang/
+    ├── config.json        # agents, round_steps, convergence
+    ├── sheldon.md         # one system prompt per agent
+    ├── penny.md
+    ├── leonard.md
+    └── tools/             # the verb tools the agents may call
+```
+
+Run `/skill <name> <topic>`; `/skill list` shows what is installed. Two examples ship out of the box -- `bigbang` (three-role engineering debate -> one execution doc) and `monica` (supervisor-driven project tidy-up). A built-in `skill_maker` authors new skills for you and verifies them. Install = copy the folder; uninstall = delete it.
+
 ---
 
 ## Features
@@ -123,6 +139,7 @@ Two built-in presets (Obsidian & Light), plus 6 curated themes installable from 
 | **Context management** | Token estimation + smart compaction at pressure thresholds |
 | **Session persistence** | SQLite auto-save; open history from the sessions picker |
 | **Live status bar** | Model, role, token counts, cost estimate, context pressure % |
+| **Multi-agent skills** | Installable `/skill` workflows from `projv_files/skills/`; bigbang + monica examples; built-in `skill_maker` |
 | **Tool approval** | Destructive operations require user confirmation |
 
 ---
@@ -193,12 +210,14 @@ Artifact: `proJV_tui` (~3 MB) on both platforms.
 ```
 proJV/
 ├── CMakeLists.txt
-├── projv_files/               # Runtime data directory
+├── projv_files/               # Runtime data dir (exe + this folder = runnable)
 │   ├── config.toml            # Configuration (auto-created on first save)
-│   ├── prompts/               # System prompt .md files
+│   ├── prompts/               # System prompt .md files (seeded on first run)
 │   ├── theme/                 # Installable theme JSON files
 │   ├── pytool/                # Python tools (diagram_tool, etc.)
+│   ├── skills/                # Installable multi-agent skills (bigbang, monica)
 │   └── sessions/              # SQLite session databases
+├── skills/                    # Example skills source (deployed to projv_files/skills/)
 ├── external/                  # Static deps: FTXUI, SQLiteCpp, libcurl, json.hpp, toml.hpp, loguru
 ├── src/
 │   ├── tui/main_tui.cpp       # Entry point + FTXUI event loop

@@ -573,7 +573,7 @@ int main() {
         return vbox({
             text("About proJV") | bold,
             separator(),
-            text("proJV v0.5.2"),
+            text("proJV v" PROJV_VERSION),
             text("Native C++ DeepSeek AI agent (FTXUI)."),
             separator(),
             about_close->Render(),

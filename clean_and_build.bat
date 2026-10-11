@@ -6,7 +6,7 @@ set BUILD_DIR=%~dp0build
 set VCVARS="C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat"
 
 echo =========================================
-echo  proJV - Clean ^& Build (OpenGL+GLFW)
+echo  proJV - Clean Build + Package
 echo =========================================
 echo.
 
@@ -21,7 +21,7 @@ if not exist %VCVARS% (
     exit /b 1
 )
 
-echo [1/4] Loading VS environment...
+echo [1/5] Loading VS environment...
 call %VCVARS% x64 >nul 2>&1
 
 where cl >nul 2>&1
@@ -30,11 +30,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [2/4] Cleaning...
+echo [2/5] Cleaning...
 if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%" 2>nul
 mkdir "%BUILD_DIR%" 2>nul
 
-echo [3/4] Configuring...
+echo [3/5] Configuring...
 cd /d "%BUILD_DIR%"
 cmake .. -G "Visual Studio 16 2019" -A x64
 if errorlevel 1 (
@@ -42,14 +42,27 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [4/4] Building...
+echo [4/5] Building...
 cmake --build . --config Release
 if errorlevel 1 (
     echo [FAIL] Build failed
     exit /b 1
 )
 
+echo [5/5] Packaging (CPack ZIP)...
+where cpack >nul 2>&1
+if errorlevel 1 (
+    echo [FAIL] cpack not found
+    exit /b 1
+)
+cpack -G ZIP -C Release
+if errorlevel 1 (
+    echo [FAIL] Packaging failed
+    exit /b 1
+)
+
 echo.
-echo Build OK - Output: %BUILD_DIR%\Release\proJV_tui.exe
-echo Run it from a terminal (Windows Terminal recommended).
+echo Build OK  - Exe:  %BUILD_DIR%\Release\proJV_tui.exe
+echo Package  - Zip:  %BUILD_DIR%\proJV_v*_win64.zip
+echo The zip contains proJV_tui.exe + a complete projv_files\ (copy both to run).
 endlocal

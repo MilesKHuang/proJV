@@ -37,7 +37,7 @@ static constexpr const char* QUICK_HELP =
     "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
     "| `/compress` | Summarize early messages |\n"
     "| `/skill <name> <topic>` | Run an installed multi-agent skill |\n"
-    "\nproJV v0.5.2 — native C++ DeepSeek AI agent (FTXUI).\n";
+    "\nproJV v" PROJV_VERSION " — native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
 
 static std::string buildToolPathsMessage(const std::string& cpp, const std::string& py) {

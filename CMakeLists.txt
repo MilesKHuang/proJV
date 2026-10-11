@@ -1,19 +1,80 @@
 cmake_minimum_required(VERSION 3.16)
-project(proJV VERSION 0.5.2 LANGUAGES C CXX)
+project(proJV VERSION 0.5.6 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Single source of truth for the version string shown in the UI. To bump the
+# version, change ONLY the project() VERSION above; the code reads this macro.
+add_compile_definitions(PROJV_VERSION="${PROJECT_VERSION}")
 
 # ── Paths ────────────────────────────────────────────────────────────────
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
 set(SRC_DIR      "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-# ── SQLiteCpp (both platforms, from source) ──────────────────────────────
-add_subdirectory(
-    "${EXTERNAL_DIR}/SQLiteCpp-3.3.3"
-    "${CMAKE_BINARY_DIR}/SQLiteCpp"
-)
+# ── Third-party dependencies ─────────────────────────────────────────────
+# The bundled deps (FTXUI / SQLiteCpp / libcurl) each ship install() rules
+# that would leak their headers and static libs into our release package.
+# Those artifacts are pruned from the CPack staging tree before zipping -- see
+# cmake/prune_package.cmake and CPACK_PRE_BUILD_SCRIPTS at the bottom.
+
+# libcurl: Windows builds from source, Linux uses the system library.
+if(WIN32)
+    set(CURL_USE_SCHANNEL ON CACHE BOOL "Use Windows native SSL" FORCE)
+    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_LDAPS ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_RTSP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_POP3 ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_IMAP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_SMTP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_GOPHER ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_MQTT ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_DICT ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_TFTP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_TELNET ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_FILE ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_FTP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_SMB ON CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+    set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
+    set(PROJV_BUILD_CURL ON)
+else()
+    set(PROJV_BUILD_CURL OFF)
+endif()
+
+# FTXUI options: library only, no examples / tests / docs / install rules.
+set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
+# SQLiteCpp (both platforms, built from source; also builds sqlite3).
+add_subdirectory("${EXTERNAL_DIR}/SQLiteCpp-3.3.3"
+                 "${CMAKE_BINARY_DIR}/SQLiteCpp")
+
+# libcurl (Windows only; on Linux the system library is used instead).
+if(PROJV_BUILD_CURL)
+    add_subdirectory("${EXTERNAL_DIR}/curl-8.21.0"
+                     "${CMAKE_BINARY_DIR}/external/curl-8.21.0")
+endif()
+
+# FTXUI (terminal UI toolkit).
+add_subdirectory("${EXTERNAL_DIR}/FTXUI-7.0.3"
+                 "${CMAKE_BINARY_DIR}/ftxui")
+
+# libcurl include dir and link target for proJV_lib.
+if(WIN32)
+    set(CURL_INCLUDE_DIR "${EXTERNAL_DIR}/curl-8.21.0/include")
+    set(CURL_LIBRARY libcurl)
+else()
+    find_package(CURL REQUIRED)
+    set(CURL_INCLUDE_DIR ${CURL_INCLUDE_DIRS})
+    set(CURL_LIBRARY ${CURL_LIBRARIES})
+endif()
 
 # ── Common sources (platform-agnostic business logic) ────────────────────
 set(COMMON_SOURCES
@@ -74,37 +135,6 @@ else()
     )
 endif()
 
-# ── libcurl: Windows from source, Linux from system ──────────────────────
-if(WIN32)
-    set(CURL_USE_SCHANNEL ON CACHE BOOL "Use Windows native SSL" FORCE)
-    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_LDAPS ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_RTSP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_POP3 ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_IMAP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_SMTP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_GOPHER ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_MQTT ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_DICT ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_TFTP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_TELNET ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_FILE ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_FTP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_SMB ON CACHE BOOL "" FORCE)
-    set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
-    set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${EXTERNAL_DIR}/curl-8.21.0)
-    set(CURL_INCLUDE_DIR "${EXTERNAL_DIR}/curl-8.21.0/include")
-    set(CURL_LIBRARY libcurl)
-else()
-    find_package(CURL REQUIRED)
-    set(CURL_INCLUDE_DIR ${CURL_INCLUDE_DIRS})
-    set(CURL_LIBRARY ${CURL_LIBRARIES})
-endif()
-
 # ── Release build: strip debug logs ──────────────────────────────────────
 # Use generator expression for multi-config generators (MSVC/Xcode).
 # $<$<CONFIG:Release>:PROJV_RELEASE> adds the define only for Release config.
@@ -148,13 +178,7 @@ else()
     )
 endif()
 
-# ── FTXUI TUI backend (frontend migration) ───────────────────────────────
-set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(FTXUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-add_subdirectory(${EXTERNAL_DIR}/FTXUI-7.0.3 ${CMAKE_BINARY_DIR}/ftxui)
-
+# ── TUI frontend ─────────────────────────────────────────────────────────
 add_executable(proJV_tui
     ${SRC_DIR}/tui/main_tui.cpp
     ${SRC_DIR}/tui/terminal.cpp
@@ -212,5 +236,65 @@ if(PROJV_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# ── Release payload: install rules + CPack ───────────────────────────────
+# Layout produced by `cpack` (and `cmake --install`):
+#   proJV_v<VER>_win64/
+#     proJV_tui.exe
+#     projv_files/{fonts,pytool,theme,skills}   <- copy this next to the exe
+#     README.md, README_zh.md, LICENSE
+# A user only needs to keep proJV_tui.exe + projv_files/ together and run.
+# The dependencies contribute no install() rules (see cmake/third_party/), so
+# this install set is exactly what ships.
+# NOTE: projv_files/prompts/ and projv_files/sessions/ are created and seeded
+# by the exe on first launch, so they are intentionally not shipped.
+install(TARGETS proJV_tui RUNTIME DESTINATION .)
+
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/"
+        DESTINATION projv_files
+        PATTERN "__pycache__" EXCLUDE
+        PATTERN "*.pyc" EXCLUDE)
+
+# Example skills (bigbang, monica). The built-in skill_maker is compiled into
+# the exe and self-seeds on first launch, so it is NOT packaged here.
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/skills/"
+        DESTINATION projv_files/skills
+        PATTERN "__pycache__" EXCLUDE
+        PATTERN "*.pyc" EXCLUDE)
+
+install(FILES
+        "${CMAKE_SOURCE_DIR}/README.md"
+        "${CMAKE_SOURCE_DIR}/README_zh.md"
+        "${CMAKE_SOURCE_DIR}/LICENSE"
+        DESTINATION .)
+
+# Prune dependency install artifacts. The bundled dep subprojects (FTXUI /
+# SQLiteCpp / libcurl) register install() rules that drop their headers and
+# static libs under include/ lib/ bin/ share/ in the staging tree. Our own
+# payload lives only at the root (proJV_tui.exe, README*, LICENSE) and under
+# projv_files/, so removing those four directories leaves exactly the runtime.
+# Runs at install time, in order AFTER the subdirectory install scripts.
+install(CODE [[
+  foreach(_dep_dir include lib bin share)
+    if(EXISTS "${CMAKE_INSTALL_PREFIX}/${_dep_dir}")
+      message(STATUS "prune: removing staging dir '${_dep_dir}/' (dependency artifacts)")
+      file(REMOVE_RECURSE "${CMAKE_INSTALL_PREFIX}/${_dep_dir}")
+    endif()
+  endforeach()
+]])
+
+# ── CPack: one-click ZIP (driven by clean_and_build.bat) ─────────────────
+set(CPACK_GENERATOR "ZIP")
+set(CPACK_PACKAGE_NAME "proJV")
+set(CPACK_PACKAGE_VENDOR "Humanity")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "proJV -- native C++ DeepSeek AI agent (TUI)")
+set(CPACK_SYSTEM_NAME "win64")
+set(CPACK_PACKAGE_FILE_NAME "proJV_v${PROJECT_VERSION}_win64")
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+include(CPack)
 
 
