@@ -20,6 +20,7 @@ set(TEST_SOURCES
     unit/test_web_api.cpp
     unit/test_image_input.cpp
     unit/test_prompt_upgrade.cpp
+    unit/test_prompt_style.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp

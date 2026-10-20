@@ -25,7 +25,8 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "- Get insight first: figure out what the user actually wants. NO ITEM-BY-ITEM PATCHING.\n"
     "- Confirm before acting when ambiguous: say what you understood + deliverable (discuss / plan / doc / code) + commit or not.\n"
     "- Don't rush to act: discuss or document first to minimize mistakes before executing.\n"
-    "- Answer like a human: conclusion first, then what it means for you; then expose the core underlying logic.\n"
+    "- Answer like a human: conclusion first, then what it means for the user, then the core underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as possible, and reduce the user's cognitive cost while retaining the necessary professional details.\n"
     "\n"
     "## 2. WORKFLOW\n"
     "- Use `update_todo` for every multi-step task.\n"
@@ -58,7 +59,8 @@ static constexpr const char* DESIGNER_PROMPT_DEFAULT =
     "- Get insight first: understand what the user actually wants to design. NO ITEM-BY-ITEM PATCHING.\n"
     "- Confirm before acting when ambiguous: restate the goal + deliverable (discuss / plan / design doc) before writing.\n"
     "- Don't rush to write: read all relevant code and outline the design before drafting.\n"
-    "- Answer like a human: conclusion first, then what it means for the user; then expose the core logic.\n"
+    "- Answer like a human: conclusion first, then what it means for the user, then the core underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as possible, and reduce the user's cognitive cost while retaining the necessary professional details.\n"
     "\n"
     "## 2. Available Tools\n"
     "tools available: md_file, read_file, grep_files\n"
@@ -138,7 +140,8 @@ static constexpr const char* PROMPT_DEFAULT_ANALYZER =
     "- Get insight first: understand what the user actually wants to analyze. NO ITEM-BY-ITEM PATCHING.\n"
     "- Confirm before acting when ambiguous: restate the goal + deliverable (discuss / plan / analysis doc + diagram) before writing.\n"
     "- Don't rush to write: scan and trace the data flow before drafting.\n"
-    "- Answer like a human: conclusion first, then what it means; then expose the core logic.\n"
+    "- Answer like a human: conclusion first, then what it means for the user, then the core underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as possible, and reduce the user's cognitive cost while retaining the necessary professional details.\n"
     "\n"
     "## 2. Workflow\n"
     "1. **Scan:** `file_search` to discover files and directories.\n"
@@ -209,8 +212,47 @@ static std::string upgradeCompactorText(std::string content) {
     return content;
 }
 
+// Communication style: the seeds used to carry a terser one-liner. It is
+// rewritten into the two-line rule (structure + plain language) that all three
+// role prompts now share.
+static const char* kStyleOldYou =
+    "- Answer like a human: conclusion first, then what it means for you; "
+    "then expose the core underlying logic.";
+static const char* kStyleOldUser =
+    "- Answer like a human: conclusion first, then what it means for the user; "
+    "then expose the core logic.";
+static const char* kStyleOldBare =
+    "- Answer like a human: conclusion first, then what it means; "
+    "then expose the core logic.";
+static const char* kStyleNew =
+    "- Answer like a human: conclusion first, then what it means for the user, "
+    "then the core underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as "
+    "possible, and reduce the user's cognitive cost while retaining the necessary "
+    "professional details.";
+
+static std::string upgradeStyleText(std::string content) {
+    // Idempotent: the second line only exists after the upgrade.
+    if (content.find("Put it in plain language") != std::string::npos)
+        return content;
+
+    static const std::string olds[] = {kStyleOldYou, kStyleOldUser, kStyleOldBare};
+    for (const auto& oldLine : olds) {
+        const size_t pos = content.find(oldLine);
+        if (pos == std::string::npos) continue;
+        content.replace(pos, oldLine.size(), kStyleNew);
+        break;
+    }
+    return content;
+}
+
 std::string upgradeSeededPrompt(const std::string& filename, std::string content) {
-    if (filename == "coder.md") return upgradeCoderText(std::move(content));
+    if (filename == "coder.md") {
+        content = upgradeStyleText(std::move(content));
+        return upgradeCoderText(std::move(content));
+    }
+    if (filename == "designer.md" || filename == "analyzer.md")
+        return upgradeStyleText(std::move(content));
     if (filename == "compactor.md") return upgradeCompactorText(std::move(content));
     return content;
 }
@@ -264,6 +306,8 @@ std::vector<std::string> ensureDefaultPrompts() {
 
     // Upgrade stale seeded prompts in place (see upgradeSeededPrompt above).
     upgradePromptFile("coder.md", dir + "/coder.md");
+    upgradePromptFile("designer.md", dir + "/designer.md");
+    upgradePromptFile("analyzer.md", dir + "/analyzer.md");
     upgradePromptFile("compactor.md", dir + "/compactor.md");
 
     // Scan all .md files in the directory
