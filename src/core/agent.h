@@ -39,6 +39,12 @@ public:
                    std::vector<ImageAttachment> images = {});
     void run();
 
+    // One-shot System message injected at the start of the NEXT turn. Used after
+    // a skill phase to tell the model "the skill finished, report it now".
+    // Persisted as a System message (invisible in the chat), so it survives the
+    // HTTP retry path and is visible in later turns too.
+    void setTurnNudge(const std::string& nudge) { turnNudge_ = nudge; }
+
     void approveTool(int action);
     void cancel();
     AgentStatus getStatus() const;
@@ -147,6 +153,7 @@ private:
     TodoData todoData;
     mutable std::mutex todoMutex;
 
+    std::string turnNudge_;
     std::string model_ = "deepseek-v4-flash";
     std::string cppCompilerPath;
     std::string pythonPath;

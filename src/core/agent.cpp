@@ -102,6 +102,15 @@ void Agent::startTurn(const std::string& text, std::vector<ImageAttachment> imag
 
 void Agent::run() {
     debugLog("[Agent] run: BEGIN");
+
+    // One-shot nudge for this turn (e.g. "the skill finished, report it").
+    // Persisted as a System message: invisible in the chat bubble list, present
+    // in the context for every request of this turn (retries included).
+    if (!turnNudge_.empty()) {
+        addPersistedMessage(Message::System(turnNudge_));
+        turnNudge_.clear();
+    }
+
     if (compactRequested_.exchange(false)) {
         phase_ = AgentPhase::Streaming;
         updateSnapshot();
@@ -297,6 +306,19 @@ void Agent::run() {
                     std::string("[!] Workspace restriction: Outside workspace.\n\n") + wvDetails +
                     "\nCurrent workspace: " + (workspacePath_.empty() ? WS_VIOLATION_GUIDANCE_NO_WS : workspacePath_)));
             }
+
+            // A tool may ask to end the turn here (run_skill). Tool results are
+            // already written, so the assistant(tool_calls) -> tool pairing is
+            // intact; stopping before the next request keeps the model out of
+            // the skill phase entirely.
+            if (toolRegistry.consumeTurnEndRequest()) {
+                debugLog("[Agent] turn end requested by a tool -- stopping after this round");
+                pendingToolCalls_.clear();
+                toolResults_.clear();
+                phase_ = AgentPhase::Idle;
+                updateSnapshot();
+                break;
+            }
             // Error detection
             int consec = 0;
             for (auto it = toolResults_.rbegin(); it != toolResults_.rend(); ++it) {
@@ -364,6 +386,9 @@ void Agent::cancel() {
 void Agent::newTurn() {
     cancelRequested_.store(false, std::memory_order_release);
     toolRegistry.resetCancel();
+    // Defensive: a turn-end request raised by a tool must never leak into the
+    // next turn (e.g. the turn was cancelled before it could be honoured).
+    (void)toolRegistry.consumeTurnEndRequest();
     approvalDone_ = false;
     currentToolCalls_.clear();
     pendingToolCalls_.clear();

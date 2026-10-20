@@ -127,6 +127,18 @@ private:
     void setupTools();
     void harvestSpeakers();
     void buildBubblesFromMessages();
+    // Agent thread body: one user turn, then -- if run_skill asked for it -- the
+    // skill phase, then a follow-up turn so the model can report the result.
+    void runAgentTurnLoop();
+
+    // Runs one installed skill to completion on the calling thread. Narration and
+    // the final document are persisted as assistant messages, which is exactly
+    // what an explicit "/<skill> <topic>" trigger does: both go through here.
+    // `rawInput` is the user line persisted for replay; empty means the run was
+    // requested by the agent (run_skill) and no user bubble is invented.
+    bool runSkillBlocking(const std::string& name, const std::string& topic,
+                          const std::string& rawInput);
+
     void launchAgentThread();
     void joinAgentThread();
     void joinModelsThread();
@@ -168,6 +180,16 @@ private:
 
     std::thread agentThread_;
     std::atomic<bool> agentThreadRunning_{false};
+
+    // Skill requested by the run_skill tool during the current turn. Written by
+    // the executor (agent thread), taken by runAgentTurnLoop (same thread) and
+    // dropped by cancelTurn (TUI thread) -- all under skillMutex_.
+    struct PendingSkill { std::string name; std::string topic; };
+    std::optional<PendingSkill> pendingSkill_;
+    int skillCallsThisTurn_ = 0;   // hard cap per user turn (run_skill loop guard)
+    // Last skill that already ran in this user turn. Re-running it is refused:
+    // the model may read the produced files, but not redo the whole workflow.
+    std::string lastSkillThisTurn_;
 
     std::unique_ptr<SkillRunner> skillRunner_;
     std::string skillsDir_;

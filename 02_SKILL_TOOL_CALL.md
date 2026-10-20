@@ -55,9 +55,13 @@ sendMessage(text)：
 
 ## 关键架构约束
 
+> SUPERSEDED by v0.5.8 for the run_skill path -- see the implementation record added at the end of this file.
+
 ### 1. 复用运行时而非状态机
 
 `run_skill` 作为普通工具注册，executor 同步阻塞在 `ExecutingTools`；SkillRunner 保持自己的线程/上下文，与主 Agent 仅通过 `ToolResult.content` 交汇。Agent 状态机**零改动**——结果回填后 `Agent::run()` 由 `ExecutingTools` 自动转回 `Streaming`（`agent.cpp` 313 行既有逻辑）。工具执行期间 `agentThreadRunning_` 为 true → 用户输入自动排队（`app_tui.cpp` 194-197 行）、busy 标志与 spinner 自动亮、取消入口保持唯一（ESC）。
+
+> SUPERSEDED by v0.5.8 for the run_skill path -- see the implementation record added at the end of this file.
 
 ### 2. 两条路径的输出模式（硬性区分）
 
@@ -145,7 +149,8 @@ SkillRunner 在既有回合/action 边界检查点（`skill_runner.cpp` 236/239 
 2. **topic 为空**：选本文档给出的第二种做法 —— 系统气泡 `[skill] usage: /<name> <topic>`，不发送。
 3. **`/skill <其他>`**：一律当列表输出（`/skill list` 的安全网），不做拦截报错。
 4. **`run_skill` 返回值**：`lastDoc_` 非空则返回文档；否则返回 `[skill] <name> finished after N round(s), converged=yes/no, but produced no document`；被取消返回 `cancelled before producing a document`。不重试。
-5. **`run_skill` 不发事件**：`cbs.onEvent` 留空，仅 `onProgress` 更新 `skillStatus_`（状态行）。SkillRunner 用 executor 局部对象，**不**发布到 `skillRunner_`，因此右侧 Agent 面板在 `run_skill` 路径下为空（避免跨线程访问 `agents_`）。显式 `/<skill>` 路径的面板行为不变。
+5. ~~**`run_skill` 不发事件**：`cbs.onEvent` 留空，仅 `onProgress` 更新 `skillStatus_`（状态行）。SkillRunner 用 executor 局部对象，**不**发布到 `skillRunner_`，因此右侧 Agent 面板在 `run_skill` 路径下为空（避免跨线程访问 `agents_`）。显式 `/<skill>` 路径的面板行为不变。~~
+   **已被 v0.5.8 废弃**：现在两条路径共用 `runSkillBlocking()`，runner 发布到 `skillRunner_`（`skillMutex_` 保护），面板与 ESC 都生效。详见「实施记录（v0.5.8）」。
 6. **技能名解析复用**：`run_skill` 用 `skill_trigger::parse("/" + name, installed)` 解析，与用户触发共用同一套规则（大小写不敏感、容忍模型多写的 `/`）。
 7. **提示词迁移**：只在 `coder.md` 的工具行**逐字等于旧默认值**时追加 `run_skill`（幂等，可单测）；手改过的 prompt 不动。
 
@@ -157,3 +162,72 @@ SkillRunner 在既有回合/action 边界检查点（`skill_runner.cpp` 236/239 
 
 - `/help` 不列出已安装技能（本文档风险表中的缓解手段，非实施步骤）。需要的话可在 `handleQuickCommand` 里注入技能列表。
 - `run_skill` 的 executor 本体（在 `TuiApp::setupTools`）没有直接单测，只有其依赖的两条不变量被测试覆盖（触发器规则、runner 无事件产出）。
+
+---
+
+## 实施记录（v0.5.8）：run_skill 改为回合切分
+
+> 本节**取代**上面「关键架构约束」的 §1 和 §2 中关于 run_skill 的部分：v0.5.7 采用「executor 内同步阻塞 + onEvent 不写会话」，v0.5.8 改成「本回合结束 → 技能独立跑 → 再起一轮」。
+
+### 新流程
+
+```
+模型调 run_skill
+  -> executor 只做三件事：校验技能 / 登记 pendingSkill_ / tools.requestTurnEnd()
+  -> 返回占位 tool result（事实陈述，不是命令）
+  -> Agent 写完 tool 结果后看到 turn-end 标记，phase=Idle 跳出（不再请求模型）
+  -> TuiApp::runAgentTurnLoop 取出 pendingSkill_
+       -> runSkillBlocking()   <- 与 /<skill> <topic> 完全同一个函数
+       -> 跑完注入一次性 System nudge，再起一轮让模型汇报
+```
+
+### 与 v0.5.7 的差别
+
+| 项 | v0.5.7 | v0.5.8 |
+|---|---|---|
+| 技能在哪里跑 | 工具执行器内部（ExecutingTools） | 本回合结束后，自己的阶段 |
+| 叙述写哪里 | 丢弃（只有 lastDoc_ 进 tool result） | 正常 assistant 消息 → 气泡、dock、DB 全一致 |
+| 聊天区可见性 | 无 | 与显式 `/<skill>` 相同 |
+| 右侧 Agents 面板 | 空 | 有实时角色状态 |
+| 工具返回值 | 最终文档 | 一句「已启动」占位 |
+| 多花的往返 | 无 | 多一轮（用于汇报结果） |
+| 取消探测 | 必须（executor 内无缝可达） | 仍需保留：显式路径与本路径共用 runner |
+
+### 三条硬约束（实现细节，不要退回去）
+
+1. **必须写占位 tool result**。`assistant(tool_calls)` 之后若没有 `tool` 消息就是孤儿配对，服务端 400。测试 `test_turn_end.cpp` 里有一条反向断言，故意构造这种坏会话，确认 `hasOrphanedTools()` 能抓到。
+2. **turn-end 标记只能在本轮写完 tool 结果之后消费**，且 `Agent::newTurn()` 里要防御性清一次，否则取消后残留会掐死下一轮。
+3. **技能期不写 user 消息**（agent 触发时）。用户没打过那行，伪造一条 `/monica ...` 气泡会误导；`/<skill>` 触发时照旧写。
+
+### 防「反复查进度」的三层
+
+| 层 | 手段 |
+|---|---|
+| 停止 | `requestTurnEnd()` + Agent 检查后 `phase=Idle`（代码硬停，模型没有下一轮） |
+| 不重跑 | `lastSkillThisTurn_` 同名拦截 + 每用户回合最多 2 次技能 |
+| 合法出路 | nudge 明确允许「读产出文件确认细节」 |
+
+### nudge 文案（一次性 System 消息，风格对齐 system prompt 的 hard rules）
+
+成功：
+
+```
+[skill done] '<name>' finished -- its narration and final document are the messages above.
+- Read the produced files if you need exact details.
+- Do not call run_skill again; report what came out.
+- 3-5 lines: result, where it is, single next step. Point at the document above instead of repeating it.
+```
+
+失败/取消：
+
+```
+[skill stopped] '<name>' did not finish -- cancelled or failed.
+- Do not retry unless the user asks.
+- 3-5 lines: what happened, next step.
+```
+
+### 验证情况
+
+- 单测 `test_turn_end.cpp`（5 例）：turn-end 标记只消费一次、newTurn 清残留、占位结果保持配对合法、叙述消息合法、去掉占位会变孤儿（反向断言）。
+- 全量 clean build + 134 用例通过。
+- **未真机验证**：模型在汇报轮会不会乖乖只汇报、会不会去读文件而不是重跑。三层防线已就位，行为仍需一次真实调用确认。

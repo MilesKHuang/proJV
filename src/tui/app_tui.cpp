@@ -43,21 +43,25 @@ void TuiApp::setupTools() {
     registerSearchTool(tools, client);
     registerFetchTool(tools, client);
 
-    // run_skill: the model may start an installed skill on its own. The runner
-    // lives inside this executor (synchronous, inside AgentPhase::ExecutingTools)
-    // and exchanges data with the main agent ONLY through the returned text.
-    // Its streaming events are deliberately NOT written into the main session --
-    // that would interleave assistant text with a pending tool_calls message and
-    // trip repairOrphanedToolCalls/validateToolCallPairs. ESC reaches this runner
-    // through setCancelProbe(tools.isCancelled()).
+    // run_skill: start an installed skill. The skill does NOT run inside this
+    // executor -- it runs as its own phase right after the current turn ends
+    // (see TuiApp::runAgentTurnLoop), through the very same function the
+    // "/<skill> <topic>" trigger uses. Consequences:
+    //   - narration/document are normal assistant messages: bubbles, the agent
+    //     dock, the DB and session replay all behave like a user-triggered run;
+    //   - the tool_call pairing is never broken, because this executor returns a
+    //     plain tool result and the turn stops right after it;
+    //   - ESC keeps working (cancelTurn cancels the published SkillRunner).
     {
         ToolDefinition def;
         def.name = "run_skill";
         def.description =
-            "Run an installed multi-agent skill (a fixed multi-role workflow) and return "
-            "its final document. EXPENSIVE and SLOW -- it may take minutes and many model "
-            "calls. Use it only when the task explicitly needs a multi-role workflow that "
-            "the installed skill is designed for; everything else should use the normal tools.";
+            "Start an installed multi-agent skill (a fixed multi-role workflow). The skill "
+            "runs as its own phase AFTER your current turn ends: its role narration and "
+            "final document will appear in this conversation, and you will get a follow-up "
+            "turn to report the result. EXPENSIVE and SLOW (minutes, many model calls) -- "
+            "use it only when the task needs a multi-role workflow the skill is designed "
+            "for. Call it at most once per task; never call it again to 'check' the result.";
         def.parameters = {
             {"name", "string",
              "Installed skill name (use the exact folder name; see /skill list).", true},
@@ -91,34 +95,28 @@ void TuiApp::setupTools() {
 
             {
                 std::lock_guard<std::mutex> lk(skillMutex_);
-                skillStatus_ = "running skill " + folder + " ...";
+                if (pendingSkill_)
+                    return "Error: skill '" + pendingSkill_->name +
+                           "' is already queued for this turn";
+                if (lastSkillThisTurn_ == folder)
+                    return "Error: skill '" + folder + "' already ran in this turn. Its output "
+                           "is above -- read the produced files and report it instead of "
+                           "re-running the workflow.";
+                if (skillCallsThisTurn_ >= 2)
+                    return "Error: at most 2 skills per turn. Ask the user how to continue.";
+                pendingSkill_ = PendingSkill{folder, topic};
+                lastSkillThisTurn_ = folder;
+                ++skillCallsThisTurn_;
+                skillStatus_ = "skill " + folder + " queued ...";
             }
             if (onStreamingTick) onStreamingTick();
 
-            SkillRunner::Callbacks cbs;
-            // onEvent stays empty on purpose (see the comment above).
-            cbs.onProgress = [this](const std::string& st) {
-                { std::lock_guard<std::mutex> lk(skillMutex_); skillStatus_ = st; }
-                if (onStreamingTick) onStreamingTick();
-            };
-
-            SkillRunner runner(config, &tools, cbs, buildSharedContext(), skillsDir_);
-            runner.setCancelProbe([this]() { return tools.isCancelled(); });
-            runner.run(folder, topic);
-
-            {
-                std::lock_guard<std::mutex> lk(skillMutex_);
-                skillStatus_.clear();
-            }
-
-            std::string doc = runner.lastDoc();
-            if (!doc.empty()) return doc;
-            if (tools.isCancelled())
-                return "[skill] " + folder + " cancelled before producing a document.";
-            return "[skill] " + folder + " finished after " +
-                   std::to_string(runner.lastRounds()) + " round(s), converged=" +
-                   (runner.converged() ? "yes" : "no") +
-                   ", but produced no document. Report this to the user instead of retrying.";
+            // End the turn after this tool round; runAgentTurnLoop picks the
+            // skill up and resumes the conversation when it is done.
+            tools.requestTurnEnd();
+            return "[skill] '" + folder + "' started. It runs as its own phase now; its "
+                   "narration and final document will be above your next turn. Ending this "
+                   "turn loses nothing.";
         });
     }
 
@@ -391,11 +389,66 @@ void TuiApp::launchAgentThread() {
     joinAgentThread();
     agentThreadRunning_.store(true);
     agentThread_ = std::thread([this]() {
-        agent->newTurn();
-        agent->run();
+        runAgentTurnLoop();
         agentThreadRunning_.store(false);
         if (onTurnComplete) onTurnComplete();
     });
+}
+
+// One user turn, then (optionally) the skill phase run_skill asked for, then a
+// follow-up turn so the model can report the result. The skill itself goes
+// through runSkillBlocking() -- the same function the "/<skill> <topic>" trigger
+// uses -- so bubbles, the agent dock, the session and the DB all behave alike.
+void TuiApp::runAgentTurnLoop() {
+    skillCallsThisTurn_ = 0;
+    {
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        lastSkillThisTurn_.clear();
+    }
+
+    for (;;) {
+        agent->newTurn();
+        agent->run();
+
+        // ESC during the model turn: stop. newTurn() resets the cancel flags,
+        // so this check has to happen before the next iteration starts.
+        if (tools.isCancelled()) break;
+
+        PendingSkill sk;
+        {
+            std::lock_guard<std::mutex> lk(skillMutex_);
+            if (!pendingSkill_) break;
+            sk = std::move(*pendingSkill_);
+            pendingSkill_.reset();
+        }
+
+        const bool skillOk = runSkillBlocking(sk.name, sk.topic, std::string());
+
+        // ESC during the skill run: do not resume the conversation.
+        if (tools.isCancelled()) break;
+
+        // One-shot System message for the follow-up turn. Kept as short as the
+        // hard rules in the system prompt: three bullets, no restating.
+        agent->setTurnNudge(
+            skillOk
+                ? "[skill done] '" + sk.name + "' finished -- its narration and final "
+                  "document are the messages above.\n"
+                  "- Read the produced files if you need exact details.\n"
+                  "- Do not call run_skill again; report what came out.\n"
+                  "- 3-5 lines: result, where it is, single next step. Point at the "
+                  "document above instead of repeating it.\n"
+                : "[skill stopped] '" + sk.name + "' did not finish -- cancelled or failed.\n"
+                  "- Do not retry unless the user asks.\n"
+                  "- 3-5 lines: what happened, next step.\n");
+        // Loop: one more turn consumes the nudge and reports the result.
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        pendingSkill_.reset();
+        lastSkillThisTurn_.clear();
+    }
+    skillCallsThisTurn_ = 0;
 }
 
 void TuiApp::joinAgentThread() {
@@ -441,24 +494,21 @@ std::string TuiApp::buildSharedContext() const {
            "Reference material only; use it to resolve vague references.]\n\n" + b;
 }
 
-void TuiApp::startSkill(const std::string& name, const std::string& topic,
-                        const std::string& rawInput) {
-    if (!agent) return;
-    // Persist the exact user line so history replays match what was typed.
-    const std::string persisted = rawInput.empty() ? ("/" + name + " " + topic) : rawInput;
-    if (agentThreadRunning_.load()) {
-        pendingQueue_.push_back(persisted);
-        return;
-    }
+// ----- single skill execution path (both triggers go through here) ----------
+bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
+                              const std::string& rawInput) {
+    if (!agent) return false;
     if (agent->ensureStorage) agent->ensureStorage();
-    agent->addPersistedMessage(Message::User(persisted));
+
+    // Persist the exact user line so history replays match what was typed.
+    // Empty == agent-triggered (run_skill): the user never typed anything, so do
+    // not invent a user bubble -- the "[Role] ..." narration is the evidence.
+    if (!rawInput.empty()) agent->addPersistedMessage(Message::User(rawInput));
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         skillStatus_ = "Preparing skill...";
     }
-
-    joinSkillThread();
-    agentThreadRunning_.store(true);
+    if (onStreamingTick) onStreamingTick();
 
     SkillRunner::Callbacks cbs;
     cbs.onEvent = [this](const std::string& role, const std::string& kind, const std::string& text) {
@@ -476,18 +526,46 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic,
         if (onStreamingTick) onStreamingTick();
     };
 
-    std::string board = buildSharedContext();
+    auto runner = std::make_unique<SkillRunner>(config, &tools, cbs,
+                                               buildSharedContext(), skillsDir_);
+    runner->setCancelProbe([this]() { return tools.isCancelled(); });
 
-    skillRunner_ = std::make_unique<SkillRunner>(config, &tools, cbs, board);
-    skillThread_ = std::thread([this, name, topic]() {
-        try {
-            skillRunner_->run(name, topic);
-        } catch (...) {}
+    SkillRunner* r = runner.get();
+    {
+        // Publish under the lock so the dock (skillAgentStatuses) and ESC
+        // (cancelTurn) can reach this runner while it runs.
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        skillRunner_ = std::move(runner);
+    }
+
+    try {
+        r->run(name, topic);
+    } catch (...) {}
+
+    {
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        skillRunner_.reset();
+        skillStatus_.clear();
+    }
+    if (onTurnComplete) onTurnComplete();
+    return !tools.isCancelled();
+}
+
+void TuiApp::startSkill(const std::string& name, const std::string& topic,
+                        const std::string& rawInput) {
+    if (!agent) return;
+    const std::string persisted = rawInput.empty() ? ("/" + name + " " + topic) : rawInput;
+    if (agentThreadRunning_.load()) {
+        pendingQueue_.push_back(persisted);
+        return;
+    }
+    if (agent->ensureStorage) agent->ensureStorage();
+
+    joinSkillThread();
+    agentThreadRunning_.store(true);
+    skillThread_ = std::thread([this, name, topic, persisted]() {
+        runSkillBlocking(name, topic, persisted);
         agentThreadRunning_.store(false);
-        {
-            std::lock_guard<std::mutex> lk(skillMutex_);
-            skillStatus_.clear();
-        }
         if (onTurnComplete) onTurnComplete();
     });
 }
@@ -502,12 +580,19 @@ void TuiApp::drainPendingQueue() {
 
 void TuiApp::cancelTurn() {
     pendingQueue_.clear();
-    if (skillRunner_) skillRunner_->cancel();
+    {
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        pendingSkill_.reset();   // drop a queued-but-not-started skill
+        if (skillRunner_) skillRunner_->cancel();
+    }
     if (agent) agent->cancel();
 }
 
 void TuiApp::shutdown() {
-    if (skillRunner_) skillRunner_->cancel();
+    {
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        if (skillRunner_) skillRunner_->cancel();
+    }
     joinSkillThread();
     if (agent) agent->cancel();
     joinAgentThread();
@@ -520,7 +605,10 @@ void TuiApp::shutdown() {
 }
 
 void TuiApp::emergencyShutdown() {
-    if (skillRunner_) skillRunner_->cancel();
+    {
+        std::lock_guard<std::mutex> lk(skillMutex_);
+        if (skillRunner_) skillRunner_->cancel();
+    }
     joinSkillThread();
     if (agent) agent->cancel();
     joinAgentThread();

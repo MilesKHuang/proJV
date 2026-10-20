@@ -21,6 +21,7 @@ set(TEST_SOURCES
     unit/test_image_input.cpp
     unit/test_prompt_upgrade.cpp
     unit/test_prompt_style.cpp
+    unit/test_turn_end.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
