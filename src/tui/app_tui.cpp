@@ -4,14 +4,18 @@
 #include "core/prompts.h"
 #include "core/config.h"
 #include "core/project_context.h"
+#include "core/image_input.h"
+#include "core/skill_trigger.h"
 #include "tui/theme_manager.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
 #include "tools/md_file_tool.h"
 #include "tools/web_tools.h"
+#include "tools/json_utils.h"
 #include "debug_log.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -36,8 +40,87 @@ void TuiApp::setupTools() {
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
     registerFileSearchTool(tools);
-    registerSearchTool(tools);
-    registerFetchTool(tools);
+    registerSearchTool(tools, client);
+    registerFetchTool(tools, client);
+
+    // run_skill: the model may start an installed skill on its own. The runner
+    // lives inside this executor (synchronous, inside AgentPhase::ExecutingTools)
+    // and exchanges data with the main agent ONLY through the returned text.
+    // Its streaming events are deliberately NOT written into the main session --
+    // that would interleave assistant text with a pending tool_calls message and
+    // trip repairOrphanedToolCalls/validateToolCallPairs. ESC reaches this runner
+    // through setCancelProbe(tools.isCancelled()).
+    {
+        ToolDefinition def;
+        def.name = "run_skill";
+        def.description =
+            "Run an installed multi-agent skill (a fixed multi-role workflow) and return "
+            "its final document. EXPENSIVE and SLOW -- it may take minutes and many model "
+            "calls. Use it only when the task explicitly needs a multi-role workflow that "
+            "the installed skill is designed for; everything else should use the normal tools.";
+        def.parameters = {
+            {"name", "string",
+             "Installed skill name (use the exact folder name; see /skill list).", true},
+            {"topic", "string",
+             "What the skill should work on -- the user's task, in full.", true}
+        };
+        tools.registerTool(def, [this](const std::string& args) -> std::string {
+            std::string name = extractStringArg(args, "name");
+            std::string topic = extractStringArg(args, "topic");
+            if (name.empty()) return "Error: Missing 'name' argument";
+            if (topic.empty()) return "Error: Missing 'topic' argument";
+            if (!modelSupportsTools(config.model))
+                return "Error: model '" + config.model +
+                       "' does not support tool calls; cannot run a skill";
+
+            // Resolve case-insensitively through the same rule set the user
+            // trigger uses (tolerate a leading "/" from the model).
+            std::string guess = name;
+            if (!guess.empty() && guess[0] == '/') guess.erase(0, 1);
+            const auto resolved = skill_trigger::parse(
+                "/" + guess, SkillRunner::listSkills(skillsDir_));
+            const std::string folder =
+                resolved.kind == skill_trigger::Result::Kind::Trigger
+                    ? resolved.name : std::string();
+            if (folder.empty()) {
+                std::string avail;
+                for (const auto& n : SkillRunner::listSkills(skillsDir_)) avail += "\n- " + n;
+                return "Error: unknown skill '" + name + "'. Installed skills:" +
+                       (avail.empty() ? "\n(none)" : avail);
+            }
+
+            {
+                std::lock_guard<std::mutex> lk(skillMutex_);
+                skillStatus_ = "running skill " + folder + " ...";
+            }
+            if (onStreamingTick) onStreamingTick();
+
+            SkillRunner::Callbacks cbs;
+            // onEvent stays empty on purpose (see the comment above).
+            cbs.onProgress = [this](const std::string& st) {
+                { std::lock_guard<std::mutex> lk(skillMutex_); skillStatus_ = st; }
+                if (onStreamingTick) onStreamingTick();
+            };
+
+            SkillRunner runner(config, &tools, cbs, buildSharedContext(), skillsDir_);
+            runner.setCancelProbe([this]() { return tools.isCancelled(); });
+            runner.run(folder, topic);
+
+            {
+                std::lock_guard<std::mutex> lk(skillMutex_);
+                skillStatus_.clear();
+            }
+
+            std::string doc = runner.lastDoc();
+            if (!doc.empty()) return doc;
+            if (tools.isCancelled())
+                return "[skill] " + folder + " cancelled before producing a document.";
+            return "[skill] " + folder + " finished after " +
+                   std::to_string(runner.lastRounds()) + " round(s), converged=" +
+                   (runner.converged() ? "yes" : "no") +
+                   ", but produced no document. Report this to the user instead of retrying.";
+        });
+    }
 
     pytoolMgr_.emplace(config.pythonPath, ws);
     pytoolMgr_->scanAndRegister(tools, procRunner_);
@@ -223,33 +306,46 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
-    // /skill [list | <name> <topic>]: run a JSON-configured skill workflow.
-    if (trimmed.rfind("/skill", 0) == 0) {
-        std::string rest = trimmed.size() > 6 ? trimmed.substr(6) : std::string();
-        auto rs = rest.find_first_not_of(" \t\r\n");
-        rest = (rs == std::string::npos) ? std::string() : rest.substr(rs);
-        if (rest.empty() || rest == "list") {
-            auto names = SkillRunner::listSkills(skillsDir_);
+    // /<skill> <topic>: direct skill trigger (rules live in core/skill_trigger,
+    // unit-tested). An unknown token resolves to Kind::None and falls through as
+    // an ordinary message, so /usr/bin paths, "//" comments and natural language
+    // are never intercepted. "/skill list" stays as the safe listing entry point;
+    // the old "/skill <name> <topic>" form is gone. This branch runs BEFORE the
+    // vision "@path" parsing below, so "/monica D:\dir @C:\a.png" hands the whole
+    // line to the skill engine.
+    {
+        const auto installed = SkillRunner::listSkills(skillsDir_);
+        const auto trig = skill_trigger::parse(trimmed, installed);
+
+        if (trig.kind == skill_trigger::Result::Kind::List) {
             std::string msg = "[skill] available:";
-            for (auto& n : names) msg += "\n- " + n;
-            if (names.empty()) msg += "\n(none)";
+            for (const auto& n : installed) msg += "\n- " + n;
+            if (installed.empty()) msg += "\n(none)";
+            else msg += "\n\nUsage: /<skill> <topic>";
             bubble_model::Bubble cb; cb.role = "system"; cb.content = msg;
             chatHistory.push_back(cb); resetChatScroll();
             return;
         }
-        auto sp = rest.find_first_of(" \t\r\n");
-        std::string name = (sp == std::string::npos) ? rest : rest.substr(0, sp);
-        std::string skTopic = (sp == std::string::npos) ? std::string() : rest.substr(sp + 1);
-        auto ts = skTopic.find_first_not_of(" \t\r\n");
-        skTopic = (ts == std::string::npos) ? std::string() : skTopic.substr(ts);
-        if (skTopic.empty()) {
-            bubble_model::Bubble cb; cb.role = "system";
-            cb.content = "[skill] usage: /skill <name> <topic>";
-            chatHistory.push_back(cb); resetChatScroll();
+
+        if (trig.kind == skill_trigger::Result::Kind::Trigger) {
+            if (trig.topic.empty()) {
+                bubble_model::Bubble cb; cb.role = "system";
+                cb.content = "[skill] usage: /" + trig.name + " <topic>";
+                chatHistory.push_back(cb); resetChatScroll();
+                return;
+            }
+            // Skills carry no image input yet: say so instead of silently
+            // dropping the attachments.
+            if (trimmed.find('@') != std::string::npos) {
+                bubble_model::Bubble cb; cb.role = "system";
+                cb.content = "[image] images ignored: skills do not carry "
+                             "image input yet.";
+                chatHistory.push_back(cb);
+            }
+            startSkill(trig.name, trig.topic, trimmed);
+            resetChatScroll();
             return;
         }
-        startSkill(name, skTopic);
-        return;
     }
 
     // Other quick commands handled by the backend (/clear /help).
@@ -258,7 +354,35 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
-    agent->startTurn(text);
+    // "@<path>" image markers (vision). Runs after the skill branch, so a
+    // "/monica ... @C:\a.png" line was already handed to the skill engine.
+    std::string turnText = trimmed;
+    std::vector<ImageAttachment> images;
+    {
+        auto parsed = image_input::parseMarkers(trimmed, config.workspacePath);
+        if (!parsed.ok()) {
+            bubble_model::Bubble cb; cb.role = "system";
+            cb.content = parsed.error + "\n(message not sent)";
+            chatHistory.push_back(cb); resetChatScroll();
+            return;
+        }
+        if (!parsed.images.empty()) {
+            if (!modelSupportsVision(config.model)) {
+                bubble_model::Bubble cb; cb.role = "system";
+                cb.content = "[image] model '" + config.model +
+                    "' does not accept image input. Switch to a Flash model (F10).\n"
+                    "(message not sent)";
+                chatHistory.push_back(cb); resetChatScroll();
+                return;
+            }
+            images = std::move(parsed.images);
+            turnText = parsed.text;
+            // Markers-only message: give the turn something to answer.
+            if (turnText.empty()) turnText = "Describe the attached image(s).";
+        }
+    }
+
+    agent->startTurn(turnText, std::move(images));
     launchAgentThread();
 }
 
@@ -297,14 +421,37 @@ std::vector<SkillRunner::AgentSnapshot> TuiApp::skillAgentStatuses() const {
     return skillRunner_->agentStatuses();
 }
 
-void TuiApp::startSkill(const std::string& name, const std::string& topic) {
+// The main session rendered as reference material for skill agents.
+std::string TuiApp::buildSharedContext() const {
+    if (!agent) return std::string();
+    auto msgs = agent->getSession().getContextMessages();
+    std::string b;
+    for (const auto& m : msgs) {
+        if (m.role == "system") continue;
+        if (m.role == "user") {
+            if (!m.content.empty()) b += "USER: " + m.content + "\n\n";
+        } else if (m.role == "assistant") {
+            if (!m.content.empty()) b += "ASSISTANT: " + m.content + "\n\n";
+        } else if (m.role == "tool") {
+            b += "TOOL(" + m.name + "): " + m.content + "\n\n";
+        }
+    }
+    if (b.empty()) return std::string();
+    return "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
+           "Reference material only; use it to resolve vague references.]\n\n" + b;
+}
+
+void TuiApp::startSkill(const std::string& name, const std::string& topic,
+                        const std::string& rawInput) {
     if (!agent) return;
+    // Persist the exact user line so history replays match what was typed.
+    const std::string persisted = rawInput.empty() ? ("/" + name + " " + topic) : rawInput;
     if (agentThreadRunning_.load()) {
-        pendingQueue_.push_back("/skill " + name + " " + topic);
+        pendingQueue_.push_back(persisted);
         return;
     }
     if (agent->ensureStorage) agent->ensureStorage();
-    agent->addPersistedMessage(Message::User("/skill " + name + " " + topic));
+    agent->addPersistedMessage(Message::User(persisted));
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         skillStatus_ = "Preparing skill...";
@@ -329,25 +476,7 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic) {
         if (onStreamingTick) onStreamingTick();
     };
 
-    std::string board;
-    {
-        auto msgs = agent->getSession().getContextMessages();
-        std::string b;
-        for (const auto& m : msgs) {
-            if (m.role == "system") continue;
-            if (m.role == "user") {
-                if (!m.content.empty()) b += "USER: " + m.content + "\n\n";
-            } else if (m.role == "assistant") {
-                if (!m.content.empty()) b += "ASSISTANT: " + m.content + "\n\n";
-            } else if (m.role == "tool") {
-                b += "TOOL(" + m.name + "): " + m.content + "\n\n";
-            }
-        }
-        if (!b.empty()) {
-            board = "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
-                    "Reference material only; use it to resolve vague references.]\n\n" + b;
-        }
-    }
+    std::string board = buildSharedContext();
 
     skillRunner_ = std::make_unique<SkillRunner>(config, &tools, cbs, board);
     skillThread_ = std::thread([this, name, topic]() {

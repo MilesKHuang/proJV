@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "debug_log.h"
+#include "json.hpp"
 #include <SQLiteCpp/Database.h>
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
@@ -141,6 +142,7 @@ bool Storage::ensureTables() {
                 tool_call_id      TEXT DEFAULT '',
                 name              TEXT DEFAULT '',
                 token_count       INTEGER DEFAULT 0,
+                image_paths       TEXT DEFAULT '',
                 created_at        TEXT NOT NULL DEFAULT (datetime('now'))
             );
         )");
@@ -149,6 +151,12 @@ bool Storage::ensureTables() {
             writeDb_->exec("ALTER TABLE messages ADD COLUMN reasoning_content TEXT DEFAULT ''");
         } catch (const SQLite::Exception&) {
             // Column already exists — safe to ignore
+        }
+        // Migration: image_paths (vision attachments, JSON array of paths).
+        try {
+            writeDb_->exec("ALTER TABLE messages ADD COLUMN image_paths TEXT DEFAULT ''");
+        } catch (const SQLite::Exception&) {
+            // Column already exists -- safe to ignore
         }
         writeDb_->exec(R"(
             CREATE TABLE IF NOT EXISTS tool_calls (
@@ -170,6 +178,33 @@ bool Storage::ensureTables() {
 
 // -- Message operations --------------------------------------------
 
+// -- Vision attachments: paths only, as a JSON array -----------------
+static std::string imagePathsToJson(const std::vector<ImageAttachment>& images) {
+    if (images.empty()) return std::string();
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& img : images) arr.push_back(img.path);
+    return arr.dump();
+}
+
+static std::vector<ImageAttachment> imagePathsFromJson(const std::string& json) {
+    std::vector<ImageAttachment> out;
+    if (json.empty()) return out;
+    try {
+        auto j = nlohmann::json::parse(json);
+        if (!j.is_array()) return out;
+        for (const auto& v : j) {
+            if (!v.is_string()) continue;
+            ImageAttachment img;
+            img.path = v.get<std::string>();
+            img.detail = "auto";
+            out.push_back(std::move(img));
+        }
+    } catch (...) {
+        // Corrupt column: treat as "no images" instead of failing the row.
+    }
+    return out;
+}
+
 static size_t estimateTokens(const std::string& text) {
     size_t t = 0;
     for (char c : text) {
@@ -187,14 +222,15 @@ int64_t Storage::insertMessage(const Message& msg) {
         size_t tokens = estimateTokens(msg.content);
 
         SQLite::Statement stmt(*writeDb_,
-            "INSERT INTO messages (role, content, reasoning_content, tool_call_id, name, token_count) "
-            "VALUES (?, ?, ?, ?, ?, ?)");
+            "INSERT INTO messages (role, content, reasoning_content, tool_call_id, name, token_count, image_paths) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)");
         stmt.bind(1, msg.role);
         stmt.bind(2, msg.content);
         stmt.bind(3, msg.reasoningContent);
         stmt.bind(4, msg.toolCallId);
         stmt.bind(5, msg.name);
         stmt.bind(6, static_cast<int64_t>(tokens));
+        stmt.bind(7, imagePathsToJson(msg.images));
         stmt.exec();
 
         int64_t messageId =
@@ -223,7 +259,8 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
     if (!readDb_) return result;
     try {
         SQLite::Statement stmt(*readDb_,
-            "SELECT id, role, content, reasoning_content, tool_call_id, name "
+            "SELECT id, role, content, reasoning_content, tool_call_id, name, "
+            "COALESCE(image_paths, '') "
             "FROM messages WHERE id > ? ORDER BY id");
         stmt.bind(1, sinceId);
 
@@ -236,6 +273,7 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
             msg.reasoningContent = stmt.getColumn(3).getString();
             msg.toolCallId      = stmt.getColumn(4).getString();
             msg.name            = stmt.getColumn(5).getString();
+            msg.images          = imagePathsFromJson(stmt.getColumn(6).getString());
 
             // Load tool calls for assistant messages
             if (msg.role == "assistant") {

@@ -45,6 +45,11 @@ struct Session {
     void pruneForContext(size_t maxTokens);
     static size_t estimateTokens(const std::string& text);
 
+    // Vision attachments: a flat per-image budget (docs: <=1024 tokens/image,
+    // images are resized down to that bound before inference).
+    static constexpr size_t kImageTokenEstimate = 1024;
+    static size_t estimateImageTokens(size_t imageCount);
+
     // Strip the last assistant(tool_calls) message and its tool result followers.
     void stripLastToolCallsAndResults();
 

@@ -3,6 +3,7 @@
 #include "debug_log.h"
 #include <fstream>
 #include <filesystem>
+#include <iterator>
 #include <vector>
 #include <algorithm>
 
@@ -32,9 +33,10 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "- Write tests after implementation; compile and verify before declaring done.\n"
     "\n"
     "## 3. Available Tools\n"
-    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool\n"
+    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill\n"
     "\n"
     "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 300000 (5 min), max is 600000 (10 min). Long silent commands such as downloads, builds, and `git clone` are allowed until the total timeout; silence alone does NOT mean the command failed. Do not kill long-running commands early and do not discard all output to /dev/null.\n"
+    "- `run_skill` starts an installed multi-agent skill (see the skill list in the workspace) and blocks until the whole workflow finishes -- it is expensive and slow (minutes). Use it only for explicitly complex multi-role tasks, never for something you can do with a normal tool.\n"
     "\n";
 
 // ============================================================================
@@ -109,6 +111,7 @@ static constexpr const char* COMPACTOR_PROMPT_DEFAULT =
     "- Keep the summary under 500 words.\n"
     "- Preserve exact file paths, error messages, and line numbers.\n"
     "- Do NOT fabricate information not present in the input.\n"
+    "- A message header may carry a \"[+N images]\" marker. That means the user attached N images; keep the fact that those images were part of the conversation in your summary (never invent what they showed).\n"
     "\n"
     "### Goal\n[What the user is trying to accomplish]\n\n"
     "### Constraints\n[User's explicit restrictions or requirements]\n\n"
@@ -163,6 +166,67 @@ static std::string promptsDir() {
 }
 
 // ============================================================================
+// One-time upgrade of a seeded coder.md
+// ----------------------------------------------------------------------------
+// proJV <= 0.5.6 seeded coder.md with a tool list that predates run_skill, and
+// ensureDefaultPrompts() never overwrites an existing file. Rewrite the line
+// ONLY when it still equals the old default verbatim, so a hand-edited tool
+// list is never touched.
+// ============================================================================
+static void upgradeCoderToolList(const std::string& path) {
+    static const std::string kOldLine =
+        "tools available: read_file, write_file, exec_shell, grep_files, edit_file, "
+        "file_search, web_search, fetch_url, md_file, update_todo, diagram_tool";
+    static const std::string kNewLine = kOldLine + ", run_skill";
+
+    std::ifstream ifs(path);
+    if (!ifs) return;
+    std::string content((std::istreambuf_iterator<char>(ifs)), {});
+    ifs.close();
+
+    size_t pos = content.find(kOldLine);
+    if (pos == std::string::npos) return;
+
+    content.replace(pos, kOldLine.size(), kNewLine);
+    std::ofstream ofs(path, std::ios::trunc);
+    if (!ofs) return;
+    ofs << content;
+    debugLogf("[Prompts] Upgraded coder.md tool list (+run_skill)");
+}
+
+// ============================================================================
+// One-time upgrade of a seeded compactor.md
+// ----------------------------------------------------------------------------
+// Adds the "[+N images]" instruction to prompts seeded before vision support.
+// Anchored on a line that only the seeded default carries, so a rewritten
+// prompt is left alone.
+// ============================================================================
+static void upgradeCompactorPrompt(const std::string& path) {
+    static const std::string kAnchor =
+        "- Do NOT fabricate information not present in the input.";
+    static const std::string kMarker = "[+N images]";
+    static const std::string kLine =
+        "\n- A message header may carry a \"[+N images]\" marker: the user attached N "
+        "images to that message. Keep the fact that those images were part of the "
+        "conversation in your summary, and never invent what they showed.";
+
+    std::ifstream ifs(path);
+    if (!ifs) return;
+    std::string content((std::istreambuf_iterator<char>(ifs)), {});
+    ifs.close();
+
+    if (content.find(kMarker) != std::string::npos) return;
+    const size_t pos = content.find(kAnchor);
+    if (pos == std::string::npos) return;
+
+    content.insert(pos + kAnchor.size(), kLine);
+    std::ofstream ofs(path, std::ios::trunc);
+    if (!ofs) return;
+    ofs << content;
+    debugLogf("[Prompts] Upgraded compactor.md (vision marker instruction)");
+}
+
+// ============================================================================
 // ensureDefaultPrompts - scan projv_prompts/*.md, create presets if missing
 // ============================================================================
 std::vector<std::string> ensureDefaultPrompts() {
@@ -192,6 +256,10 @@ std::vector<std::string> ensureDefaultPrompts() {
             }
         }
     }
+
+    // Upgrade stale seeded prompts in place (see the upgrade* helpers above).
+    upgradeCoderToolList(dir + "/coder.md");
+    upgradeCompactorPrompt(dir + "/compactor.md");
 
     // Scan all .md files in the directory
     std::vector<std::string> files;

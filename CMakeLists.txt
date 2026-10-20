@@ -96,6 +96,8 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/core/project_context.cpp
     ${SRC_DIR}/core/sub_agent.cpp
+    ${SRC_DIR}/core/image_input.cpp
+    ${SRC_DIR}/core/skill_trigger.cpp
     ${SRC_DIR}/core/skill_runner.cpp
     ${SRC_DIR}/core/skills_builtin.cpp
     ${EXTERNAL_DIR}/loguru.cpp
@@ -110,6 +112,9 @@ set(HEADERS
     ${SRC_DIR}/core/storage.h
     ${SRC_DIR}/tools/registry.h
     ${SRC_DIR}/core/skill_config.h
+    ${SRC_DIR}/core/image_input.h
+    ${SRC_DIR}/core/skill_trigger.h
+    ${SRC_DIR}/tools/base64.h
     ${SRC_DIR}/core/sub_agent.h
     ${SRC_DIR}/core/skill_runner.h
     ${SRC_DIR}/core/skills_builtin.h

@@ -52,7 +52,7 @@ Drop a `.md` file into `projv_files/prompts/` and it instantly appears as a sele
 
 | Role | Description |
 |------|-------------|
-| **coder** (default) | Full 11-tool access -- read, write, edit, shell, search, web, diagram, todo |
+| **coder** (default) | Full 12-tool access -- read, write, edit, shell, search, web, diagram, todo, skill |
 | **designer** | Read-only analysis mode -- shell and source edits locked out, outputs structured design docs via `md_file` |
 | **analyzer** | Code analysis with `diagram_tool` support |
 
@@ -121,7 +121,7 @@ projv_files/skills/
     └── tools/             # the verb tools the agents may call
 ```
 
-Run `/skill <name> <topic>`; `/skill list` shows what is installed. Two examples ship out of the box -- `bigbang` (three-role engineering debate -> one execution doc) and `monica` (supervisor-driven project tidy-up). A built-in `skill_maker` authors new skills for you and verifies them. Install = copy the folder; uninstall = delete it.
+Run `/<skill> <topic>` (e.g. `/monica D:\project`) -- the skill name doubles as the command; `/skill list` shows what is installed. Two examples ship out of the box -- `bigbang` (three-role engineering debate -> one execution doc) and `monica` (supervisor-driven project tidy-up). A built-in `skill_maker` authors new skills for you and verifies them. Install = copy the folder; uninstall = delete it.
 
 ---
 
@@ -129,7 +129,10 @@ Run `/skill <name> <topic>`; `/skill list` shows what is installed. Two examples
 
 | Feature | Description |
 |---------|-------------|
-| **AI tool orchestration** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool -- AI decides what to call and when |
+| **AI tool orchestration** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool, run_skill -- AI decides what to call and when |
+| **Vision input** | `@<path>` attaches JPEG/PNG/GIF/WebP images to a message; directories expand to their top-level images (max 8 per message). Flash models only |
+| **Native skill call** | `/monica D:\project` triggers an installed skill directly; the agent can also invoke `run_skill` itself |
+| **Official Search / Fetch** | `web_search` / `fetch_url` are backed by DeepSeek's own Search and Fetch APIs (structured results with rerank score + authority; fetch returns Markdown) |
 | **Thinking display** | deepseek-reasoner chain-of-thought, collapsed by default with a one-line summary + trailing window (F8) |
 | **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
 | **CJK soft-wrap** | Chat bubbles and the input box wrap long lines and re-flow on resize |
@@ -163,7 +166,7 @@ Run `/skill <name> <topic>`; `/skill list` shows what is installed. Two examples
 | `Enter` | Send message |
 | `Esc` | Cancel turn (busy) / quit (idle) |
 
-Quick commands: `/help`, `/workspace`, `/clear`, `/compress`, `/skill <name> <topic>` (run an installed multi-agent skill; `/skill list` shows what is installed).
+Quick commands: `/help`, `/workspace`, `/clear`, `/compress`, `/skill list`, `/<skill> <topic>` (run an installed multi-agent skill, e.g. `/monica D:\project`). Image input: `@<path>` or `@"<path with spaces>"` attaches JPEG/PNG/GIF/WebP files to the message (Flash models).
 
 ---
 

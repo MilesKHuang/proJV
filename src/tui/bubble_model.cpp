@@ -129,6 +129,18 @@ std::vector<Bubble> deriveBubbles(const Message& msg,
     Bubble cb;
     cb.role = msg.role;
     cb.content = msg.content;
+    // Vision: list the attached images under the user's text, e.g.
+    //   "what is this?\n[Image] a.png\n[Image] b.png"
+    if (msg.role == "user" && !msg.images.empty()) {
+        for (const auto& img : msg.images) {
+            std::string name = img.path;
+            const size_t sep = name.find_last_of("/\\");
+            if (sep != std::string::npos) name = name.substr(sep + 1);
+            if (name.empty()) name = "(inline image)";
+            if (!cb.content.empty()) cb.content += "\n";
+            cb.content += "[Image] " + name;
+        }
+    }
     // Skill role projections are plain assistant messages tagged with a role
     // prefix: "**[<name>]** ..." or "**[<name> vote]** ...". A prefix is treated
     // as a speaker ONLY when <name> is in the registry (knownRoles), so ordinary

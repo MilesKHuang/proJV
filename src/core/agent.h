@@ -32,7 +32,11 @@ public:
     void addPersistedMessage(const Message& msg);
     void loadFromStorage();
 
-    void startTurn(const std::string& text);
+    // `images` are vision attachments parsed from the user's "@path" markers.
+    // They are persisted with the message row (paths only); an empty vector
+    // keeps the plain-text behavior.
+    void startTurn(const std::string& text,
+                   std::vector<ImageAttachment> images = {});
     void run();
 
     void approveTool(int action);

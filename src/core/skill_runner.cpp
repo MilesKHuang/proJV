@@ -108,6 +108,16 @@ void SkillRunner::cancel() {
     for (auto& kv : agents_) if (kv.second) kv.second->cancel();
 }
 
+// Boundary probe: called between actions, steps and rounds. A probe hit is
+// promoted to a full cancel() so nested loops and sub-agent HTTP calls stop.
+bool SkillRunner::checkCancel() {
+    if (!cancelRequested_.load() && cancelProbe_ && cancelProbe_()) {
+        debugLog("[Skill] external cancel probe hit -- stopping the run");
+        cancel();
+    }
+    return cancelRequested_.load();
+}
+
 // ---- seeding / discovery -------------------------------------------------
 void SkillRunner::ensureDefaultSkills(const std::string& skillsDir) {
     std::error_code ec;
@@ -233,10 +243,10 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     loadAgents();
 
     for (int round = 1; round <= config_.maxRounds; ++round) {
-        if (cancelRequested_.load()) break;
+        if (checkCancel()) break;
         lastRounds_ = round;
         executeSteps(config_.roundSteps, round);
-        if (cancelRequested_.load()) break;
+        if (checkCancel()) break;
         if (stopRule(round)) { converged_ = true; break; }
         roundContext_ = voteSummary();
         prevSlots_ = slots_;
@@ -254,7 +264,7 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
 // ---- step execution ------------------------------------------------------
 void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
     for (const auto& st : steps) {
-        if (cancelRequested_.load()) return;
+        if (checkCancel()) return;
         if (!whenMatches(st.when, round)) continue;
         if (!st.progress.empty() && cbs_.onProgress) cbs_.onProgress(fill(st.progress, round, {}));
 
@@ -267,6 +277,7 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
             th.reserve(st.actions.size());
             for (size_t i = 0; i < st.actions.size(); ++i)
                 th.emplace_back([&, i] {
+                    if (checkCancel()) return;   // probe hit -> skip this action
                     const SkillAction& a = st.actions[i];
                     if (SubAgent* ag = agentById(a.agent))
                         results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
@@ -274,11 +285,13 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
             for (auto& t : th) t.join();
         } else {
             for (size_t i = 0; i < st.actions.size(); ++i) {
+                if (checkCancel()) return;
                 const SkillAction& a = st.actions[i];
                 if (SubAgent* ag = agentById(a.agent))
                     results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
             }
         }
+        if (cancelRequested_.load()) return;
         for (size_t i = 0; i < st.actions.size(); ++i)
             mergeAction(st.actions[i], results[i], round);
     }

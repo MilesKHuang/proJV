@@ -52,7 +52,7 @@ proJV 为这个方向而生。
 
 | 角色 | 说明 |
 |------|------|
-| **coder**（默认） | 全 11 工具访问 -- 读写、编辑、Shell、搜索、Web、架构图、TODO |
+| **coder**（默认） | 全 12 工具访问 -- 读写、编辑、Shell、搜索、Web、架构图、TODO、技能 |
 | **designer** | 只读分析模式 -- 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档 |
 | **analyzer** | 代码分析 + `diagram_tool` 架构图支持 |
 
@@ -121,7 +121,7 @@ projv_files/skills/
     └── tools/             # agent 可调用的 verb 工具
 ```
 
-用 `/skill <name> <topic>` 运行；`/skill list` 查看已安装技能。内置两个示例 -- `bigbang`（三角色工程辩论 -> 一份执行文档）和 `monica`（supervisor 驱动的项目整理）。内置的 `skill_maker` 可以帮你写新技能并自检。安装 = 复制文件夹；卸载 = 删除文件夹。
+用 `/<skill> <topic>` 运行；`/skill list` 查看已安装技能。内置两个示例 -- `bigbang`（三角色工程辩论 -> 一份执行文档）和 `monica`（supervisor 驱动的项目整理）。内置的 `skill_maker` 可以帮你写新技能并自检。安装 = 复制文件夹；卸载 = 删除文件夹。
 
 ---
 
@@ -129,7 +129,10 @@ projv_files/skills/
 
 | 功能 | 说明 |
 |------|------|
-| **AI 自动调用工具** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool -- AI 自主决策 |
+| **AI 自动调用工具** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool, run_skill -- AI 自主决策 |
+| **图像输入** | `@<路径>` 把 JPEG/PNG/GIF/WebP 图附到消息上；给目录则展开顶层图片（单条消息最多 8 张）。仅 Flash 模型 |
+| **技能直连** | `/monica D:\项目` 直接触发已安装技能；Agent 也可自主调用 `run_skill` 工具 |
+| **官方搜索/抓取** | `web_search` / `fetch_url` 走 DeepSeek 官方 Search / Fetch 接口（结构化结果带 rerank 分与权威度；抓取返回 Markdown） |
 | **思考过程展示** | deepseek-reasoner 推理链默认折叠为一行摘要，展开显示尾部窗口（F8） |
 | **流式 Markdown** | 实时 SSE + 自研渲染器（代码块、表格、链接、标题） |
 | **CJK 软换行** | 聊天气泡与输入框超宽自动折行，缩放时重新折行 |
@@ -163,7 +166,7 @@ projv_files/skills/
 | `Enter` | 发送消息 |
 | `Esc` | 忙时取消本轮 / 空闲时退出 |
 
-快捷命令：`/help`、`/workspace`、`/clear`、`/compress`、`/skill <name> <topic>`（运行已安装的多 Agent 技能；`/skill list` 查看已装技能）。
+快捷命令：`/help`、`/workspace`、`/clear`、`/compress`、`/<skill> <topic>`（运行已安装的多 Agent 技能；`/skill list` 查看已装技能）。
 
 ---
 

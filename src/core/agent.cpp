@@ -28,6 +28,9 @@ static constexpr const char* BATCH_COMPLETE =
     "[Batch complete. Continuing...]";
 static constexpr const char* HTTP_RETRY_FAILED =
     "Error: API request failed after retry.\nError: ";
+static constexpr const char* IMAGE_400_HINT =
+    "\nHint: the current model may not support image input. Switch to a Flash "
+    "model (F10) and resend, or send the message without @image paths.";
 static constexpr const char* USER_REJECTED_PREFIX =
     "[User rejected the following tool call(s): ";
 static constexpr const char* WS_VIOLATION_GUIDANCE_NO_WS =
@@ -36,7 +39,8 @@ static constexpr const char* QUICK_HELP =
     "### Quick Commands\n\n| Command | Description |\n|---------|-------------|\n"
     "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
     "| `/compress` | Summarize early messages |\n"
-    "| `/skill <name> <topic>` | Run an installed multi-agent skill |\n"
+    "| `/<skill> <topic>` | Run an installed multi-agent skill (e.g. `/monica D:\\dir`) |\n"
+    "| `/skill list` | List installed skills |\n"
     "\nproJV v" PROJV_VERSION " — native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
 
@@ -80,8 +84,9 @@ void Agent::loadFromStorage() {
 
 // ========== Lifecycle: startTurn + run ==========
 
-void Agent::startTurn(const std::string& text) {
-    debugLogf("[Agent] startTurn: \"%s\"", truncateForLog(text, 200).c_str());
+void Agent::startTurn(const std::string& text, std::vector<ImageAttachment> images) {
+    debugLogf("[Agent] startTurn: \"%s\" (%zu image(s))",
+              truncateForLog(text, 200).c_str(), images.size());
     if (phase_.load() != AgentPhase::Idle) { cancel(); std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
     if (ensureStorage) ensureStorage();
     { std::lock_guard<std::mutex> lk(todoMutex); todoData.incomingUserPrompt = text; }
@@ -89,7 +94,9 @@ void Agent::startTurn(const std::string& text) {
     // Persist the user message synchronously (main thread) so the frontend can
     // display it immediately on the next redraw, instead of waiting for the
     // background agent thread's run() to reach it.
-    addPersistedMessage(Message::User(text));
+    Message msg = Message::User(text);
+    msg.images = std::move(images);
+    addPersistedMessage(msg);
     approvalDone_ = false;
 }
 
@@ -165,8 +172,16 @@ void Agent::run() {
                     if (cancelRequested_.load()) break; // bail out cleanly on cancel
                     if (!ok || streamError_) {
                         session.popLastAssistant();
-                        addPersistedMessage(Message::Assistant(
-                            std::string(HTTP_RETRY_FAILED) + err));
+                        std::string failMsg = std::string(HTTP_RETRY_FAILED) + err;
+                        // Vision: a 400 is the usual symptom of sending images to
+                        // a model that does not accept them.
+                        if (err.find("HTTP 400") != std::string::npos) {
+                            bool hasImages = false;
+                            for (const auto& m : session.getContextMessages())
+                                if (!m.images.empty()) { hasImages = true; break; }
+                            if (hasImages) failMsg += IMAGE_400_HINT;
+                        }
+                        addPersistedMessage(Message::Assistant(failMsg));
                         phase_ = AgentPhase::Idle; break;
                     }
                 } else {
@@ -648,6 +663,7 @@ size_t Agent::getEstimatedContextTokens() const {
         size_t t = 0; auto msgs = session.getContextMessages();
         for (auto& m : msgs) {
             t += Session::estimateTokens(m.content) + Session::estimateTokens(m.reasoningContent);
+            t += Session::estimateImageTokens(m.images.size());
             for (auto& tc : m.toolCalls) t += Session::estimateTokens(tc.name) + Session::estimateTokens(tc.arguments);
         }
         cachedContextTokens_ = t;

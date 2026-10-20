@@ -95,7 +95,11 @@ public:
     void cancelTurn();
 
     // Run a JSON-configured skill workflow on a background thread.
-    void startSkill(const std::string& name, const std::string& topic);
+    // `rawInput` is the exact user line (e.g. "/monica D:\dir"); it is what gets
+    // persisted so history replays match what the user typed. Empty -> the old
+    // "/skill <name> <topic>" form is synthesized.
+    void startSkill(const std::string& name, const std::string& topic,
+                    const std::string& rawInput = std::string());
     std::string getSkillStatus() const;
     // Snapshot of the live skill agent pool for the sidebar (see START/agents).
     std::vector<SkillRunner::AgentSnapshot> skillAgentStatuses() const;
@@ -128,6 +132,10 @@ private:
     void joinModelsThread();
     void joinSkillThread();
     void drainPendingQueue();
+
+    // Skill helpers. buildSharedContext() renders the main session into the
+    // "[SHARED SESSION CONTEXT]" board both skill paths feed to SkillRunner.
+    std::string buildSharedContext() const;
 
     AppConfig config;
     DeepSeekClient client;

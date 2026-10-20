@@ -21,6 +21,7 @@ static constexpr int TOOL_CALL_MARKER_COUNT = 4;
 #include <chrono>
 #include <fstream>
 #include <cstring>
+#include <cstdio>
 
 // -- Timeouts ----------------------------------------------------------------
 static constexpr int  kStreamTotalTimeoutSec  = 0;     // 0 = no total cap; idle timeout governs long reasoning
@@ -337,6 +338,9 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
 
 // -- isRetryableHttpStatus ----------------------------------------------------
 bool DeepSeekClient::isRetryableHttpStatus(unsigned long statusCode) {
+    // DeepSeek docs: retry 408 / 429 / 5xx. 408 = "reading the request body
+    // timed out" -- safe to retry for chat and for Search/Fetch alike.
+    if (statusCode == 408) return true;
     if (statusCode == 429) return true;
     if (statusCode >= 500 && statusCode < 600) return true;
     return false;
@@ -495,6 +499,254 @@ std::vector<ModelInfo> DeepSeekClient::fetchModels(std::string* errorOut) {
     }
     debugLogf("[DeepSeek] fetchModels: got %zu models", models.size());
     return models;
+}
+
+// ============================================================================
+//  Official Search / Fetch tools (POST /v1/tools/search, /v1/tools/fetch)
+// ============================================================================
+
+static constexpr size_t kSearchContentTrunc = 50 * 1024;   // need_content=true per item
+static constexpr size_t kFetchContentTrunc  = 100 * 1024;  // page markdown
+
+// Trim ASCII whitespace (local copy: the parser-level trim() lives further down).
+static std::string trimWs(const std::string& s) {
+    auto b = s.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos) return "";
+    auto e = s.find_last_not_of(" \t\r\n");
+    return s.substr(b, e - b + 1);
+}
+
+// Read a string field; null / wrong type / missing -> empty.
+static std::string strField(const nlohmann::json& j, const char* key) {
+    if (!j.contains(key)) return "";
+    const auto& v = j[key];
+    if (v.is_string()) return v.get<std::string>();
+    return "";
+}
+
+std::string DeepSeekClient::formatApiError(long httpStatus, const std::string& body) {
+    std::string detail;
+    try {
+        auto j = nlohmann::json::parse(body);
+        if (j.contains("error")) {
+            const auto& e = j["error"];
+            if (e.is_object()) detail = strField(e, "message");
+            else if (e.is_string()) detail = e.get<std::string>();
+        }
+        if (detail.empty()) detail = strField(j, "message");
+    } catch (...) {}
+    if (detail.empty()) {
+        detail = trimWs(body);
+        if (detail.size() > 300) detail = detail.substr(0, 300) + "...";
+    }
+
+    std::string hint;
+    switch (httpStatus) {
+        case 400: hint = " (invalid request)"; break;
+        case 401: hint = " (missing or invalid API key)"; break;
+        case 402: hint = " (insufficient balance -- top up before retrying)"; break;
+        case 403: hint = " (rejected by the provider's security policy)"; break;
+        case 404: hint = " (no usable page content could be retrieved)"; break;
+        case 408: hint = " (request body read timed out)"; break;
+        case 413: hint = " (request body too large)"; break;
+        case 429: hint = " (rate limit exceeded)"; break;
+        default:
+            if (httpStatus >= 500) hint = " (provider error)";
+            break;
+    }
+
+    std::string out = "Error: HTTP " + std::to_string(httpStatus) + hint;
+    if (!detail.empty()) out += ": " + detail;
+    return out;
+}
+
+std::string DeepSeekClient::formatSearchResults(const std::string& jsonBody, bool needContent) {
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(jsonBody);
+    } catch (...) {
+        return "Error: malformed JSON from the search API";
+    }
+    if (!j.contains("results") || !j["results"].is_array())
+        return "Error: malformed search response (no results array)";
+    const auto& results = j["results"];
+    if (results.empty()) return "";  // caller turns this into "No results found"
+
+    std::string out;
+    int idx = 0;
+    for (const auto& r : results) {
+        if (!r.is_object()) continue;
+        ++idx;
+        double score = 0.0;
+        if (r.contains("rerank_score") && r["rerank_score"].is_number())
+            score = r["rerank_score"].get<double>();
+        int authority = -1;
+        if (r.contains("authority") && r["authority"].is_number_integer())
+            authority = r["authority"].get<int>();
+
+        char head[128];
+        snprintf(head, sizeof(head), "%d. [score=%.1f][authority=%d] ", idx, score, authority);
+        out += head;
+        out += strField(r, "title");
+        out += "\n   ";
+        out += strField(r, "url");
+        out += "\n";
+
+        std::string date = strField(r, "date");
+        if (date.empty()) date = strField(r, "publish_time");  // older field name
+        if (!date.empty()) { out += "   date: "; out += date; out += "\n"; }
+        std::string site = strField(r, "site_name");
+        if (!site.empty()) { out += "   site: "; out += site; out += "\n"; }
+
+        std::string summary = strField(r, "summary");
+        if (!summary.empty()) {
+            out += "   "; out += summary; out += "\n";
+        } else {
+            std::string snippet = strField(r, "snippet");
+            if (!snippet.empty()) { out += "   "; out += snippet; out += "\n"; }
+        }
+
+        if (needContent) {
+            std::string content = strField(r, "content");
+            if (content.size() > kSearchContentTrunc) {
+                content = content.substr(0, kSearchContentTrunc);
+                content += "\n... (content truncated to 50KB)";
+            }
+            if (!content.empty()) {
+                out += "   --- content ---\n";
+                out += content;
+                out += "\n";
+            }
+        }
+        out += "\n";
+    }
+    return out;
+}
+
+std::string DeepSeekClient::formatFetchPage(const std::string& jsonBody) {
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(jsonBody);
+    } catch (...) {
+        return "Error: malformed JSON from the fetch API";
+    }
+    std::string content = strField(j, "content");
+    if (content.empty()) return "Error: fetched page has no extractable content";
+    if (content.size() > kFetchContentTrunc) {
+        content = content.substr(0, kFetchContentTrunc);
+        content += "\n... (content truncated to 100KB)";
+    }
+    std::string title = strField(j, "title");
+    if (title.empty()) return content;
+    return "# " + title + "\n\n" + content;
+}
+
+int DeepSeekClient::postJson(const std::string& path, const std::string& body,
+                             std::string& outBody, long* outHttpStatus) {
+    CURL* curl = (CURL*)createEasyHandle();
+    if (!curl) return (int)CURLE_FAILED_INIT;
+    struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
+    CurlGuard guard{curl};
+
+    cancelFlag.store(false, std::memory_order_release);
+
+    BlockContext blockCtx;
+    blockCtx.cancelFlag = &cancelFlag;
+
+    std::string url = config.baseUrl;
+    if (!url.empty() && url.back() != '/') url += '/';
+    if (!path.empty() && path.front() == '/') url += path.substr(1);
+    else url += path;
+
+    std::string auth = "Authorization: Bearer " + config.apiKey;
+    curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(headers, auth.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, blockWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &blockCtx);
+
+    long status = 0;
+    int rc = postWithRetry(curl, url, body, &status);
+    curl_slist_free_all(headers);
+
+    outBody = std::move(blockCtx.body);
+    if (outHttpStatus) *outHttpStatus = status;
+    return rc;
+}
+
+std::string DeepSeekClient::searchWeb(const std::string& query, int count, bool needContent,
+                                      std::string* errorOut) {
+    if (trimWs(query).empty()) {
+        const std::string err = "Error: Missing 'query' argument";
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+    if (count < 1) count = 1;
+    if (count > 50) count = 50;
+
+    nlohmann::json body;
+    body["query"] = query;
+    body["count"] = count;
+    body["need_content"] = needContent;
+
+    std::string respBody;
+    long status = 0;
+    int rc = postJson("v1/tools/search", body.dump(), respBody, &status);
+    if (rc != CURLE_OK) {
+        const std::string err = std::string("Error: ") + curl_easy_strerror((CURLcode)rc);
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+    if (status != 200) {
+        const std::string err = formatApiError(status, respBody);
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+
+    std::string formatted = formatSearchResults(respBody, needContent);
+    if (formatted.empty()) {
+        return "Error: No results found for \"" + query + "\"";
+    }
+    debugLogf("[DeepSeek] searchWeb: %zu bytes, %d results requested",
+              formatted.size(), count);
+    return formatted;
+}
+
+std::string DeepSeekClient::fetchWeb(const std::string& url, std::string* errorOut) {
+    std::string u = trimWs(url);
+    if (u.empty()) {
+        const std::string err = "Error: Missing 'url' argument";
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+    if (u.rfind("http://", 0) != 0 && u.rfind("https://", 0) != 0) {
+        const std::string err = "Error: URL must start with http:// or https://";
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+
+    nlohmann::json body;
+    body["url"] = u;
+
+    std::string respBody;
+    long status = 0;
+    int rc = postJson("v1/tools/fetch", body.dump(), respBody, &status);
+    if (rc != CURLE_OK) {
+        const std::string err = std::string("Error: ") + curl_easy_strerror((CURLcode)rc);
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+    if (status != 200) {
+        const std::string err = formatApiError(status, respBody);
+        if (errorOut) *errorOut = err;
+        return err;
+    }
+
+    std::string formatted = formatFetchPage(respBody);
+    debugLogf("[DeepSeek] fetchWeb: %zu bytes", formatted.size());
+    return formatted;
 }
 
 // ======================================================================

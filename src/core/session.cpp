@@ -10,6 +10,11 @@
 static constexpr const char* CONTEXT_COMPACT_SUMMARY_FULL_PREFIX =
     "\xe2\x9a\xa0\xef\xb8\x8f [Context compacted: ";
 
+// -- Vision: charge a flat per-image budget (deepseek docs: <=1024/image) --
+size_t Session::estimateImageTokens(size_t imageCount) {
+    return imageCount * static_cast<size_t>(kImageTokenEstimate);
+}
+
 // -- Token estimation: ~4 ASCII chars = 1 token, ~2 CJK chars = 1 token --
 size_t Session::estimateTokens(const std::string& text) {
     if (text.empty()) return 0;
@@ -31,6 +36,7 @@ void Session::pruneForContext(size_t maxTokens) {
         for (const auto& msg : messages) {
             t += estimateTokens(msg.content);
             t += estimateTokens(msg.reasoningContent);
+            t += estimateImageTokens(msg.images.size());
             for (const auto& tc : msg.toolCalls)
                 t += estimateTokens(tc.name) + estimateTokens(tc.arguments);
         }
@@ -744,6 +750,11 @@ std::string Session::buildCompactionInput(const CompactionPlan& plan) const {
         const auto& msg = msgs[idx];
         out << "[" << msg.role << "]";
         if (!msg.name.empty()) out << " (" << msg.name << ")";
+        // Vision: the image bytes are not part of the text summary, but the
+        // FACT that the message carried images must survive compaction (the
+        // DB keeps the paths, so the next request can still replay them).
+        if (!msg.images.empty())
+            out << " [+" << msg.images.size() << " images]";
         out << ":\n";
 
         // Truncate long content

@@ -42,6 +42,21 @@ struct ToolResult {
     bool isCancelled = false;
 };
 
+// --- Images (vision input) ------------------------------------------
+
+// One image attached to a user message.
+//   path   -- filesystem path as resolved by the "@path" parser (persisted)
+//   detail -- OpenAI-compatible detail level; Phase 1 always "auto"
+//   mime   -- container format detected from the magic number ("image/png" ...)
+//   dataUrl-- "data:<mime>;base64,..." cache. Not persisted: DB rows keep only
+//             the path, and to_json() re-reads/re-encodes when this is empty.
+struct ImageAttachment {
+    std::string path;
+    std::string detail = "auto";
+    std::string mime;
+    std::string dataUrl;
+};
+
 // --- Message --------------------------------------------------------
 
 struct Message {
@@ -52,6 +67,9 @@ struct Message {
     std::vector<ToolCall> toolCalls;   // for assistant messages
     std::string toolCallId; // for tool result messages
     std::string name;       // for tool result messages
+    // Vision attachments. Only user messages may carry images; to_json()
+    // drops them for every other role (the API returns 400 otherwise).
+    std::vector<ImageAttachment> images;
 
     // Constructor helpers
     static Message System(std::string content);
@@ -131,6 +149,15 @@ inline double lookupModelPrice(const std::vector<ModelPriceEntry>& prices,
 // Whether a model supports tool calls (model-specific knowledge)
 inline bool modelSupportsTools(const std::string& modelId) {
     return modelId.find("reasoner") == std::string::npos;
+}
+
+// Whether a model accepts image content blocks. DeepSeek serves vision on the
+// Flash line ("deepseek-flash", legacy "deepseek-v4-flash-vision-exp"); the
+// "vision" tag is accepted too so experimental names keep working.
+inline bool modelSupportsVision(const std::string& modelId) {
+    if (modelId.find("flash") != std::string::npos) return true;
+    if (modelId.find("vision") != std::string::npos) return true;
+    return false;
 }
 
 struct AppConfig {

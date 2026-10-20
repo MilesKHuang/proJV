@@ -37,6 +37,23 @@ public:
     bool healthCheck(std::string* errorOut = nullptr);
     std::vector<ModelInfo> fetchModels(std::string* errorOut = nullptr);
 
+    // -- Official Search / Fetch tools ------------------------------------
+    // POST {baseUrl}/v1/tools/search  {query, count, need_content}
+    // POST {baseUrl}/v1/tools/fetch   {url}
+    // Both use the same Bearer key as chat. Billed per successful request.
+    // Return a model-readable text block, or a string starting with "Error:".
+    std::string searchWeb(const std::string& query, int count, bool needContent,
+                          std::string* errorOut = nullptr);
+    std::string fetchWeb(const std::string& url, std::string* errorOut = nullptr);
+
+    // Pure response formatters (no network) -- exposed for unit tests.
+    // Search: one block per results[] item. Empty string == no results.
+    static std::string formatSearchResults(const std::string& jsonBody, bool needContent);
+    // Fetch: "# title\n\n<markdown content>", truncated to 100KB.
+    static std::string formatFetchPage(const std::string& jsonBody);
+    // OpenAI-compatible error body -> "Error: HTTP <code> ...: <message>".
+    static std::string formatApiError(long httpStatus, const std::string& body);
+
     // Exposed for SSE write callback
     size_t parseSSEChunk(const std::string& buffer, size_t startOffset, StreamCallbacks& callbacks);
 
@@ -57,4 +74,9 @@ private:
     void initLibcurl();
     std::string buildRequestBody(const ChatRequest& request);
     int postWithRetry(void* curl, const std::string& url, const std::string& body, long* outHttpStatus);
+
+    // POST a JSON body to {baseUrl}{path} with Bearer auth + retry.
+    // Returns a CURLcode (0 == CURLE_OK); the body and HTTP status are out params.
+    int postJson(const std::string& path, const std::string& body,
+                 std::string& outBody, long* outHttpStatus);
 };

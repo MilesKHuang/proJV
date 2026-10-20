@@ -33,6 +33,13 @@ public:
     void run(const std::string& skillName, const std::string& topic);
     void cancel();
 
+    // External cancel probe. When the runner is owned by a tool executor
+    // (run_skill), the TUI's ESC chain only reaches Agent::cancel() ->
+    // ToolRegistry::cancelAll(); it can never touch this object. Injecting
+    // a probe lets every action/round boundary notice that flag and cancel
+    // itself instead of running the whole program to completion.
+    void setCancelProbe(std::function<bool()> probe) { cancelProbe_ = std::move(probe); }
+
     // Test seam: scripted reply for one agent (empty == real API).
     using Responder = std::function<ToolCall(const std::string&, const std::vector<Message>&)>;
     void setResponder(const std::string& agentId, Responder r) { responders_[agentId] = std::move(r); }
@@ -81,6 +88,10 @@ private:
     std::string handleRequestAgent(const std::string& id, const std::string& msg, int depth);
     SubAgent* agentById(const std::string& id);
 
+    // True when cancel was requested locally or by the injected probe.
+    // Promotes a probe hit into a full cancel() (flag + sub-agent abort).
+    bool checkCancel();
+
     AppConfig cfg_;
     ToolRegistry* tools_ = nullptr;
     Callbacks cbs_;
@@ -103,4 +114,5 @@ private:
     int lastRounds_ = 0;
     std::string lastDoc_;
     std::atomic<bool> cancelRequested_{false};
+    std::function<bool()> cancelProbe_;   // optional external cancel source
 };

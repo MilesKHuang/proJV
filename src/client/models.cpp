@@ -1,6 +1,7 @@
 #include "models.h"
 #include "json.hpp"
 #include "debug_log.h"
+#include "tools/base64.h"
 
 // --- ToolDefinition ------------------------------------------------
 std::string ToolDefinition::toJsonSchema() const {
@@ -99,15 +100,47 @@ void from_json(const nlohmann::json& j, ToolCall& tc) {
     tc.parseError.clear();
 }
 
+// Resolve an attachment to a data: URL. Prefers the cached form; falls back to
+// re-reading the file by path (the DB persists paths, not payloads).
+static std::string imageUrlFor(const ImageAttachment& img) {
+    if (!img.dataUrl.empty()) return img.dataUrl;
+    if (img.path.empty()) return "";
+    std::string mime;
+    std::string url = imgutil::makeImageDataUrl(img.path, mime);
+    return url;
+}
+
 void to_json(nlohmann::json& j, const Message& msg) {
     j["role"] = sanitizeUTF8(msg.role);
     // Always emit "content" field. Assistant messages with tool_calls
     // may have empty content; set it to null for API compatibility.
     // Missing "content" key causes HTTP 400 from DeepSeek API.
-    if (msg.role == "assistant" && !msg.toolCalls.empty() && msg.content.empty())
+    if (msg.role == "user" && !msg.images.empty()) {
+        // Vision: content becomes an array of text + image_url blocks.
+        // Images are ONLY legal in user messages, so every other role keeps
+        // the plain-string form and silently drops the attachments.
+        nlohmann::json parts = nlohmann::json::array();
+        if (!msg.content.empty())
+            parts.push_back({{"type", "text"}, {"text", sanitizeUTF8(msg.content)}});
+        for (const auto& img : msg.images) {
+            std::string url = imageUrlFor(img);
+            if (url.empty()) {
+                // File vanished or is unreadable: keep the turn alive and tell
+                // the model instead of failing the whole request.
+                parts.push_back({{"type", "text"},
+                                 {"text", "[image unavailable: " + sanitizeUTF8(img.path) + "]"}});
+                continue;
+            }
+            const std::string detail = img.detail.empty() ? "auto" : img.detail;
+            parts.push_back({{"type", "image_url"},
+                             {"image_url", {{"url", url}, {"detail", detail}}}});
+        }
+        j["content"] = parts;
+    } else if (msg.role == "assistant" && !msg.toolCalls.empty() && msg.content.empty()) {
         j["content"] = nullptr;
-    else
+    } else {
         j["content"] = sanitizeUTF8(msg.content);
+    }
     if (!msg.toolCallId.empty())
         j["tool_call_id"] = sanitizeUTF8(msg.toolCallId);
     if (!msg.name.empty())
@@ -126,8 +159,32 @@ void to_json(nlohmann::json& j, const Message& msg) {
 void from_json(const nlohmann::json& j, Message& msg) {
     if (j.contains("role") && j["role"].is_string())
         msg.role = j["role"].get<std::string>();
-    if (j.contains("content") && j["content"].is_string())
+    if (j.contains("content") && j["content"].is_string()) {
         msg.content = j["content"].get<std::string>();
+    } else if (j.contains("content") && j["content"].is_array()) {
+        // Vision round-trip: flatten text parts, keep image parts.
+        for (const auto& part : j["content"]) {
+            if (!part.is_object()) continue;
+            const std::string type = part.value("type", std::string());
+            if (type == "text") {
+                msg.content += part.value("text", std::string());
+            } else if (type == "image_url") {
+                ImageAttachment img;
+                std::string url;
+                if (part.contains("image_url") && part["image_url"].is_object()) {
+                    const auto& iu = part["image_url"];
+                    url = iu.value("url", std::string());
+                    img.detail = iu.value("detail", std::string("auto"));
+                } else if (part.contains("image_url") && part["image_url"].is_string()) {
+                    url = part["image_url"].get<std::string>();
+                }
+                if (!url.empty()) {
+                    img.dataUrl = url;
+                    msg.images.push_back(std::move(img));
+                }
+            }
+        }
+    }
     if (j.contains("tool_call_id") && j["tool_call_id"].is_string())
         msg.toolCallId = j["tool_call_id"].get<std::string>();
     if (j.contains("name") && j["name"].is_string())
