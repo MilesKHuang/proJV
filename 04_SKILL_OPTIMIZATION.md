@@ -1,78 +1,73 @@
 # proJV 技能层优化待办
 
-> 状态：**只记录，暂不修**。用户计划对所有技能做一次统一优化，届时一并处理。
-> 记录时间：v0.5.7 + 03 文档实现之后。
+> 状态：第 1 条仍挂起（真机未复现出它的 400）；第 2 条里的「思考内容回传」**已修**（v0.5.9，真机复现并定位）。
+> 记录时间：v0.5.7；更新：v0.5.9。
 
-## 1. 强制工具与思考模式冲突（bigbang 每次都多跑一趟）
+## 0. 已修：`reasoning_content` 缺失导致 400（v0.5.9）
 
-### 现象
+### 现场
 
-bigbang 能跑通，但每个动作都要发两次请求：第一次被服务端拒绝，代码兜底改成"模型自选工具"再发一次。
+用户让 proJV 通过 `run_skill` 跑 bigbang，**跑完之后**出现：
+
+```
+HTTP 400: The `reasoning_content` in the thinking mode must be passed back to the API.
+```
+
+会话 DB 里的位置：`[789]` 执行文档 -> `[790]` system nudge -> `[791]` 上面这条错误。即失败的是 **v0.5.8 新增的续跑轮**。
+
+### 实测规则（用真实 API 逐条对照得出）
+
+| 请求内容 | 结果 |
+|---|---|
+| assistant 消息无 `reasoning_content` + 带 `tools` | **400** |
+| 同一消息带 `"reasoning_content": ""` + 带 `tools` | 200 |
+| 同一消息带任意非空 reasoning + 带 `tools` | 200 |
+| 无该字段、但不带 `tools` | 200 |
+
+即：**只要请求带 `tools`（proJV 永远带），每一条 assistant 消息都必须有这个字段**，空字符串即可。
+
+### 根因
+
+v0.5.8 之前技能叙述不进会话（只把 `lastDoc_` 塞进工具结果），会话里不存在"没有 reasoning 的 assistant 消息"。v0.5.8 让技能叙述以 assistant 消息落库，7 条都缺该字段，于是下一轮被拒。
+
+同样会踩这个坑的还有：`/help` 输出、`/clear` 的 "Session cleared."、以及 400 之后我们自己写进会话的 `Error: API request failed...`（它会形成连环 400）。
+
+### 修法
+
+`client/models.cpp::to_json`：assistant 消息**无条件**输出 `reasoning_content`，没有思考链就发空串。
+
+- 不给技能叙述伪造思考文本（实测非空也 200，但假 CoT 会被拼进上下文，污染模型）。
+- 不改技能、不改 Agent 状态机、不动 tool 配对。
+- 单测：`tests/unit/test_reasoning_content.cpp`（5 例）。
+
+## 1. 强制工具与思考模式冲突（bigbang 每次都多跑一趟）—— 仍挂起
 
 ### 官网依据
 
-`https://api-docs.deepseek.com/api/create-chat-completion`：
-
-- `thinking` 对象 **默认 `enabled`**（思考模式默认开启），`reasoning_effort` 默认 `high`。
-- `tool_choice`："`required` and named tool choices are not supported in thinking mode; the API returns a 400 error. Disable thinking mode first to use them."
-
-即：**思考模式开着的时候，不允许用 `{"type":"function","function":{"name":...}}` 指定工具**。
+`thinking` 默认 `enabled`；"`required` and named tool choices are not supported in thinking mode; the API returns a 400 error."
 
 ### 代码依据
 
-| 位置 | 内容 |
-|---|---|
-| `src/core/skill_config.h:54` | `toolMode` 默认 `"verb"` |
-| `src/core/skill_runner.cpp:273` | `const bool force = (config_.toolMode != "auto") && !config_.dynamicDispatch;` |
-| `src/core/sub_agent.cpp:56` | `req.toolChoice = force ? verb : "auto";`（force 时拼成指定函数的对象形式） |
-| `src/client/deepseek.cpp` | `buildRequestBody()` 把非 `auto/none/required` 的 toolChoice 序列化成 `{"type":"function",...}` |
-| `src/core/sub_agent.cpp:108-114` | 兜底：`calls.empty() && force && lastError_` 含 `"tool_choice"` -> 以 `force=false` 重发 |
+`skill_config.h:54` 默认 `verb` → `skill_runner.cpp:273` 算 `force` → `sub_agent.cpp:56` 拼 `toolChoice`；全仓库从不发送 `thinking` 字段。
 
-全仓库没有任何地方发送 `thinking` / `reasoning_effort`（`grep` 无命中），所以服务端永远按默认的"思考开启"处理。
+### 现状（v0.5.9 复核）
 
-### 影响面（按当前 skills 目录逐个核对）
+- 扫描全部历史会话，**只出现过一次 API 错误通知**（就是上面第 0 条那条），说明强制工具触发的 400 即使发生也是被 `requestTool()` 的兜底静默吃掉了，没有在界面上留下痕迹。
+- 因此**无法从数据判断**它到底有没有发生；`04` 最初的分析依据仍是官网文字。
+- 兜底判据已在过程中放宽过一次设想（`tool_choice` / `thinking` / `HTTP 400` 任一），但该改动随后回退，当前代码仍只认 `tool_choice` 字面。
 
-| 技能 | 配置 | 是否命中 |
-|---|---|---|
-| `bigbang` | `config.json` **没有 `tool_mode` 字段**，`dynamic_dispatch` 也没有 | **命中**，每个 action 两次请求 |
-| `monica` | `"tool_mode": "auto"`, `"dynamic_dispatch": true` | 不命中 |
-| `skill_maker`（内置） | `"tool_mode": "auto"` | 不命中 |
-| 用户后续新增技能 | 若照 bigbang 的写法（不写 `tool_mode`） | 默认命中 |
+### 技能统一优化时的建议
 
-量级：bigbang 一轮通常 6 个 action，8 轮就是约 48 个 action，命中时请求数翻倍。
+强制工具时在请求体加 `thinking: {"type": "disabled"}`（技能按手册执行，不需要思维链），并把兜底判据放宽到任意 400。命中范围只有 `bigbang`（其 `config.json` 未写 `tool_mode`），`monica` / `skill_maker` 是 auto，不受影响。
 
-### 隐性风险
-
-兜底依赖 `lastError_` 里出现 `tool_choice` 这个词。官方哪天改文案，兜底失效，`doRequest` 会把那段 400 报错文本当成这一轮的产出交回 SkillRunner，技能在"看似正常"的情况下产出错误内容。
-
-### 修复选项
-
-| 方案 | 改动 | 代价 |
-|---|---|---|
-| A. 配置止血 | `skills/bigbang/config.json` 加 `"tool_mode": "auto"` | 零代码；但模型自选工具，流程确定性下降 |
-| B. 请求关思考 | `force` 时在请求体加 `"thinking": {"type": "disabled"}` | 需要给 `ChatRequest` 加字段；技能用不上思考，速度更快、更省 token |
-| C. 记住能力 | 首次被拒后给该 SubAgent 打标记，后续直接用 `auto` | 只省后续请求，第一次仍白跑 |
-
-推荐 B（配合 A 作为兜底）：技能流程是"按手册走"，本来就不需要思维链。
-
-### 怎么验证修好了
-
-- 调试日志（Debug 构建）里不应再出现 `forced tool_choice rejected, retrying with auto`。
-- 一轮 6 个 action 的请求数从 12 降到 6。
-
-### 阻塞项
-
-真机未验证：仓库内 `api_key.txt` 对 `api.deepseek.com` 返回 401。上述"400 会被触发"来自官网文档 + 代码走读，不是实测。
-
-## 2. 同批发现但不在技能层的两条（另议）
+## 2. 剩余待议
 
 | 项 | 官网说法 | 现状 | 影响 |
 |---|---|---|---|
-| 思考内容回传 | 请求带 `tools` 时，**所有轮**的 `reasoning_content` 都应回传并被拼进上下文 | `models.cpp::to_json` 只在 `toolCalls` 非空时回传 | 长对话里思考链断裂，模型易重复试错；全量回传会显著增加输入 token |
 | 图片分辨率 | 单边最多 8192 px（≥15 张时 4096 px） | 只校验文件大小（30 MiB）与张数（8） | 超大尺寸图片必进 400，且会被 4xx 重试逻辑带着图重发 3 次 |
 
 ## 3. 技能优化时可以顺带看的东西
 
-- `tool_mode` 与 `dynamic_dispatch` 的组合语义目前只有 `verb` / `auto` 两种，配置文件里没有校验；写错（例如 `"toolMode"` 驼峰）会静默回落到 `verb`。
-- `run_skill` 路径下右侧 Agent 面板为空（SkillRunner 是 executor 局部对象），只有显式 `/<skill>` 才显示角色状态。若要让两条路径一致，需要把 runner 发布到 `skillRunner_` 并加锁。
+- `tool_mode` 与 `dynamic_dispatch` 只有 `verb` / `auto` 两种，配置文件没有校验；写错（例如驼峰 `toolMode`）会静默回落到 `verb`。
 - `/help` 不列出已安装技能。
+- v0.5.8 起 `run_skill` 与 `/<skill>` 已共用 `runSkillBlocking()`，面板/气泡/DB 一致；差别只剩"agent 触发时不伪造用户消息"。

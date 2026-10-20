@@ -145,8 +145,13 @@ void to_json(nlohmann::json& j, const Message& msg) {
         j["tool_call_id"] = sanitizeUTF8(msg.toolCallId);
     if (!msg.name.empty())
         j["name"] = sanitizeUTF8(msg.name);
-    // V4 reasoning_content: only send for assistant messages with tool_calls.
-    if (!msg.reasoningContent.empty() && !msg.toolCalls.empty())
+    // V4 thinking: when the request carries `tools` (proJV always does), the API
+    // rejects any assistant message that omits this field with
+    //   "The `reasoning_content` in the thinking mode must be passed back to the API."
+    // So it is emitted for EVERY assistant message, empty when we have no chain
+    // of thought for it (skill narration, /help output, error notices). An empty
+    // string is accepted; with no tools the field is ignored by the server.
+    if (msg.role == "assistant")
         j["reasoning_content"] = sanitizeUTF8(msg.reasoningContent);
     if (!msg.toolCalls.empty()) {
         nlohmann::json tcs = nlohmann::json::array();
