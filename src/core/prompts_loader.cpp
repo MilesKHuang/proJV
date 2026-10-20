@@ -166,42 +166,34 @@ static std::string promptsDir() {
 }
 
 // ============================================================================
-// One-time upgrade of a seeded coder.md
+// Seeds upgrade - pure text transforms, unit-tested in tests/unit
 // ----------------------------------------------------------------------------
-// proJV <= 0.5.6 seeded coder.md with a tool list that predates run_skill, and
-// ensureDefaultPrompts() never overwrites an existing file. Rewrite the line
-// ONLY when it still equals the old default verbatim, so a hand-edited tool
-// list is never touched.
+// ensureDefaultPrompts() never overwrites an existing prompt, so installs made
+// before a feature landed keep the old seeded text. Each transform below is
+// anchored on a line only the seeded default carries and is idempotent, so a
+// hand-edited prompt is never touched.
 // ============================================================================
-static void upgradeCoderToolList(const std::string& path) {
-    static const std::string kOldLine =
-        "tools available: read_file, write_file, exec_shell, grep_files, edit_file, "
-        "file_search, web_search, fetch_url, md_file, update_todo, diagram_tool";
-    static const std::string kNewLine = kOldLine + ", run_skill";
+static const char* kCoderToolsOld =
+    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, "
+    "file_search, web_search, fetch_url, md_file, update_todo, diagram_tool";
 
-    std::ifstream ifs(path);
-    if (!ifs) return;
-    std::string content((std::istreambuf_iterator<char>(ifs)), {});
-    ifs.close();
+static std::string upgradeCoderText(std::string content) {
+    const std::string oldLine = kCoderToolsOld;
+    const size_t pos = content.find(oldLine);
+    if (pos == std::string::npos) return content;
 
-    size_t pos = content.find(kOldLine);
-    if (pos == std::string::npos) return;
-
-    content.replace(pos, kOldLine.size(), kNewLine);
-    std::ofstream ofs(path, std::ios::trunc);
-    if (!ofs) return;
-    ofs << content;
-    debugLogf("[Prompts] Upgraded coder.md tool list (+run_skill)");
+    // The upgraded line contains the old one as a prefix -- require a line end
+    // right after the match so the upgrade stays idempotent.
+    const size_t after = pos + oldLine.size();
+    if (after < content.size()) {
+        const char c = content[after];
+        if (c != '\r' && c != '\n') return content;
+    }
+    content.insert(after, ", run_skill");
+    return content;
 }
 
-// ============================================================================
-// One-time upgrade of a seeded compactor.md
-// ----------------------------------------------------------------------------
-// Adds the "[+N images]" instruction to prompts seeded before vision support.
-// Anchored on a line that only the seeded default carries, so a rewritten
-// prompt is left alone.
-// ============================================================================
-static void upgradeCompactorPrompt(const std::string& path) {
+static std::string upgradeCompactorText(std::string content) {
     static const std::string kAnchor =
         "- Do NOT fabricate information not present in the input.";
     static const std::string kMarker = "[+N images]";
@@ -210,20 +202,33 @@ static void upgradeCompactorPrompt(const std::string& path) {
         "images to that message. Keep the fact that those images were part of the "
         "conversation in your summary, and never invent what they showed.";
 
+    if (content.find(kMarker) != std::string::npos) return content;   // already done
+    const size_t pos = content.find(kAnchor);
+    if (pos == std::string::npos) return content;                     // rewritten
+    content.insert(pos + kAnchor.size(), kLine);
+    return content;
+}
+
+std::string upgradeSeededPrompt(const std::string& filename, std::string content) {
+    if (filename == "coder.md") return upgradeCoderText(std::move(content));
+    if (filename == "compactor.md") return upgradeCompactorText(std::move(content));
+    return content;
+}
+
+// Apply upgradeSeededPrompt() to a file on disk (no-op when unchanged).
+static void upgradePromptFile(const std::string& filename, const std::string& path) {
     std::ifstream ifs(path);
     if (!ifs) return;
-    std::string content((std::istreambuf_iterator<char>(ifs)), {});
+    const std::string original((std::istreambuf_iterator<char>(ifs)), {});
     ifs.close();
 
-    if (content.find(kMarker) != std::string::npos) return;
-    const size_t pos = content.find(kAnchor);
-    if (pos == std::string::npos) return;
+    std::string upgraded = upgradeSeededPrompt(filename, original);
+    if (upgraded == original) return;
 
-    content.insert(pos + kAnchor.size(), kLine);
     std::ofstream ofs(path, std::ios::trunc);
     if (!ofs) return;
-    ofs << content;
-    debugLogf("[Prompts] Upgraded compactor.md (vision marker instruction)");
+    ofs << upgraded;
+    debugLogf("[Prompts] Upgraded %s", filename.c_str());
 }
 
 // ============================================================================
@@ -257,9 +262,9 @@ std::vector<std::string> ensureDefaultPrompts() {
         }
     }
 
-    // Upgrade stale seeded prompts in place (see the upgrade* helpers above).
-    upgradeCoderToolList(dir + "/coder.md");
-    upgradeCompactorPrompt(dir + "/compactor.md");
+    // Upgrade stale seeded prompts in place (see upgradeSeededPrompt above).
+    upgradePromptFile("coder.md", dir + "/coder.md");
+    upgradePromptFile("compactor.md", dir + "/compactor.md");
 
     // Scan all .md files in the directory
     std::vector<std::string> files;

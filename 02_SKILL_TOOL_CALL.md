@@ -122,3 +122,38 @@ SkillRunner 在既有回合/action 边界检查点（`skill_runner.cpp` 236/239 
 | 模型误用 run_skill | 工具描述写清"重型多 Agent 流程，昂贵耗时，仅在明确复杂任务时使用" |
 | `/` 误伤自然语言（如 `/usr/...` 路径） | 未命中透传兜底 + 技能名=已安装列表，命中触发已足够精确；`//` 注释、`./` 相对路径首 token 天然不匹配技能名 |
 | 用户不知可触发哪些技能 | `/skill list` 安全网 + `/help` 列出已安装技能 |
+
+---
+
+## 实施记录（v0.5.7）
+
+状态：**Phase 1 / 2 / 3 完成，Phase 5 部分完成，Phase 4（可选）未做**。提交 `1b9db1f`。
+
+### 代码落点
+
+| 文件 | 内容 |
+|---|---|
+| `src/core/skill_trigger.h/.cpp` | 新增。`/<token>` 判定为纯函数（None / List / Trigger），供 `sendMessage()` 调用并被单测覆盖 |
+| `src/tui/app_tui.cpp` | `sendMessage()` 技能分支改为调用 `skill_trigger::parse`；`startSkill(name, topic, rawInput)`；`run_skill` 工具注册；抽出 `buildSharedContext()` |
+| `src/core/skill_runner.h/.cpp` | `setCancelProbe()` + `checkCancel()`；`run()`、`executeSteps()` 的 round/step/action 边界检查 |
+| `src/core/prompts_loader.cpp` | `coder.md` 默认工具表加入 `run_skill`，并对旧种子文件做一次性迁移 |
+| `tests/unit/test_skill_trigger.cpp` | 触发器规则 7 组 + cancel probe 2 组 + "无事件仍产出 lastDoc" 1 组 |
+
+### 实施决策（文档留白处，均已可改）
+
+1. **保留字保护**：`/clear` `/help` `/workspace` `/compress` 即使被同名技能文件夹遮蔽也按原命令处理（本文档只写了"未命中透传"）。
+2. **topic 为空**：选本文档给出的第二种做法 —— 系统气泡 `[skill] usage: /<name> <topic>`，不发送。
+3. **`/skill <其他>`**：一律当列表输出（`/skill list` 的安全网），不做拦截报错。
+4. **`run_skill` 返回值**：`lastDoc_` 非空则返回文档；否则返回 `[skill] <name> finished after N round(s), converged=yes/no, but produced no document`；被取消返回 `cancelled before producing a document`。不重试。
+5. **`run_skill` 不发事件**：`cbs.onEvent` 留空，仅 `onProgress` 更新 `skillStatus_`（状态行）。SkillRunner 用 executor 局部对象，**不**发布到 `skillRunner_`，因此右侧 Agent 面板在 `run_skill` 路径下为空（避免跨线程访问 `agents_`）。显式 `/<skill>` 路径的面板行为不变。
+6. **技能名解析复用**：`run_skill` 用 `skill_trigger::parse("/" + name, installed)` 解析，与用户触发共用同一套规则（大小写不敏感、容忍模型多写的 `/`）。
+7. **提示词迁移**：只在 `coder.md` 的工具行**逐字等于旧默认值**时追加 `run_skill`（幂等，可单测）；手改过的 prompt 不动。
+
+### 与 01_IMAGE_INPUT 的冲突已裁决
+
+01 文档仍写 `!<技能名>` 触发，本文档 v2 改为 `/`。实现按 **本文档 v2**：`!` 不参与任何触发，`@` 图像在技能触发时忽略并提示。
+
+### 已知缺口
+
+- `/help` 不列出已安装技能（本文档风险表中的缓解手段，非实施步骤）。需要的话可在 `handleQuickCommand` 里注入技能列表。
+- `run_skill` 的 executor 本体（在 `TuiApp::setupTools`）没有直接单测，只有其依赖的两条不变量被测试覆盖（触发器规则、runner 无事件产出）。

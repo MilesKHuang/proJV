@@ -111,3 +111,37 @@ Search/Fetch 走 `config.baseUrl` + Bearer 鉴权 + JSON 请求，与 chat 完�
 | fetch 大页面 token 成本 | 100KB 截断 + 工具描述提示优先用 Search summary（600-800 字符） |
 | 2026-11-01 计费生效前免费期行为差异 | 文档注明时间节点；上线即按计费设计 |
 
+
+---
+
+## 实施记录（v0.5.7）
+
+状态：**已完成**。提交 `1b9db1f`。
+
+### 与官方文档核对后的修正
+
+| 本文档原文 | 官方实际 | 处理 |
+|---|---|---|
+| 结果字段 `publish_time` | `date`（RFC 3339，可能为 null） | 优先读 `date`，回退 `publish_time` |
+| 未提 `site_name` / `site_icon` | 均存在，可为 null | 输出 `site:` 一行，null 时跳过 |
+| `authority` 0~4 | 0~4，**-1 表示未知** | 原样输出，包括 -1 |
+| 计费 5 元/千次 | 0.75 美元/千次成功请求 | 仅文档信息；工具描述只写"按次计费" |
+| 未提 `lang:` 算子 | 支持 `lang:zh,en` | 请求 query 原样透传，无需代码 |
+
+`label`/`ori_question`/`localization` 未暴露给模型：本文档 Phase 3 只要求 `query` / `count` / `need_content`。
+
+### 代码落点
+
+| 文件 | 内容 |
+|---|---|
+| `src/client/deepseek.h/.cpp` | `searchWeb` / `fetchWeb` / `postJson`（私有）/ 纯格式化 `formatSearchResults`、`formatFetchPage`、`formatApiError`；`isRetryableHttpStatus` 补 408 |
+| `src/tools/web_tools.h/.cpp` | 工具名不变，仅换 executor；删除 `searchBing` / `httpGet` / `decodeHtmlEntities` |
+| `src/tui/app_tui.cpp` | `registerSearchTool(tools, client)` / `registerFetchTool(tools, client)` |
+| `tests/unit/test_web_api.cpp` | 7 组：结果渲染、need_content、空/异常 JSON、fetch 截断、错误映射 |
+
+### 验证情况
+
+- 单测：全部通过（无网络依赖，纯格式化层）。
+- 输出裁剪：search 的 `content` 截 50KB，fetch 截 100KB，均带提示后缀。
+- 空结果：Search 返回空数组 -> `Error: No results found for "<query>"`；Fetch 404 -> `Error: HTTP 404 (...): <message>`。
+- **真机未验证**：仓库内的 `api_key.txt` 对 `api.deepseek.com` 返回 401（search/fetch/不存在路径同为 401，网关先鉴权），因此鉴权、计费与真实响应结构仍需你用一个有效 Key 跑一次。

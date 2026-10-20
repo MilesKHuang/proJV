@@ -50,7 +50,7 @@
 
 ### 与 skill 的交互（暂不支持共存）
 
-`!<技能名>` 触发 skill 时，同一消息中的 `@<路径>` 图像**忽略并提示**（系统气泡：图像已忽略，skill 暂不支持携带图像），不静默丢弃。
+`/<技能名>` 触发 skill 时，同一消息中的 `@<路径>` 图像**忽略并提示**（系统气泡：图像已忽略，skill 暂不支持携带图像），不静默丢弃。
 
 ## 实施步骤
 
@@ -76,3 +76,46 @@
 
 9. 单测：多模态 `to_json` 黄金 JSON（无图消息不变）、`@` 解析（引号路径/多图/目录展开/非法报错）、base64 往返、魔数嗅探、token 估算。
 10. `clean_and_build.bat` 全量构建回归。
+---
+
+## 实施记录（v0.5.7）
+
+状态：**Phase 1 / 2 / 3 全部完成**。提交 `1b9db1f`。
+
+### 代码落点
+
+| 文件 | 内容 |
+|---|---|
+| `src/tools/base64.h` | 新增。标准 base64 + 魔数嗅探（JPEG/PNG/GIF/WebP）+ `makeImageDataUrl()` |
+| `src/core/image_input.h/.cpp` | 新增。`@<path>` 解析、目录展开、三重上限校验、文本剥离。放在 core 而不是 `app_tui.cpp`，纯粹为了可单测 |
+| `src/client/models.h/.cpp` | `ImageAttachment`、`Message::images`、`modelSupportsVision()`；`to_json` 输出 content 块数组，`from_json` 还原 |
+| `src/tui/app_tui.cpp` | `sendMessage()` 的 `@` 解析分支（排在技能分支之后）；`startTurn(text, images)` |
+| `src/tui/bubble_model.cpp` | 用户气泡追加 `[Image] <filename>` 行 |
+| `src/core/storage.cpp` | `image_paths` 列（CREATE + ALTER 容错 + COALESCE 读取），JSON 数组只存路径 |
+| `src/core/session.h/.cpp` | `estimateImageTokens()`（1024/张）；`buildCompactionInput` 追加 `[+N images]` |
+| `src/core/prompts_loader.cpp` | `compactor.md` 默认加一句 `[+N images]` 说明，并对旧种子做幂等迁移 |
+| `src/core/agent.cpp` | HTTP 400 且会话含图时追加"当前模型可能不支持图像输入"提示 |
+| `tests/unit/test_image_input.cpp` | 16 组：base64 往返、魔数、各种 `@` 形态、拒绝分支、序列化、token、模型判定 |
+
+### 实施决策（文档留白处，均已可改）
+
+1. **纯图片消息的文本**：剥离标记后若正文为空，补 `"Describe the attached image(s)."`，保证 content 块里始终有一个非空 text 块。
+2. **空格处理**：剥离标记后把连续空格/制表符折叠为一个（不动换行），否则 `a @"x" b` 会留下双空格。
+3. **路径规整**：`@./a.png` 经 `lexically_normal()` 归一，与 `@a.png` 指向同一路径（Windows 上 C++20 的 `u8string()` 返回 `std::u8string`，已显式转换）。
+4. **`ImageAttachment` 多两个字段**：`mime` 与 `dataUrl` 缓存。文档只写了 `{path, detail}`；缓存让同一请求不用每次重新读盘 + base64。`dataUrl` 不落库，DB 只存 path，`to_json` 发现缓存为空时按 path 重读。
+5. **不可读文件不致命**：序列化时若某张图丢失，退化成 `[image unavailable: <path>]` 文本块而不是让整个请求 400。
+6. **`detail` 恒为 `auto`**（文档要求），字段已预留。
+
+### 待你确认的一处语义（当前取舍已实现）
+
+文档同时写了"压缩需保留该消息含图的事实"与"压缩后仍可按路径重读图、无永久损坏"。两句话只部分成立：
+
+- 事实保留：已实现，`[+N images]` 标记进入压缩输入，并写了对应 prompt 指令。
+- 图像本身：一旦该消息被 LLM 压缩替换为摘要，**图像就从活动上下文消失**（路径仍在 DB，重新打开会话会从 DB 还原并重放）。
+- 若要"压缩后仍能重放图像"，需要把带图消息列入 `planCompaction` 的 pinned 集合（当前未做）。
+
+### 验证情况
+
+- 单测：16 组全通过（含目录展开排序、非图片静默跳过、超 8 张/缺文件/非图片格式的拒绝分支、`to_json` 黄金结构）。
+- 启动验证：清空 `projv_files/prompts` 后启动，`coder.md` 正确带一个 `run_skill`；把工具行回退成 0.5.6 的旧值再启动，迁移只补一次（此前发现并修复了"补两次"的 bug，已加 `test_prompt_upgrade.cpp` 锁死）。
+- **真机未验证**：真实 API 是否接受 content 块数组（官方文档给的结构与实现一致），以及真实图片的 token 计费。原因同 03：仓库里的 Key 返回 401。

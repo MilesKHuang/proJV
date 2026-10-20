@@ -10,3 +10,8 @@ std::vector<std::string> ensureDefaultPrompts();
 // Load a prompt file from projv_prompts/<filename>.
 // Returns empty string if file does not exist or cannot be read.
 std::string loadPromptFile(const std::string& filename);
+
+// Upgrade a seeded prompt to the current default when it is still untouched
+// (anchored, idempotent, returns the text unchanged when nothing applies).
+// Exposed for unit tests; ensureDefaultPrompts() applies it on startup.
+std::string upgradeSeededPrompt(const std::string& filename, std::string content);
