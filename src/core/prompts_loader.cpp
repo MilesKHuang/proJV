@@ -36,7 +36,7 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "## 3. Available Tools\n"
     "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill\n"
     "\n"
-    "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 300000 (5 min), max is 600000 (10 min). Long silent commands such as downloads, builds, and `git clone` are allowed until the total timeout; silence alone does NOT mean the command failed. Do not kill long-running commands early and do not discard all output to /dev/null.\n"
+    "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 1800000 (30 min), which is also the hard cap; pass a smaller value only to fail faster. Long silent commands such as downloads, builds, and `git clone` are allowed until the total timeout; silence alone does NOT mean the command failed. Do not kill long-running commands early and do not discard all output to /dev/null.\n"
     "- `run_skill` starts an installed multi-agent skill (see the skill list in the workspace) and blocks until the whole workflow finishes -- it is expensive and slow (minutes). Use it only for explicitly complex multi-role tasks, never for something you can do with a normal tool.\n"
     "\n";
 

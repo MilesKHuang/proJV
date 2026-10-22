@@ -16,7 +16,8 @@ static constexpr const char* TOOL_PARAM_STDIN =
     "Optional: content to pipe to the command's stdin. "
     "Use with PowerShell: powershell -Command \"$input | Set-Content -Path 'file.cpp' -Encoding UTF8\"";
 static constexpr const char* TOOL_PARAM_TIMEOUT_MS =
-    "Optional total timeout in milliseconds (default 300000 = 5 min, max 600000 = 10 min).";
+    "Optional total timeout in milliseconds (default 1800000 = 30 min, hard cap 1800000 = 30 min). "
+    "Pass a smaller value only to fail faster.";
 
 void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
                        IProcessRunner* procRunner)
@@ -39,9 +40,9 @@ void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
         std::string stdinContent = extractStringArg(args, "stdin");
         if (cmd.empty()) return "Error: Missing 'command' argument";
 
-        int timeoutMs = extractIntArg(args, "timeout_ms", kDefaultProcessTimeoutMs);
-        if (timeoutMs <= 0) timeoutMs = kDefaultProcessTimeoutMs;
-        if (timeoutMs > kMaxProcessTimeoutMs) timeoutMs = kMaxProcessTimeoutMs;
+        int timeoutMs = extractIntArg(args, "timeout_ms", kProcessTimeoutMs);
+        if (timeoutMs <= 0) timeoutMs = kProcessTimeoutMs;
+        if (timeoutMs > kProcessTimeoutMs) timeoutMs = kProcessTimeoutMs;
 
         ProcessConfig cfg;
         cfg.command      = cmd;
