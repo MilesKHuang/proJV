@@ -64,6 +64,50 @@ undeclared agent now fail loudly.
 
 ---
 
+## Follow-up: what running monica on this repository found
+
+The first real run (`/monica` on `src/`, 94 files, 10 workers) processed every
+file but exposed four problems. All are fixed here.
+
+**Bugs found in the code**
+
+- `md_file` was broken on Linux: the tool carried its own copy of the workspace
+  path guard, complete with the hardcoded `\`. It now uses the shared
+  `validateToolPath()` (-76 lines of duplicated logic).
+- `grep_files` answered `No matches found` when given a single file path, because
+  a file went into a recursive directory walk. That false negative is exactly
+  what corrupts a dead-code audit. It now searches that one file.
+- The Windows process runner ignored `ProcessConfig::extraEnv`, so pytool
+  environment variables were silently dropped there.
+
+**Skill tuning, driven by the numbers**
+
+Round 1 dispatched 86 files and 18 reported; shrinking batches to 1-3 files in
+round 6 made it 3/3. The per-file workload, not the model, was the problem.
+
+- `worker.md`: the dead-code audit used one `grep_files` per symbol (20 symbols
+  x 8 files against a 60-call budget = guaranteed death). It is now one
+  alternation regex per file, with a hard cap of ~12 calls per file, an explicit
+  budget section, an ASCII/keep-me table (two workers disagreed about em dashes
+  vs UI glyphs) and report fields that separate "audited and clean" from "not
+  audited".
+- `supervisor.md`: batches are 3-4 files, failures are re-dispatched smaller, and
+  it must balance "dispatched files" against "reported files" before `DONE`. It
+  also may no longer claim a change count it cannot see.
+- `config.json`: `max_tool_iters` 60 -> 90, `max_rounds` 8 -> 10.
+
+**Engine contract**
+
+- A turn never returns an empty string any more. It returns
+  `[no report] '<role>' ran out of tool budget (N calls) without calling '<verb>'`.
+  Previously silence propagated up and the batch looked like it never existed.
+- `submit_reserve` (new, default 0 = off): say "stop exploring, submit now" once
+  the last N iterations are reached. Soft on purpose - forcing `tool_choice`
+  would disable thinking, which `bigbang` relies on. At 0 the request sequence is
+  unchanged, so existing skills are unaffected.
+
+---
+
 ## Upgrade notes
 
 - No config migration needed. `max_recursion` still loads, with a warning.
@@ -78,7 +122,7 @@ undeclared agent now fail loudly.
 
 ## Verification
 
-- `proJV_tests`: 170 test cases / 799 assertions, no network required.
+- `proJV_tests`: 179 test cases / 829 assertions, no network required.
 - Built and tested on **two platforms**: Windows (MSVC 19.29, VS 2019) and
   Linux (Ubuntu 22.04 / WSL2, g++ 11, CMake 3.22) - both green.
 - `cpack` produces `proJV-0.6.0-windows-x64.zip` and
@@ -91,5 +135,4 @@ undeclared agent now fail loudly.
   every file tool rejected sub-paths of the workspace on POSIX. Rewritten as a
   component-wise path comparison (separator agnostic, still case-insensitive on
   Windows). 12 test cases caught it.
-- Still not verified: a full `/monica` run against a 200-file project with a
-  real API key (see 05_SKILL_IMPROVE.md, acceptance section).
+- Verified by a real `/monica` run on this repository (94 files). A second run with the tuned skill is the next step; the token/call counts from the first run were not recorded.
