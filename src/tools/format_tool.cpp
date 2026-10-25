@@ -121,12 +121,13 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
     ToolDefinition def;
     def.name = "format_file";
     def.description =
-        "Format one file. mode=\"clang\" (default) runs clang-format in place and honours "
-        "the nearest .clang-format above the file. mode=\"whitespace\" needs no external "
-        "program and only does safe cleanup: leading tabs -> 4 spaces, trailing whitespace "
-        "removed, exactly one final newline, line endings preserved. Reports how many lines "
-        "changed. Never changes code semantics. Prefer edit_file for logic edits; use this "
-        "for formatting only.";
+        "Format one file. mode=\"clang\" (default) runs clang-format in place and uses the "
+        "nearest .clang-format above the file; if the project has none it refuses and asks for "
+        "an explicit style, because falling back to LLVM would restyle the whole project. "
+        "mode=\"whitespace\" needs no external program and only does safe cleanup: leading tabs "
+        "-> 4 spaces, trailing whitespace removed, exactly one final newline, line endings "
+        "preserved. Reports how many lines changed. Never changes code semantics. Prefer "
+        "edit_file for logic edits; use this for formatting only.";
     def.parameters = {
         {"path", "string", "File to format", true},
         {"mode", "string", "'clang' (default) or 'whitespace'", false},
@@ -172,11 +173,19 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
                                                          : clangFormatPath;
         std::string styleArg;
         const std::string style = extractStringArg(args, "style");
-        if (!style.empty()) styleArg = " -style=" + style;
-        else if (findClangFormatConfig(fs::path(resolved), fs::path(workspacePath)))
+        if (!style.empty()) {
+            styleArg = " -style=" + style;
+        } else if (findClangFormatConfig(fs::path(resolved), fs::path(workspacePath))) {
             styleArg = " -style=file";
-        else
-            styleArg = " -style=file -fallback-style=LLVM";
+        } else {
+            // No .clang-format anywhere above the file. Falling back to LLVM here
+            // would silently restyle the whole project (2-space indent, joined
+            // 2-space blocks); measured on this repo that is ~35% of all lines.
+            // Refuse, and say what the options are.
+            return "Error: no .clang-format found above " + resolved +
+                   ". Add one, pass style=\"LLVM\" (or another style) explicitly, "
+                   "or call format_file with mode=\"whitespace\".";
+        }
 
         ProcessConfig cfg;
         cfg.command = quotePath(exe) + " -i" + styleArg + " " + quotePath(resolved);

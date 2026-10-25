@@ -308,7 +308,9 @@ TEST_CASE("format_file: clang mode reports a clear error and leaves the file alo
         ToolRegistry reg;
         registerFileTools(reg, root.string());
         registerFormatTool(reg, root.string(), runner, "projv_no_such_clang_format");
-        const std::string out = run(reg, "format_file", {{"path", "n.cpp"}});
+        // An explicit style gets past the "no .clang-format" guard, so the
+        // missing binary is what we exercise here.
+        const std::string out = run(reg, "format_file", {{"path", "n.cpp"}, {"style", "LLVM"}});
         CHECK(has(out, "not found"));
         CHECK(has(out, "mode=\"whitespace\""));   // points at the fallback
         CHECK(readAt(root, "n.cpp") == original);
@@ -325,4 +327,59 @@ TEST_CASE("format_file: unknown mode is rejected") {
     registerFormatTool(reg, root.string(), nullptr, "");
     CHECK(has(run(reg, "format_file", {{"path", "x.cpp"}, {"mode", "prettier"}}),
               "Unknown mode"));
+}
+
+TEST_CASE("format_file: clang mode refuses to guess a style when there is no .clang-format") {
+    const fs::path root = freshRoot("fmt_nostyle");
+    writeAt(root, "a.cpp", "int  x = 1;\n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+    // A runner is present, so the only thing stopping the call is the missing
+    // style file -- which is the point: LLVM fallback would restyle everything.
+    registerFormatTool(reg, root.string(), CreateProcessRunner(), "");
+
+    const std::string out = run(reg, "format_file", {{"path", "a.cpp"}});
+    CHECK(has(out, "no .clang-format found"));
+    CHECK(has(out, "mode=\"whitespace\""));
+    CHECK(readAt(root, "a.cpp") == "int  x = 1;\n");   // untouched
+}
+
+TEST_CASE("format_file: clang mode works when a style is given explicitly") {
+    // Skips itself when this machine has no clang-format binary.
+    std::vector<std::string> candidates = {
+#ifdef _WIN32
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
+        "C:\\Program Files\\LLVM\\bin\\clang-format.exe",
+#else
+        "/usr/bin/clang-format",
+        "/usr/local/bin/clang-format",
+#endif
+    };
+    std::string exe;
+    for (const auto& c : candidates) {
+        std::error_code ec;
+        if (fs::exists(c, ec)) { exe = c; break; }
+    }
+    if (exe.empty()) {
+        WARN("no clang-format on this machine -- clang branch not exercised");
+        return;
+    }
+
+    const fs::path root = freshRoot("fmt_clang_real");
+    writeAt(root, "b.cpp", "int    main(){return 0;}   \n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+    IProcessRunner* runner = CreateProcessRunner();
+    REQUIRE(runner != nullptr);
+    registerFormatTool(reg, root.string(), runner, exe);
+
+    const std::string out = run(reg, "format_file", {{"path", "b.cpp"}, {"style", "LLVM"}});
+    runner->Cancel();
+    delete runner;
+
+    CHECK(has(out, "Formatted (clang-format)"));
+    const std::string after = readAt(root, "b.cpp");
+    CHECK(after != "int    main(){return 0;}   \n");   // it really rewrote the file
+    CHECK(has(after, "int main()"));
 }

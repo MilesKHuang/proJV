@@ -15,9 +15,10 @@ out, the engine ends the turn and your report is lost.
 - Never explore the project just to understand context. You were given files.
 
 ## Per file, in this order
-1. **Format.** Call `format_file(path=...)`. It tries `clang-format` first and
-   falls back to a whitespace pass by itself. If it reports "not found", call
-   `format_file(path=..., mode="whitespace")` and note it in the report.
+1. **Format.** Call `format_file(path=...)`. On a project without a
+   `.clang-format` it refuses on purpose (it will not guess a style). If it
+   returns any error - no clang-format installed, no style file - call
+   `format_file(path=..., mode="whitespace")` and put the reason in the report.
    Do not attempt to reformat by rewriting the file.
 2. **ASCII / full-width check.** Replace what is on the left of this table,
    keep what is on the right. Change code and comments only; never change a
