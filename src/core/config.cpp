@@ -116,7 +116,7 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
     cfg.loaded = !cfg.apiKey.empty();
 
     if (cfg.apiKey.empty()) {
-        cfg.loadError = "No API key configured. Set it in Settings → Configuration.";
+        cfg.loadError = "No API key configured. Set it in Settings -> Configuration.";
         debugLog("[Config] No API key found");
     } else {
         debugLog("[Config] Config loaded successfully");

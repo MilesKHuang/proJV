@@ -150,7 +150,7 @@ bool Storage::ensureTables() {
         try {
             writeDb_->exec("ALTER TABLE messages ADD COLUMN reasoning_content TEXT DEFAULT ''");
         } catch (const SQLite::Exception&) {
-            // Column already exists — safe to ignore
+            // Column already exists -- safe to ignore
         }
         // Migration: image_paths (vision attachments, JSON array of paths).
         try {

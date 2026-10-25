@@ -22,7 +22,7 @@ std::string PythonToolManager::pytoolDir() {
 // Helper: try 'where <candidate>' to find Python
 // ============================================================================
 static std::string tryWhere(const std::string& name) {
-    std::string cmd = 
+    std::string cmd =
 #ifdef _WIN32
         "where " + name + " 2>nul";
 #else

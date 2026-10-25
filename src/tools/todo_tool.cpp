@@ -23,8 +23,8 @@ static constexpr const char* TOOL_PARAM_TODO_FILE_STRUCTURE = "Key file list for
 static constexpr const char* TOOL_PARAM_TODO_TASK = "Task name or identifier to update (for action=update).";
 static constexpr const char* TOOL_PARAM_TODO_STATUS = "done | in_progress | pending (for action=update).";
 static constexpr const char* TOOL_PARAM_TODO_BRIEF =
-    "Structured completion summary. FORMAT: '<file path>: <change> [L<line>] — <result>' "
-    "Example: 'Source.h: added #include <vector> [L10], fixed copy ctor [L42] — compile OK'\n"
+    "Structured completion summary. FORMAT: '<file path>: <change> [L<line>] - <result>' "
+    "Example: 'Source.h: added #include <vector> [L10], fixed copy ctor [L42] - compile OK'\n"
     "Must include: file path(s), what changed, key result. "
     "Target 100-200 chars. For action=update.";
 

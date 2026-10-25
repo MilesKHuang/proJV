@@ -1,4 +1,4 @@
-﻿#include "agent.h"
+#include "agent.h"
 #include "prompts.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -41,7 +41,7 @@ static constexpr const char* QUICK_HELP =
     "| `/compress` | Summarize early messages |\n"
     "| `/<skill> <topic>` | Run an installed multi-agent skill (e.g. `/monica D:\\dir`) |\n"
     "| `/skill list` | List installed skills |\n"
-    "\nproJV v" PROJV_VERSION " — native C++ DeepSeek AI agent (FTXUI).\n";
+    "\nproJV v" PROJV_VERSION " - native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
 
 static std::string buildToolPathsMessage(const std::string& cpp, const std::string& py) {

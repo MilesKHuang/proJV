@@ -7,5 +7,5 @@ void registerShellTool(class ToolRegistry& registry, const std::string& workspac
                        IProcessRunner* procRunner = nullptr);
 void registerFileTools(class ToolRegistry& registry, const std::string& workspacePath = "");
 void registerEditFileTool(class ToolRegistry& registry);
-// void registerGitTools(class ToolRegistry& registry);  // removed — git handled via shell
+// void registerGitTools(class ToolRegistry& registry);  // removed - git handled via shell
 void registerFileSearchTool(class ToolRegistry& registry);

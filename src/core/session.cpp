@@ -176,7 +176,7 @@ void Session::pruneForContext(size_t maxTokens) {
     // -- Build compact summary of what was pruned ----------------
     if (truncatedUserTextCount > 0 || deletedMsgCount > 0 || !truncatedToolNames.empty()) {
         std::string summary;
-        summary += "⚠️ [Context compacted: ";
+        summary += "[!] [Context compacted: ";
         if (deletedMsgCount > 0)
             summary += std::to_string(deletedMsgCount) + " old msgs deleted (" +
                        std::to_string(deletedTokenCount / 1000) + "K), ";
