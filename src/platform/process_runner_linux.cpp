@@ -223,8 +223,6 @@ class ProcessRunnerLinux : public IProcessRunner {
 
     void Cancel() override { cancelled_ = true; }
 
-    bool IsRunning() const override { return pid_ != 0; }
-
   private:
     std::mutex mutex_;
     std::atomic<bool> cancelled_{false};

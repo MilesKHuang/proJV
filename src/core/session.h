@@ -50,9 +50,6 @@ struct Session {
     static constexpr size_t kImageTokenEstimate = 1024;
     static size_t estimateImageTokens(size_t imageCount);
 
-    // Strip the last assistant(tool_calls) message and its tool result followers.
-    void stripLastToolCallsAndResults();
-
     // Soft strip: merges the following tool result content INTO the assistant
     // message content, then removes the tool_calls and tool result messages.
     void softStripLastToolCalls();

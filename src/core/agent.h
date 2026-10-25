@@ -93,8 +93,6 @@ class Agent {
     bool hasDestructiveCommand(const ToolCall& call) const;
     ToolResult executeTool(const ToolCall& call);
     void repairSession();
-    void setStatus(AgentState state, const std::string& msg = "");
-    void setError(const std::string& err);
     void updateSnapshot();
     size_t effectiveContextWindow() const {
         if (configContextWindow > 0) return configContextWindow;

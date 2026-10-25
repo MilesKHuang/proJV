@@ -17,7 +17,6 @@ struct ProcessConfig {
     std::string stdinContent; // optional stdin data
     int timeoutMs = 0;        // total wall-clock timeout; 0 = no timeout
     int idleTimeoutMs = 0;    // max silence between output; 0 = disabled
-    bool inheritEnv = true;   // inherit parent environment
     std::map<std::string, std::string> extraEnv;
 };
 
@@ -56,9 +55,6 @@ class IProcessRunner {
     // Signal the running process to terminate.
     // Windows: TerminateJobObject / Linux: killpg(SIGTERM) -> SIGKILL.
     virtual void Cancel() = 0;
-
-    // True while a process is executing.
-    virtual bool IsRunning() const = 0;
 };
 
 // Factory: platform-specific implementation

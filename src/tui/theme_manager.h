@@ -19,9 +19,7 @@ class ThemeManager {
     bool switchTo(const std::string& name);
     void applyCustom(const ThemeColors& tc);
     bool exportToFile(const std::string& filename) const;
-    bool loadFromFile(const std::string& filepath);
     const std::vector<std::string>& installedNames() const { return installedNames_; }
-    const std::string& themeDir() const { return themeDir_; }
 
     // Called whenever the theme changes (by name string).
     std::function<void(const std::string& themeName)> onThemeChanged;

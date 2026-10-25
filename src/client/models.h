@@ -106,14 +106,6 @@ struct ChatResponse {
     int completionTokens = 0;
 };
 
-struct StreamChunk {
-    std::string deltaContent;
-    std::vector<ToolCall> deltaToolCalls;
-    bool finishReason = false;
-    std::string finishReasonType;
-    int index = 0;
-};
-
 // --- nlohmann::json conversions for ADL -----------------------------
 #include "json.hpp"
 
@@ -124,13 +116,6 @@ void from_json(const nlohmann::json& j, Message& msg);
 void to_json(nlohmann::json& j, const ToolDefinition& td);
 
 // --- Tool execution -------------------------------------------------
-
-enum class ToolApproval { Pending, Approved, Rejected };
-
-struct PendingToolCall {
-    ToolCall call;
-    ToolApproval approval = ToolApproval::Pending;
-};
 
 // --- Config ---------------------------------------------------------
 
@@ -231,7 +216,6 @@ struct AgentStatus {
     AgentState state = AgentState::Idle;
     std::string streamingText;
     std::string reasoningText; // reasoning_content from deepseek-reasoner
-    PendingToolCall pendingTool;
     std::string errorMessage;
     std::string statusMessage; // "Working...", "Thinking...", etc.
 

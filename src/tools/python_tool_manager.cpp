@@ -200,7 +200,6 @@ std::string PythonToolManager::executePyTool(const std::string& toolDir,
     cfg.workDir = workspacePath;
     cfg.stdinContent = args;
     cfg.timeoutMs = kProcessTimeoutMs;
-    cfg.inheritEnv = true;
     cfg.extraEnv["PROJV_WORKSPACE"] = workspacePath;
     cfg.extraEnv["PROJV_TOOL_DIR"] = toolDir;
 

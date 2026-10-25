@@ -203,32 +203,6 @@ void Session::pruneForContext(size_t maxTokens) {
               messages.size(), beforeTokenCount / 1000, total / 1000);
 }
 
-void Session::stripLastToolCallsAndResults() {
-    std::lock_guard<std::mutex> lock(mtx);
-
-    int lastToolCallIdx = -1;
-    for (int i = (int)messages.size() - 1; i >= 0; --i) {
-        if (!messages[i].toolCalls.empty()) {
-            lastToolCallIdx = i;
-            break;
-        }
-    }
-    if (lastToolCallIdx < 0) return;
-
-    int removeEnd = lastToolCallIdx;
-    for (size_t i = (size_t)lastToolCallIdx + 1; i < messages.size(); ++i) {
-        if (messages[i].role == "tool") {
-            removeEnd = (int)i;
-        } else {
-            break;
-        }
-    }
-
-    size_t count = (size_t)(removeEnd - lastToolCallIdx + 1);
-    messages.erase(messages.begin() + lastToolCallIdx, messages.begin() + removeEnd + 1);
-    debugLogf("[Session] stripLastToolCallsAndResults: removed %zu msgs", count);
-}
-
 void Session::softStripLastToolCalls() {
     std::lock_guard<std::mutex> lock(mtx);
 

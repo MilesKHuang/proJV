@@ -28,11 +28,6 @@ class DeepSeekClient {
     ~DeepSeekClient();
 
     void setConfig(const AppConfig& cfg);
-    bool isReady() const { return !config.apiKey.empty(); }
-    std::string getModel() const {
-        std::lock_guard<std::mutex> lock(mutex);
-        return config.model;
-    }
 
     bool streamBlocking(const ChatRequest& request, StreamCallbacks callbacks);
     void cancel();
@@ -42,7 +37,6 @@ class DeepSeekClient {
     std::string buildRequestBody(const ChatRequest& request);
 
     ChatResponse sendMessage(const ChatRequest& request, std::string* errorOut = nullptr);
-    bool healthCheck(std::string* errorOut = nullptr);
     std::vector<ModelInfo> fetchModels(std::string* errorOut = nullptr);
 
     // -- Official Search / Fetch tools ------------------------------------

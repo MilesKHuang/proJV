@@ -70,30 +70,6 @@ void ThemeManager::applyCustom(const ThemeColors& tc) {
     if (onThemeChanged) onThemeChanged(current_.name);
 }
 
-bool ThemeManager::loadFromFile(const std::string& filepath) {
-    std::ifstream f(filepath);
-    if (!f) return false;
-    std::stringstream ss;
-    ss << f.rdbuf();
-    std::string json = ss.str();
-    if (json.empty()) return false;
-    auto tc = ThemeColors::fromJson(json);
-    current_ = tc;
-
-    bool found = false;
-    for (const auto& n : installedNames_)
-        if (n == tc.name) {
-            found = true;
-            break;
-        }
-    if (!found) {
-        installedNames_.push_back(tc.name);
-        installedThemes_.push_back(tc);
-    }
-    if (onThemeChanged) onThemeChanged(current_.name);
-    return true;
-}
-
 bool ThemeManager::exportToFile(const std::string& filename) const {
     if (themeDir_.empty()) return false;
     std::string path = themeDir_ + "/" + filename;

@@ -444,51 +444,6 @@ ChatResponse DeepSeekClient::sendMessage(const ChatRequest& request, std::string
     return resp;
 }
 
-// -- healthCheck --------------------------------------------------------------
-bool DeepSeekClient::healthCheck(std::string* errorOut) {
-    CURL* curl = (CURL*)createEasyHandle();
-    if (!curl) {
-        if (errorOut) *errorOut = "curl init failed";
-        return false;
-    }
-    struct CurlGuard {
-        CURL* h;
-        ~CurlGuard() {
-            if (h) curl_easy_cleanup(h);
-        }
-    };
-    CurlGuard guard{curl};
-
-    BlockContext blockCtx;
-    blockCtx.cancelFlag = nullptr;
-
-    std::string url = config.baseUrl;
-    if (url.back() != '/') url += '/';
-    url += "v1/models";
-
-    std::string auth = "Authorization: Bearer " + config.apiKey;
-    curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, auth.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, blockWriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &blockCtx);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-
-    CURLcode res = curl_easy_perform(curl);
-    curl_slist_free_all(headers);
-
-    long httpStatus = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpStatus);
-
-    if (res != CURLE_OK) {
-        if (errorOut) *errorOut = curl_easy_strerror(res);
-        return false;
-    }
-    return (httpStatus == 200);
-}
-
 // -- fetchModels --------------------------------------------------------------
 std::vector<ModelInfo> DeepSeekClient::fetchModels(std::string* errorOut) {
     std::vector<ModelInfo> models;
@@ -909,7 +864,6 @@ size_t DeepSeekClient::parseSSEChunk(const std::string& buffer, size_t startOffs
     size_t consumed = eventEnd + 2;
 
     std::string data;
-    std::string eventType;
     size_t pos = 0;
     while (pos < event.size()) {
         auto nl = event.find('\n', pos);
@@ -917,7 +871,6 @@ size_t DeepSeekClient::parseSSEChunk(const std::string& buffer, size_t startOffs
         std::string line = event.substr(pos, nl - pos);
 
         if (line.substr(0, 6) == "event:") {
-            eventType = trim(line.substr(6));
         } else if (line.substr(0, 6) == "data: ") {
             data += line.substr(6);
         } else if (line.substr(0, 5) == "data:") {

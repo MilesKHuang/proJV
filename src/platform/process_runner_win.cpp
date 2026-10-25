@@ -221,8 +221,6 @@ class ProcessRunnerWin : public IProcessRunner {
 
     void Cancel() override { cancelled_ = true; }
 
-    bool IsRunning() const override { return hProc_ != nullptr; }
-
   private:
     std::mutex mutex_;
     std::atomic<bool> cancelled_{false};
