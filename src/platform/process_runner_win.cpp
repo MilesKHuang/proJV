@@ -35,8 +35,11 @@ public:
         // Extra environment (pytool passes its own vars here). The Linux runner
         // prefixes `export K=V;`, this one must do the same with `set`, or the
         // variable is silently dropped -- which is how it behaved until now.
+        // Quoted form: values containing & | ^ or spaces would otherwise end the
+        // command early. A literal '%' still needs escaping by the caller,
+        // because cmd expands %VAR% even inside quotes.
         for (const auto& [key, value] : cfg.extraEnv)
-            if (!key.empty()) gitEnv += "set " + key + "=" + value + " && ";
+            if (!key.empty()) gitEnv += "set \"" + key + "=" + value + "\" && ";
         std::string fullCmd = gitEnv + cfg.command;
         if (!cfg.workDir.empty())
             fullCmd = "cd /d \"" + cfg.workDir + "\" && " + fullCmd;

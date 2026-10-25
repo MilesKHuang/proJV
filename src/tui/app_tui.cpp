@@ -41,7 +41,7 @@ void TuiApp::setupTools() {
     registerFormatTool(tools, ws, procRunner_, config.clangFormatPath);
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
-    registerFileSearchTool(tools);
+    registerFileSearchTool(tools, ws);
     registerSearchTool(tools, client);
     registerFetchTool(tools, client);
 

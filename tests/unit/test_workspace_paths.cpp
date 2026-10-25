@@ -5,9 +5,9 @@
 #include "tools/registry.h"
 #include "tools/file_tool.h"
 #include "tools/md_file_tool.h"
+#include "tools/shell_tool.h"      // registerFileSearchTool
 #include "platform/iprocess_runner.h"
 #include "json.hpp"
-
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -113,4 +113,42 @@ TEST_CASE("process runner: extraEnv reaches the child on this platform") {
 
     CHECK(res.exitCode == 0);
     CHECK(has(res.stdout_, "hello-env"));
+}
+
+TEST_CASE("file_search: stays inside the workspace and skips junk directories") {
+    const fs::path root = freshRoot("fsearch");
+    writeAt(root, "src/core/agent.cpp", "x");
+    writeAt(root, "src/notes.txt", "x");
+    writeAt(root, "build/generated.cpp", "x");
+    writeAt(root, "node_modules/pkg/index.js", "x");
+    writeAt(root, ".git/config", "x");
+
+    ToolRegistry reg;
+    registerFileSearchTool(reg, root.string());
+
+    // Default path is the workspace root, and build/ node_modules/ .git/ are
+    // skipped -- before this fix the tool walked all of them.
+    const std::string all = reg.execute("file_search",
+        nlohmann::json{{"pattern", "*.cpp"}}.dump());
+    CHECK(has(all, "agent.cpp"));
+    CHECK(!has(all, "generated.cpp"));
+    CHECK(!has(all, "node_modules"));
+
+    // Nested path inside the workspace works.
+    const std::string scoped = reg.execute("file_search",
+        nlohmann::json{{"pattern", "*.txt"}, {"path", "src"}}.dump());
+    CHECK(has(scoped, "notes.txt"));
+
+    // Outside the workspace is refused, exactly like read_file.
+    CHECK(has(reg.execute("file_search",
+              nlohmann::json{{"pattern", "*.cpp"}, {"path", "/definitely/not/here"}}.dump()),
+              "outside the workspace"));
+
+    // A dot in a pattern is literal, not "any character".
+    CHECK(has(reg.execute("file_search",
+              nlohmann::json{{"pattern", "notes.txt"}}.dump()),
+              "notes.txt"));
+    CHECK(has(reg.execute("file_search",
+              nlohmann::json{{"pattern", "notesXtxt"}}.dump()),
+              "No files found"));
 }

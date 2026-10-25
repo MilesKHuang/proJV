@@ -17,10 +17,10 @@ static constexpr const char* TOOL_LIST_DIR_DESC =
     "subdirectories that matter. Use exclude to skip noise by name. Build artifacts "
     "and VCS directories are always skipped.";
 static constexpr const char* TOOL_WRITE_FILE_DESC =
-    "Write a small amount of content to a file. Creates parent directories if needed. "
-    "Maximum content size is 8KB. For anything larger, use exec_shell with stdin.\n"
-    "Write via exec_shell+stdin for large files:\n"
-    "  exec_shell(command=\"powershell -Command \\\"$input | Set-Content -Path 'file.cpp' -Encoding UTF8\\\"\", stdin=\"<content>\")";
+    "Write content to a file. Creates parent directories if needed. Maximum "
+    "content size is 8KB per call. For anything larger, split it into chunks: "
+    "the first call with mode=\"write\", the rest with mode=\"append\". "
+    "Prefer edit_file for changing an existing file.";
 static constexpr const char* TOOL_GREP_FILES_DESC =
     "Search workspace files for a regular expression (case-insensitive). Returns "
     "matching lines only, no context, as 'path:line: text'. Stops at max_results "
@@ -352,7 +352,7 @@ static constexpr int kListDefaultDepth = 2;
 static constexpr int kListMaxDepth = 6;
 static constexpr int kListMaxEntries = 500;
 
-static bool isSkippedDirName(const std::string& name) {
+bool isSkippedDirName(const std::string& name) {
     if (name.empty()) return true;
     if (name[0] == '.') return true;                 // .git / .vs / .pytest_cache ...
     for (const auto& d : kSkipDirs) if (name == d) return true;
@@ -560,7 +560,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                     "MANDATORY: Split into " + std::to_string(numChunks)
                     + " write_file calls with mode=\"append\".\n"
                     "Each chunk must be under " + std::to_string(MAX_WRITE_CONTENT_SIZE) + " bytes.\n"
-                    "DO NOT use exec_shell or any other method for writing files over "
+                    "Do not try any other method for writing files over "
                     + std::to_string(MAX_WRITE_CONTENT_SIZE) + " bytes.\n"
                     "\n"
                     "Template (chunk 1 overwrites, chunks 2..N append):\n"
