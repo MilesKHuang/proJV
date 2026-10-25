@@ -1,270 +1,118 @@
-# proJV -- 原生 C++ 终端 AI Agent（TUI）
+# proJV
 
-<p align="center">
-  <strong>简体中文</strong> | <a href="README.md">English</a>
-</p>
+**简体中文** | [English](README.md)
 
-**proJV = Project Just Vibing** -- 一个快速、精致的原生 C++ 终端 AI Agent，基于 DeepSeek API。
+`proJV = Project Just Vibing` —— 用原生 C++ 写的终端 AI agent，基于 DeepSeek。
 
-基于 **FTXUI + libcurl**，C++20 实现。**零包管理器依赖**，一条 `cmake --build`，产出约 3 MB 的二进制文件。
+![CI](https://img.shields.io/github/actions/workflow/status/MilesKHuang/proJV/ci.yml?branch=main&label=CI)
+![Release](https://img.shields.io/github/v/release/MilesKHuang/proJV)
+![License](https://img.shields.io/github/license/MilesKHuang/proJV)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
+![Binary](https://img.shields.io/badge/binary-~3.4%20MB-green)
 
-> proJV 的每一行代码，都是 proJV 自己写的。
+![proJV 演示](assets/demo.gif)
 
-<p align="center">
-  <img src="assets/demo.gif" alt="proJV 演示" width="720"/>
-</p>
-
----
-
-## 为什么是 proJV
-
-### 1. AI Native Embedded System -- C++ & TUI
-
-AI Native Embedded System 是未来 Agent 一大方向。原生 C++ 与终端优先的界面带来几大优势：
-
-- **硬件控制的可扩展性** -- C++ 可以直接调用系统 API、操作 GPIO 和外设，不需要经过中间层。
-- **C++ 部署轻量** -- 二进制体积小、无运行时依赖；复杂的 AI 能力可以通过 pytool 调用 Python。
-- **终端界面随处可跑** -- SSH、tmux、无头机器、Windows Terminal 都能用，不依赖 GPU 或窗口系统。
-- **嵌入式场景对 CPU 开销敏感** -- 过多的解释型语言会占用计算资源。
-
-proJV 为这个方向而生。
-
-### 2. No-MCP
-
-我相信你可以自己实现任何 MCP 功能。
-
-### 3. 目前只用 DeepSeek
-
-真的太便宜了。
-
-| 模型 | 输入 | 输出 |
-|------|------|------|
-| deepseek-v4-flash | ¥1 / 1M tokens | ¥2 / 1M tokens |
-| deepseek-v4-pro   | ¥3 / 1M tokens | ¥6 / 1M tokens |
+**proJV 的每一行代码都是 proJV 自己写的。**
 
 ---
 
-## 核心功能
+## 三个不一样的地方
 
-### 1. 多角色 System Prompt
+- **原生 C++，约 3.4 MB，零包管理器。** FTXUI + libcurl + SQLite 全部内置，
+  一条 `cmake --build` 就得到一个可以 scp 走的单文件。
+- **多 Agent 技能是数据，不是代码。** 一个技能就是一个文件夹：`config.json` +
+  每个角色一份 `.md` + 动作工具的 schema。拷进去就能跑。主管可以在一条回复里把
+  活派给十个并发执行的 worker。
+- **每一层都能改。** 角色、工具、提示词、主题、压缩策略、Python 工具 —— 全是可
+  执行文件旁边的纯文件，没有封闭生态。
 
-往 `projv_files/prompts/` 丢一个 `.md` 文件，立刻成为可选角色。对话中按 **Tab** 切换角色、不丢上下文。内置三个预设：
+---
 
-| 角色 | 说明 |
+## 三步用起来
+
+1. **下载**对应平台的发布包并解压
+   （[Releases](https://github.com/MilesKHuang/proJV/releases)；`proJV_tui` 与
+   `projv_files/` 必须放在一起）。
+2. **填 DeepSeek API Key**：首次启动的配置窗里粘贴
+   （[在这里申请](https://platform.deepseek.com/api_keys)）。
+3. **发一条消息**：让它读文件、改 bug，或者跑 `/monica D:\path\to\project`。
+
+Windows 可能提示二进制未签名（SmartScreen ->「更多信息」->「仍要运行」）。
+Linux 自行编译时需要 `libcurl4-openssl-dev`。
+
+想自己编译？-> [安装指南](docs/zh/user-guide/01-install.md)
+
+---
+
+## 能做什么
+
+| 能力 | 说明 |
 |------|------|
-| **coder**（默认） | 全 12 工具访问 -- 读写、编辑、Shell、搜索、Web、架构图、TODO、技能 |
-| **designer** | 只读分析模式 -- 锁定 Shell 和源码编辑，通过 `md_file` 产出结构化设计文档 |
-| **analyzer** | 代码分析 + `diagram_tool` 架构图支持 |
+| **工具调度** | 读写改文件、按行区间读取、目录树、正则搜索、shell、todo、技能 —— 由模型决定 |
+| **技能** | `/monica <目录>`（十个 worker 并发整理项目）、`/bigbang`（三方圆桌辩论 -> 一份执行文档）、`skill_maker` 自动生成新技能 |
+| **图片输入** | `@路径` 附加截图或图片；给目录会自动展开其中的图片 |
+| **思考链** | 实时流式显示、可折叠，`F8` 看完整思考 |
+| **网页** | DeepSeek 官方 Search / Fetch API（结构化结果、Markdown 页面） |
+| **会话** | 每段对话一个 SQLite 库，崩溃不丢，`/compress` 压缩长对话 |
+| **主题** | 2 个内置 + 6 套精选，可视化编辑器实时预览，JSON 导入导出 |
+| **Python 工具** | 丢一个含 `tool.json` + `main.py` 的目录进去，agent 就能调 |
+| **成本可见** | 实时 token 数与按 `config.toml` 价格表的费用估算 |
 
-### 2. 全流程自定义 -- 每一层都是你的
-
-| 层级 | 自定义方式 |
-|------|-----------|
-| **System Prompt** | 丢 `.md` 到 `projv_files/prompts/`，立刻成为可选角色 |
-| **Compactor** | 控制上下文达到压力阈值时的压缩策略，可以自己写 |
-| **Python 工具 (pytool)** | 在 `projv_files/pytool/` 里放自己的 Python 脚本，Agent 自动发现并调用 |
-| **主题** | 可视化编辑器实时预览，8 套预设，JSON 导入/导出，每个颜色都可调 |
-| **配置** | 全部在 `config.toml` 里 -- 模型、Key、UI 偏好。纯文本，无隐藏状态 |
-
-没有封闭的"生态锁死"。**每个旋钮你都能拧。**
-
-### 3. Python 工具自主扩展（pytool）
-
-往 `projv_files/pytool/` 丢一个 Python 工具文件夹，Agent 自动发现。每个工具只需要两个文件：
-
-```
-projv_files/pytool/
-└── my_tool/
-    ├── tool.json    # 工具名、描述、参数
-    └── main.py      # 从 stdin 读 JSON，结果打印到 stdout
-```
-
-**极简示例** -- 获取当前时间：
-
-`tool.json`：
-```json
-{
-    "name": "get_time",
-    "description": "获取当前系统时间。",
-    "parameters": []
-}
-```
-
-`main.py`：
-```python
-import json, sys, time
-args = json.loads(sys.stdin.read())
-print(time.strftime("%Y-%m-%d %H:%M:%S"))
-```
-
-**就这么简单。** Agent 读取 `tool.json` 学会调用参数，通过 stdin 传入 JSON 执行 `main.py`，stdout 即为结果。需要 pip 依赖时加一个 `requirements.txt`。
-
-### 4. TODO -- 做完自动总结
-
-AI 在 TODO 面板实时管理任务清单，面板停靠在右侧（`F9`）并对长任务软换行，不会被截断。任务完成后不只是打个勾 -- **它会写一个结构化总结**：改了哪些文件、做了什么、编译验证结果。再也不用问"Agent 刚刚到底干了啥"。
-
-### 5. 主题系统
-
-两套内置（Obsidian / Light），外加 6 套精选主题可由 `projv_files/theme/` 安装。可视化面板逐色编辑，实时预览，支持 JSON 导入/导出。选择自动保存到 `projv_files/config.toml`，下次启动即恢复。
-
-### 6. 多 Agent 技能（`/skill`）
-
-一个技能就是一个把多 Agent 工作流变成**数据**的文件夹。丢进 `projv_files/skills/` 即可运行 -- 不用重编译、不用改代码。引擎对所有文件夹一视同仁：没有内置技能，也没有代码特例。
-
-```
-projv_files/skills/
-└── bigbang/
-    ├── config.json        # agents、round_steps、收敛条件
-    ├── sheldon.md         # 每个 agent 一个 system prompt
-    ├── penny.md
-    ├── leonard.md
-    └── tools/             # agent 可调用的 verb 工具
-```
-
-用 `/<skill> <topic>` 运行；`/skill list` 查看已安装技能。内置两个示例 -- `bigbang`（三角色工程辩论 -> 一份执行文档）和 `monica`（supervisor 驱动的项目整理）。内置的 `skill_maker` 可以帮你写新技能并自检。安装 = 复制文件夹；卸载 = 删除文件夹。
+细节 -> [用户指南](docs/zh/user-guide/README.md) · [技能](docs/zh/user-guide/06-skills.md) · [pytool](docs/zh/user-guide/07-pytool.md)
 
 ---
 
-## 功能总览
+## 横向对比
 
-| 功能 | 说明 |
-|------|------|
-| **AI 自动调用工具** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool, run_skill -- AI 自主决策 |
-| **图像输入** | `@<路径>` 把 JPEG/PNG/GIF/WebP 图附到消息上；给目录则展开顶层图片（单条消息最多 8 张）。仅 Flash 模型 |
-| **技能直连** | `/monica D:\项目` 直接触发已安装技能；Agent 也可自主调用 `run_skill` 工具 |
-| **官方搜索/抓取** | `web_search` / `fetch_url` 走 DeepSeek 官方 Search / Fetch 接口（结构化结果带 rerank 分与权威度；抓取返回 Markdown） |
-| **思考过程展示** | deepseek-reasoner 推理链默认折叠为一行摘要，展开显示尾部窗口（F8） |
-| **流式 Markdown** | 实时 SSE + 自研渲染器（代码块、表格、链接、标题） |
-| **CJK 软换行** | 聊天气泡与输入框超宽自动折行，缩放时重新折行 |
-| **角色主题分级** | 泡泡文字与 Agent 状态跟随主题语义色；AI 回复标题为 `proJV` |
-| **忙碌指示** | 流式生成、执行工具、等待审批时都有滚动执行图标 |
-| **安全退出** | 窗口关闭 / Ctrl+C 时正确 checkpoint 并关闭 SQLite |
-| **上下文管理** | Token 估算 + 智能压缩，达到压力阈值自动缩容 |
-| **会话持久化** | SQLite 自动保存，可从会话选单打开历史 |
-| **实时状态栏** | 模型、角色、Token 用量、成本估算、上下文压力 % |
-| **多 Agent 技能** | 从 `projv_files/skills/` 安装 `/skill` 工作流；内置 bigbang + monica 示例；内置 `skill_maker` |
-| **工具审批** | 破坏性操作确认后放行 |
+事实核实日期 2026-10-25；`—` 表示本文未核实。proJV 一列以本仓库代码为准。
+
+| | proJV | Claude Code | OpenAI Codex CLI | Aider |
+|---|---|---|---|---|
+| 实现语言 | C++20 | TypeScript（Node） | Rust | Python |
+| 安装方式 | 单文件二进制，依赖内置 | npm | npm / brew / Release | pip |
+| 运行环境 | 无 | 需要 Node.js | 无（npm 只是外壳） | 需要 Python |
+| 多 Agent | 数据驱动的技能文件夹，worker 并发执行 | subagents | TOML subagents | — |
+| 扩展方式 | 丢文件：技能、角色、主题、Python 工具 | MCP、hooks | MCP、插件 | — |
+| 模型选择 | 仅 DeepSeek | Anthropic | OpenAI | 多provider |
+| 计费 | DeepSeek 按 token | 订阅或 API | ChatGPT 套餐或 API | 取决于 provider |
+
+刻意做窄：proJV 只把一个模型服务商做好，并把扩展面放在纯文件里，而不是插件注册表。
 
 ---
 
-## 快捷键
+## 下一步去哪
 
-| 按键 | 功能 |
-|------|------|
-| `F1` | 关于 |
-| `F2` | 配置 |
-| `F3` | 新建对话 |
-| `F5` | 打开会话（从 `projv_files/sessions/` 选单） |
-| `F6` | 切换主题 |
-| `F7` | 主题编辑器 |
-| `F8` | 折叠/展开思考（摘要 ↔ 尾部窗口） |
-| `F9` | 折叠/展开 TODO 面板 |
-| `F10` | 切换模型（从 API 拉取列表） |
-| `Tab` | 切换角色 |
-| `↑` / `↓` | 逐行滚动聊天 |
-| `PgUp` / `PgDn` | 翻页滚动聊天 |
-| `Enter` | 发送消息 |
-| `Esc` | 忙时取消本轮 / 空闲时退出 |
-
-快捷命令：`/help`、`/workspace`、`/clear`、`/compress`、`/<skill> <topic>`（运行已安装的多 Agent 技能；`/skill list` 查看已装技能）。
+| 你想 | 去 |
+|------|-----|
+| 日常使用 | [用户指南](docs/zh/user-guide/README.md) |
+| 跑 / 写技能 | [技能](docs/zh/user-guide/06-skills.md) |
+| 改代码 | [开发指南](docs/zh/dev-guide/README.md) · [模块地图](docs/zh/dev-guide/module-map.md) · [改动配方](docs/zh/dev-guide/recipes.md) |
+| 参与贡献 | [CONTRIBUTING_zh](CONTRIBUTING_zh.md) |
 
 ---
 
-## 快速开始
+## 为什么这么选
 
-### 构建
+**原生 C++ + 终端界面。** 体积小、没有运行时、SSH 和 tmux 里都能用，还能直接调
+系统 API。真需要某个大库时，用 Python 工具补上。
 
-#### Windows
+**不做 MCP。** 这里的工具就是一个带 JSON schema 的结构体加一个函数。任何 MCP 能力
+都能用几十行写成一个 pytool 或内置工具，中间不需要协议层。
 
-需要 CMake 和 Visual Studio 2019+（或任何支持 C++20 的编译器）。
-
-```bash
-# 打开 x64 Native Tools 命令行，然后：
-cd proJV
-mkdir build && cd build
-cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
-cmake --build .
-```
-
-> 注意：如果 Windows Defender 误删 `proJV_tui.exe`（无签名二进制），把 build 目录加入排除项：
-> `Add-MpPreference -ExclusionPath "D:\ws\proJV\build"`（管理员 PowerShell）。
-
-#### Linux
-
-```bash
-cd proJV
-mkdir build_linux && cd build_linux
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-```
-
-产物：`proJV_tui`（约 3 MB，双平台同名）。
-
-### 运行
-
-1. 申请 DeepSeek API Key：[platform.deepseek.com](https://platform.deepseek.com/api_keys)
-2. 在终端启动 `proJV_tui`（推荐 Windows Terminal），输入 Key -> **Save & Connect**
-3. 开始对话 -- 往 `projv_files/prompts/` 丢自定义 prompt，往 `projv_files/theme/` 丢主题，往 `projv_files/pytool/` 丢 Python 工具
-
----
-
-## 架构
-
-```
-proJV/
-├── CMakeLists.txt
-├── projv_files/               # 运行时数据目录（exe + 此目录 = 开箱即用）
-│   ├── config.toml            # 配置文件（首次保存时自动创建）
-│   ├── prompts/               # System Prompt .md 文件（首次运行自动生成）
-│   ├── theme/                 # 可安装的主题 JSON
-│   ├── pytool/                # Python 工具（diagram_tool 等）
-│   ├── skills/                # 可安装的多 Agent 技能（bigbang、monica）
-│   └── sessions/              # SQLite 会话数据库
-├── skills/                    # 示例技能源（构建时部署到 projv_files/skills/）
-├── external/                  # 静态依赖：FTXUI, SQLiteCpp, libcurl, json.hpp, toml.hpp, loguru
-├── src/
-│   ├── tui/main_tui.cpp       # 入口 + FTXUI 事件循环
-│   ├── tui/                   # App、聊天视图、Markdown、配置、主题、状态栏、TODO
-│   ├── client/deepseek.*      # DeepSeek API（libcurl + SSE）
-│   ├── core/                  # Agent, Session, Config, Storage, Prompts
-│   ├── platform/              # Windows/Linux 进程与系统抽象
-│   └── tools/                 # Shell、file、search、web、md_file、todo、pytool
-└── tests/                     # doctest 单元 + FTXUI golden 测试
-```
-
----
-
-## 依赖
-
-| 库 | 用途 | 来源 |
-|----|------|------|
-| [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | 终端 UI 框架 | `external/FTXUI-7.0.3/` |
-| [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) | 数据库 | `external/SQLiteCpp-3.3.3/` |
-| [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/`（Win）/ 系统（Linux） |
-| [loguru](https://github.com/emilk/loguru) | 日志 | `external/loguru.cpp` |
-| [nlohmann/json](https://github.com/nlohmann/json) | JSON 解析 | 单头文件 |
-| [toml++](https://github.com/marzer/tomlplusplus) | TOML 解析 | 单头文件 |
-
-**没有 vcpkg / conan / npm / pip。** 所有依赖要么内嵌，要么走系统库。
+**目前只接 DeepSeek。** 对一个整天读写文件的 agent 来说它足够便宜，多 Agent 才跑
+得起。
 
 ---
 
 ## 致谢
 
-- [DeepSeek](https://deepseek.com)
-- [FTXUI](https://github.com/ArthurSonzogni/FTXUI)
-- [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp)
-- [libcurl](https://curl.se/)
-- [loguru](https://github.com/emilk/loguru)
-- 所有开源依赖的维护者
+[DeepSeek](https://deepseek.com) · [FTXUI](https://github.com/ArthurSonzogni/FTXUI)
+· [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) · [libcurl](https://curl.se/)
+· [loguru](https://github.com/emilk/loguru) · 以及所有让这一切成为可能的开源作者。
 
----
+## 支持
 
-## 请我喝咖啡
+如果 proJV 帮你省了时间，欢迎请我喝杯咖啡（微信）：
 
-如果 proJV 为你节省了时间或带来了乐趣，欢迎请我喝杯咖啡
-*（仅支持中国大陆 / 微信赞赏）*
-
-<p align="left">
-  <img src="assets/wechat_donate.jpg" alt="微信赞赏" width="200"/>
-</p>
+![微信赞赏](assets/wechat_donate.jpg)

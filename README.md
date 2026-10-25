@@ -1,270 +1,126 @@
-# proJV -- A Native C++ AI Agent for the Terminal (TUI)
+# proJV
 
-<p align="center">
-  <a href="README_zh.md">简体中文</a> | <strong>English</strong>
-</p>
+[简体中文](README_zh.md) | **English**
 
-**proJV = Project Just Vibing** -- a fast, native C++ terminal AI agent powered by DeepSeek.
+`proJV = Project Just Vibing` — a native C++ AI agent for the terminal, built on
+DeepSeek.
 
-Built with **FTXUI + libcurl**, C++20. **Zero package managers.** One `cmake --build` gives you a ~3 MB binary.
+![CI](https://img.shields.io/github/actions/workflow/status/MilesKHuang/proJV/ci.yml?branch=main&label=CI)
+![Release](https://img.shields.io/github/v/release/MilesKHuang/proJV)
+![License](https://img.shields.io/github/license/MilesKHuang/proJV)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
+![Binary](https://img.shields.io/badge/binary-~3.4%20MB-green)
 
-> Every line of code in proJV was written by proJV.
+![proJV demo](assets/demo.gif)
 
-<p align="center">
-  <img src="assets/demo.gif" alt="proJV demo" width="720"/>
-</p>
-
----
-
-## Why proJV
-
-### 1. AI Native Embedded System -- C++ & TUI
-
-AI Native Embedded System is a major direction for future Agents. Native C++ and a terminal-first UI bring several advantages:
-
-- **Hardware control extensibility** -- C++ can directly call system APIs, operate GPIO and peripherals with no intermediate layer.
-- **C++ deployment is lightweight** -- small binary, no runtime dependencies; complex AI capabilities can call Python via pytool.
-- **Terminal UI runs anywhere** -- SSH, tmux, headless boxes, Windows Terminal; no GPU or window system required.
-- **Embedded scenarios are CPU-sensitive** -- too many interpreted languages consume compute resources.
-
-proJV is built for this direction.
-
-### 2. No-MCP
-
-I believe you can build any MCP function by yourself.
-
-### 3. DeepSeek Only (For Now)
-
-It's just ridiculously cheap.
-
-| Model | Input | Output |
-|-------|-------|--------|
-| deepseek-v4-flash | ¥1 / 1M tokens | ¥2 / 1M tokens |
-| deepseek-v4-pro   | ¥3 / 1M tokens | ¥6 / 1M tokens |
+**Every line of code in proJV was written by proJV.**
 
 ---
 
-## Core Features
+## Three things that make it different
 
-### 1. Multi-Role System Prompts
-
-Drop a `.md` file into `projv_files/prompts/` and it instantly appears as a selectable role. Switch roles with **Tab** mid-conversation without losing context. Three built-in presets:
-
-| Role | Description |
-|------|-------------|
-| **coder** (default) | Full 12-tool access -- read, write, edit, shell, search, web, diagram, todo, skill |
-| **designer** | Read-only analysis mode -- shell and source edits locked out, outputs structured design docs via `md_file` |
-| **analyzer** | Code analysis with `diagram_tool` support |
-
-### 2. Full Stack Customization -- Every Layer Is Yours
-
-| Layer | What You Can Customize |
-|-------|----------------------|
-| **System Prompts** | Drop `.md` files into `projv_files/prompts/` -- instantly appear as selectable roles |
-| **Compactor** | Control how context is compressed at pressure thresholds. Bring your own compaction strategy |
-| **Python Tools (pytool)** | Write your own tool scripts in Python, placed in `projv_files/pytool/`. The agent discovers and calls them automatically |
-| **Themes** | Visual editor with live preview, 8 presets, JSON import/export. Every color editable |
-| **Config** | Everything in `config.toml` -- model, key, UI preferences. Plain text, no hidden state |
-
-No locked-down "eco-system". **You own every knob.**
-
-### 3. Python Tool Extension (pytool)
-
-Drop a Python tool folder into `projv_files/pytool/` and the agent discovers it automatically. Each tool needs just two files:
-
-```
-projv_files/pytool/
-└── my_tool/
-    ├── tool.json    # name, description, parameters
-    └── main.py      # reads JSON from stdin, prints result to stdout
-```
-
-**Minimal example** -- a tool that returns the current time:
-
-`tool.json`:
-```json
-{
-    "name": "get_time",
-    "description": "Get the current system time.",
-    "parameters": []
-}
-```
-
-`main.py`:
-```python
-import json, sys, time
-args = json.loads(sys.stdin.read())
-print(time.strftime("%Y-%m-%d %H:%M:%S"))
-```
-
-**That's it.** The agent reads `tool.json` to know how to call your tool, invokes `main.py` with JSON args via stdin, and captures stdout as the result. Add `requirements.txt` for pip dependencies.
-
-### 4. TODO -- Automatic Completion Summary
-
-The AI manages a real-time TODO panel that docks on the right (`F9`) and soft-wraps long tasks so nothing is clipped. When a task finishes, it doesn't just check a box -- **it writes a structured completion summary** with file paths, changes made, and verification results. No more "what did the agent even do?"
-
-### 5. Theme System
-
-Two built-in presets (Obsidian & Light), plus 6 curated themes installable from `projv_files/theme/`. Every color is editable in a visual editor with live preview and JSON import/export. Your choice is auto-saved to `projv_files/config.toml` and restored on next launch.
-
-### 6. Multi-Agent Skills (`/skill`)
-
-A skill is a folder that turns a multi-agent workflow into **data**. Drop it into `projv_files/skills/` and it becomes runnable -- no recompile, no code change. The engine treats every folder the same: no built-in skills, no special cases.
-
-```
-projv_files/skills/
-└── bigbang/
-    ├── config.json        # agents, round_steps, convergence
-    ├── sheldon.md         # one system prompt per agent
-    ├── penny.md
-    ├── leonard.md
-    └── tools/             # the verb tools the agents may call
-```
-
-Run `/<skill> <topic>` (e.g. `/monica D:\project`) -- the skill name doubles as the command; `/skill list` shows what is installed. Two examples ship out of the box -- `bigbang` (three-role engineering debate -> one execution doc) and `monica` (supervisor-driven project tidy-up). A built-in `skill_maker` authors new skills for you and verifies them. Install = copy the folder; uninstall = delete it.
+- **Native C++, ~3.4 MB, zero package managers.** FTXUI + libcurl + SQLite, all
+  vendored. One `cmake --build` and you have a single binary you can scp.
+- **Multi-agent skills are data, not code.** A skill is a folder:
+  `config.json` + one `.md` per role + verb tool schemas. Copy it in — it runs.
+  A supervisor can fan one reply out to ten workers that execute concurrently.
+- **Every layer is yours.** Roles, tools, prompts, themes, the compaction
+  strategy, Python tools — all plain files next to the binary. No locked
+  ecosystem.
 
 ---
 
-## Features
+## Start in three steps
 
-| Feature | Description |
-|---------|-------------|
-| **AI tool orchestration** | read_file, write_file, edit_file, md_file, exec_shell, grep_files, file_search, web_search, fetch_url, update_todo, diagram_tool, run_skill -- AI decides what to call and when |
-| **Vision input** | `@<path>` attaches JPEG/PNG/GIF/WebP images to a message; directories expand to their top-level images (max 8 per message). Flash models only |
-| **Native skill call** | `/monica D:\project` triggers an installed skill directly; the agent can also invoke `run_skill` itself |
-| **Official Search / Fetch** | `web_search` / `fetch_url` are backed by DeepSeek's own Search and Fetch APIs (structured results with rerank score + authority; fetch returns Markdown) |
-| **Thinking display** | deepseek-reasoner chain-of-thought, collapsed by default with a one-line summary + trailing window (F8) |
-| **Streaming Markdown** | Real-time SSE with custom renderer (code blocks, tables, links, headings) |
-| **CJK soft-wrap** | Chat bubbles and the input box wrap long lines and re-flow on resize |
-| **Role theme grading** | Bubble text and agent status follow the active theme's semantic colors; AI replies titled `proJV` |
-| **Busy indicator** | Animated spinner while streaming, executing tools, or awaiting approval |
-| **Safe shutdown** | SQLite WAL is checkpointed and closed on window close / Ctrl+C |
-| **Context management** | Token estimation + smart compaction at pressure thresholds |
-| **Session persistence** | SQLite auto-save; open history from the sessions picker |
-| **Live status bar** | Model, role, token counts, cost estimate, context pressure % |
-| **Multi-agent skills** | Installable `/skill` workflows from `projv_files/skills/`; bigbang + monica examples; built-in `skill_maker` |
-| **Tool approval** | Destructive operations require user confirmation |
+1. **Download** the release for your platform from
+   [Releases](https://github.com/MilesKHuang/proJV/releases) and unpack it
+   (`proJV_tui` + `projv_files/` must stay together).
+2. **Paste your DeepSeek API key** into the config dialog on first launch
+   ([get one](https://platform.deepseek.com/api_keys)).
+3. **Type a message.** Ask it to read a file, fix a bug, or run
+   `/monica D:\path\to\project`.
+
+Windows may warn about the unsigned binary (SmartScreen -> "More info" ->
+"Run anyway"). Linux needs `libcurl4-openssl-dev` if you build from source.
+
+Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 
 ---
 
-## Keyboard Shortcuts
+## What it can do
 
-| Key | Action |
-|-----|--------|
-| `F1` | About |
-| `F2` | Configuration |
-| `F3` | New chat |
-| `F5` | Open session (picker from `projv_files/sessions/`) |
-| `F6` | Switch theme |
-| `F7` | Theme editor |
-| `F8` | Toggle reasoning (collapsed summary ↔ trailing window) |
-| `F9` | Toggle TODO panel |
-| `F10` | Switch model (fetched from the API) |
-| `Tab` | Cycle system-prompt role |
-| `↑` / `↓` | Scroll chat by row |
-| `PgUp` / `PgDn` | Scroll chat by page |
-| `Enter` | Send message |
-| `Esc` | Cancel turn (busy) / quit (idle) |
+| Capability | Detail |
+|-----------|--------|
+| **Tool orchestration** | read / write / edit files, targeted line ranges, directory trees, regex grep, shell, todo, skills — the model decides |
+| **Skills** | `/monica <dir>` (10 concurrent workers tidy up a repo), `/bigbang` (three-role debate -> one execution doc), `skill_maker` authors new ones |
+| **Vision input** | `@path` attaches screenshots or images; directories expand to their images |
+| **Thinking chain** | reasoning streamed live, collapsible, `F8` for the full trace |
+| **Web** | DeepSeek's own Search and Fetch APIs (structured results, Markdown pages) |
+| **Sessions** | SQLite per conversation, crash-safe, `/compress` to shrink long ones |
+| **Themes** | 2 built-in + 6 curated, visual editor with live preview, JSON import/export |
+| **Python tools** | drop a folder with `tool.json` + `main.py` and the agent can call it |
+| **Cost awareness** | live token counts and a price estimate from `config.toml` |
 
-Quick commands: `/help`, `/workspace`, `/clear`, `/compress`, `/skill list`, `/<skill> <topic>` (run an installed multi-agent skill, e.g. `/monica D:\project`). Image input: `@<path>` or `@"<path with spaces>"` attaches JPEG/PNG/GIF/WebP files to the message (Flash models).
+Details -> [user guide](docs/en/user-guide/README.md) · [skills](docs/en/user-guide/06-skills.md) · [pytool](docs/en/user-guide/07-pytool.md)
 
 ---
 
-## Quick Start
+## How it compares
 
-### Build
+Facts verified 2026-10-25; `—` means "not checked here". proJV column reflects
+this repository.
 
-#### Windows
+| | proJV | Claude Code | OpenAI Codex CLI | Aider |
+|---|---|---|---|---|
+| Implementation | C++20 | TypeScript (Node) | Rust | Python |
+| Install | one binary, deps vendored | npm | npm / brew / release | pip |
+| Runtime needed | none | Node.js | none (npm wrapper) | Python |
+| Multi-agent | data-driven skill folders, workers run concurrently | subagents | TOML subagents | — |
+| Extending | drop files: skills, roles, themes, Python tools | MCP servers, hooks | MCP, plugins | — |
+| Model choice | DeepSeek only | Anthropic | OpenAI | many providers |
+| Cost model | DeepSeek per-token pricing | subscription or API | ChatGPT plan or API | provider-dependent |
 
-Requires CMake and Visual Studio 2019+ (or any C++20 compiler).
-
-```bash
-# Open x64 Native Tools Command Prompt, then:
-cd proJV
-mkdir build && cd build
-cmake .. -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
-cmake --build .
-```
-
-> Note: if Windows Defender quarantines `proJV_tui.exe` (unsigned binary), add the build directory to exclusions:
-> `Add-MpPreference -ExclusionPath "D:\ws\proJV\build"` (admin PowerShell).
-
-#### Linux
-
-```bash
-cd proJV
-mkdir build_linux && cd build_linux
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-```
-
-Artifact: `proJV_tui` (~3 MB) on both platforms.
-
-### Run
-
-1. Get a DeepSeek API Key: [platform.deepseek.com](https://platform.deepseek.com/api_keys)
-2. Launch `proJV_tui` in a terminal (Windows Terminal recommended), enter Key -> **Save & Connect**
-3. Start chatting -- drop custom prompts into `projv_files/prompts/`, themes into `projv_files/theme/`, Python tools into `projv_files/pytool/`
+Deliberately narrow: proJV does one model provider well and puts the extension
+surface in plain files instead of a plugin registry.
 
 ---
 
-## Architecture
+## Where to go next
 
-```
-proJV/
-├── CMakeLists.txt
-├── projv_files/               # Runtime data dir (exe + this folder = runnable)
-│   ├── config.toml            # Configuration (auto-created on first save)
-│   ├── prompts/               # System prompt .md files (seeded on first run)
-│   ├── theme/                 # Installable theme JSON files
-│   ├── pytool/                # Python tools (diagram_tool, etc.)
-│   ├── skills/                # Installable multi-agent skills (bigbang, monica)
-│   └── sessions/              # SQLite session databases
-├── skills/                    # Example skills source (deployed to projv_files/skills/)
-├── external/                  # Static deps: FTXUI, SQLiteCpp, libcurl, json.hpp, toml.hpp, loguru
-├── src/
-│   ├── tui/main_tui.cpp       # Entry point + FTXUI event loop
-│   ├── tui/                   # App, chat view, markdown, config, theme, status bar, todo
-│   ├── client/deepseek.*      # DeepSeek API (libcurl + SSE)
-│   ├── core/                  # Agent, Session, Config, Storage, Prompts
-│   ├── platform/              # Windows/Linux process & system abstraction
-│   └── tools/                 # Shell, file, search, web, md_file, todo, pytool
-└── tests/                     # doctest unit + FTXUI golden tests
-```
+| You want to | Go to |
+|-------------|-------|
+| use it daily | [user guide](docs/en/user-guide/README.md) |
+| run or write skills | [skills](docs/en/user-guide/06-skills.md) |
+| change the code | [dev guide](docs/en/dev-guide/README.md) · [module map](docs/en/dev-guide/module-map.md) · [recipes](docs/en/dev-guide/recipes.md) |
+| contribute | [CONTRIBUTING](CONTRIBUTING.md) |
 
 ---
 
-## Dependencies
+## Why these choices
 
-| Library | Purpose | Source |
-|---------|---------|--------|
-| [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | Terminal UI framework | `external/FTXUI-7.0.3/` |
-| [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) | Database | `external/SQLiteCpp-3.3.3/` |
-| [libcurl](https://curl.se/) | HTTP/HTTPS | `external/curl-8.21.0/` (Win) / system (Linux) |
-| [loguru](https://github.com/emilk/loguru) | Logging | `external/loguru.cpp` |
-| [nlohmann/json](https://github.com/nlohmann/json) | JSON parsing | Single header |
-| [toml++](https://github.com/marzer/tomlplusplus) | TOML parsing | Single header |
+**Native C++ and a terminal UI.** Small binary, no runtime, runs over SSH and in
+tmux, and lets you call system APIs directly. When something genuinely needs a
+big library, a Python tool covers it.
 
-**No vcpkg / conan / npm / pip.** All dependencies are either bundled or system-provided.
+**No MCP.** A tool here is a struct with a JSON schema and a function. Any MCP
+capability can be written in a few dozen lines as a pytool or a built-in tool,
+without a protocol layer in the middle.
+
+**DeepSeek (for now).** It is simply very cheap for an agent that reads and
+writes files all day, which makes multi-agent runs affordable.
 
 ---
 
 ## Credits
 
-- [DeepSeek](https://deepseek.com)
-- [FTXUI](https://github.com/ArthurSonzogni/FTXUI)
-- [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp)
-- [libcurl](https://curl.se/)
-- [loguru](https://github.com/emilk/loguru)
-- All open-source maintainers
+[DeepSeek](https://deepseek.com) · [FTXUI](https://github.com/ArthurSonzogni/FTXUI)
+· [SQLiteCpp](https://github.com/SRombauts/SQLiteCpp) · [libcurl](https://curl.se/)
+· [loguru](https://github.com/emilk/loguru) · every open-source maintainer whose
+work made this possible.
 
----
+## Support
 
-## Buy me a coffee
+If proJV saves you time, a coffee is appreciated (WeChat):
 
-If proJV saves you time or brings you joy -- I'd appreciate a coffee
-*(China / WeChat only)*
-
-<p align="left">
-  <img src="assets/wechat_donate.jpg" alt="WeChat donate" width="200"/>
-</p>
+![WeChat donate](assets/wechat_donate.jpg)

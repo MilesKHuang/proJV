@@ -1,6 +1,7 @@
 # proJV GitHub 文档装修规划
 
-> 状态：**待执行**。在 `05_SKILL_ENGINE_IMPROVEMENT.md` 执行完成后开始。
+> 状态：**D1 / G1 / D2 / D3 / D4 / G2 / G3 已执行**（v0.6.0）。D5 素材待录制。
+> 执行记录见文末第 10 节。
 
 ---
 
@@ -287,3 +288,44 @@ docs/
 3. 打第一个版本 tag，触发 Release 流水线（G1 完成后）。
 4. 在 GitHub 网页上填写 Description、Topics，上传 Social preview（G3 完成后）。
 
+
+---
+
+## 10. 执行记录（v0.6.0）
+
+### D1 现状核实 —— 发现并已修掉的过时/错误项
+
+| 位置 | 问题 | 处理 |
+|---|---|---|
+| README 主题段 | "Two built-in presets ... plus 6 curated" 与别处"8 presets"互相矛盾 | 统一为「2 内置 + 6 套 JSON」 |
+| README 功能表 | 思考链写成 `deepseek-reasoner`（旧模型名，且思考已是模型级开关） | 改为「thinking 流式显示」 |
+| README 功能表 | 工具列表缺 `list_dir`、`format_file`，把 pytool 的 `diagram_tool` 混在内置工具里 | 重写为内置工具表 + 单独说明 `diagram_tool` 是示例 pytool |
+| README 技能段 | monica 仍描述为 formatter / translator / auditor 三角色 | 改为 1 主管 + 10 worker |
+| README 命令段 | 未提 `/workspace`；旧 `/skill <名字>` 形式其实已废弃 | 统一为 `/skill list` + `/<技能> <主题>`，并补上 `/workspace` |
+| README 目录树 | `projv_files/prompts/` 被写成「已有」 | 标注为首次运行生成、不随包发布 |
+| `tests/CMakeLists.txt:66` | `/utf-8` 写在 `add_executable` 之后，对测试无效 | 在 P1 修掉（`target_compile_options`） |
+
+### 已完成
+
+- **G1**：`project VERSION` 0.5.6 -> 0.6.0；CPack 按平台区分（Windows ZIP +
+  `windows-x64`，Linux TGZ + `linux-x64`），包名 `proJV-<ver>-<platform>`；
+  `install()` 显式排除 `config.toml` / `sessions` / `prompts`；`.github/workflows/`
+  新增 `ci.yml`、`release.yml`。本地 `cpack` 已产出并核对包内容（无 Key、无会话）。
+- **D2**：`docs/{en,zh}/dev-guide/`（README、module-map、recipes），中英镜像。
+- **D3**：`docs/{en,zh}/user-guide/` 01~08 共 18 页，中英镜像，统一页尾「想深入 / 想改它」。
+- **D4**：`README.md` / `README_zh.md` 重写：徽章、3 步上手、功能表、对比表（事实
+  核实日 2026-10-25）、三个入口、理念、致谢。快捷键表与构建细节已移出到用户指南。
+- **G2**：`CONTRIBUTING.md` / `CONTRIBUTING_zh.md`、两个 issue 模板、PR 模板。
+- **G3**：`docs/repo-settings.md` 给出 Description（中英）、Topics、Social preview
+  说明、首个 Release 步骤、分支保护建议。
+- Logo 从仓库根移到 `assets/logo.jpg`；`assets/README.md` 与 `assets/raw/README.md`
+  写明 6 段录屏的规格与转换命令（占位清单已列）。
+
+### 待用户操作
+
+1. `assets/raw/` 下的 6 段录屏；我据此转出 `assets/*.gif` 替换占位。
+2. `assets/social-preview.png`（1280x640）——需要 Logo 定稿后生成。
+3. 在 GitHub 网页填 Description / Topics / Social preview（文案见
+   `docs/repo-settings.md`）。
+4. 打第一个 tag `v0.6.0` 触发 Release 流水线。
+5. Linux 构建与首次 CI 运行结果需要在 GitHub 上确认（本地未验证）。
