@@ -39,7 +39,22 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release
+        shell: pwsh
+        run: |
+          # Tee the log, and on failure turn every compiler/linker error into an
+          # annotation. MSBuild output is not annotated automatically, so without
+          # this a Windows-only break shows up as a bare "exit code 1".
+          cmake --build build --config Release 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::group::build failures"
+            Select-String -Path build.log -Pattern 'error C\d+|error LNK\d+|fatal error|warning C\d+.*\[' |
+              Select-Object -First 25 |
+              ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
+            Write-Host "::endgroup::"
+            Write-Host "--- last 40 lines ---"
+            Get-Content build.log -Tail 40
+            exit 1
+          }
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
