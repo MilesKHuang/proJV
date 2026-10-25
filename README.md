@@ -1,6 +1,8 @@
 # proJV
 
-![proJV](assets/logo.png)
+<p align="center">
+  <img src="assets/social-preview.png" width="780" alt="proJV: native C++ terminal AI agent for DeepSeek"/>
+</p>
 
 [简体中文](README_zh.md) | **English**
 
@@ -125,4 +127,6 @@ work made this possible.
 
 If proJV saves you time, a coffee is appreciated (WeChat):
 
-![WeChat donate](assets/wechat_donate.jpg)
+<p align="left">
+  <img src="assets/wechat_donate.jpg" width="150" alt="WeChat donate"/>
+</p>

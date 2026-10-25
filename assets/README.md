@@ -5,10 +5,9 @@ Everything the README and the docs embed, plus the GitHub social preview.
 | File | Used by | Notes |
 |------|---------|-------|
 | `logo.jpg` | source image | 779x780, black interior with a #4971B7 frame |
-| `logo.png` | `README.md`, `README_zh.md` | 240x240 downscale, so GitHub does not render the original full width |
-| `social-preview.png` | GitHub Settings -> Social preview | 1280x640 card: logo on black, title, tagline, accent rule |
-| `demo.gif` | README hero | the hero. No separate `hero.gif` is planned |
-| `wechat_donate.jpg` | README support section | unchanged |
+| `social-preview.png` | `README.md`, `README_zh.md` hero; GitHub Settings -> Social preview | 1280x640 card: logo on black, title, tagline, accent rule. Displayed at 780px wide in the READMEs |
+| `demo.gif` | README, under the badges | the demo. No separate `hero.gif` is planned |
+| `wechat_donate.jpg` | README support section | shown at 150px wide |
 | `raw/` | not shipped | recording instructions, kept for later |
 
 ## Rules

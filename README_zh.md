@@ -1,6 +1,8 @@
 # proJV
 
-![proJV](assets/logo.png)
+<p align="center">
+  <img src="assets/social-preview.png" width="780" alt="proJV：原生 C++ 终端 AI agent"/>
+</p>
 
 **简体中文** | [English](README.md)
 
@@ -117,4 +119,6 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 
 如果 proJV 帮你省了时间，欢迎请我喝杯咖啡（微信）：
 
-![微信赞赏](assets/wechat_donate.jpg)
+<p align="left">
+  <img src="assets/wechat_donate.jpg" width="150" alt="微信赞赏"/>
+</p>
