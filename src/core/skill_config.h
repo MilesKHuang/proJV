@@ -78,4 +78,5 @@ struct SkillConfig {
 
     // Role-level thinking overrides the skill level; empty means "inherit".
     // Anything other than "off" is on (on is the API default).
-    static bool thinkingEnabled(const std::string& skillLevel, const std::string& agentLevel);};
+    static bool thinkingEnabled(const std::string& skillLevel, const std::string& agentLevel);
+};

@@ -99,6 +99,7 @@ static void appendSkillMetric(const std::string& agent, const std::string& verb,
     f << agent << '\t' << verb << '\t' << iters << '\t' << resultLen << '\t'
       << (wasReport ? "report" : "NO_REPORT") << '\n';
 }
+
 // ---- SkillConfig::loadFromJson -------------------------------------------
 bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::string& err) {
     std::ifstream ifs(path);

@@ -461,7 +461,7 @@ int main() {
         }
         els.push_back(input_comp->Render());
         if (app.pendingCount() > 0) {
-            els.push_back(text("Queued: " + std::to_string(app.pendingCount()) + " message(s) — sends after current turn") | color(Color::RGB(224, 200, 96)));
+            els.push_back(text("Queued: " + std::to_string(app.pendingCount()) + " message(s) - sends after current turn") | color(Color::RGB(224, 200, 96)));
         }
         els.push_back(separator());
         {

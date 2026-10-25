@@ -1,4 +1,4 @@
-﻿#include "prompts.h"
+#include "prompts.h"
 #include "config.h"
 #include "debug_log.h"
 #include <fstream>
