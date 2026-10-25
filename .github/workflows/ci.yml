@@ -31,9 +31,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'external/**') }}
+          key: v2-${{ runner.os }}-build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'external/**') }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            v2-${{ runner.os }}-build-
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -53,13 +53,22 @@ jobs:
             Write-Host "::error::no build.log - the build step failed before writing it"
             exit 0
           }
-          $hits = Select-String -Path build.log -Pattern 'error C\d+|error LNK\d+|fatal error|CMake Error' |
+          # Any 'error' line, not just 'error C1234': MSBuild reports toolset,
+          # missing-SDK and custom-command failures as MSBxxxx, and a vendored
+          # dependency can fail without a compiler diagnostic at all.
+          $hits = Select-String -Path build.log -Pattern 'error [A-Za-z]*\d+|fatal error|CMake Error|FAILED:' |
                   Select-Object -First 30
           foreach ($h in $hits) { Write-Host "::error::$($h.Line.Trim())" }
-          "## Build failures ($($hits.Count) matched)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          ($hits | ForEach-Object { $_.Line.Trim() }) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          $summary = @()
+          $summary += "## Build failures ($($hits.Count) matched)"
+          $summary += ''
+          $summary += '```'
+          $summary += ($hits | ForEach-Object { $_.Line.Trim() })
+          $summary += ''
+          $summary += '--- last 80 lines ---'
+          $summary += (Get-Content build.log -Tail 80)
+          $summary += '```'
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
