@@ -24,6 +24,57 @@ std::vector<std::string> strArr(const nlohmann::json& j, const char* key) {
     return out;
 }
 
+std::string toLower(std::string s) {
+    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+// True when `v` is one of the allowed literals. Reports the legal set on miss.
+bool checkEnum(const std::string& key, const std::string& v,
+               std::initializer_list<const char*> allowed, std::string& err) {
+    for (const char* a : allowed) if (v == a) return true;
+    std::string list;
+    for (const char* a : allowed) { if (!list.empty()) list += " | "; list += std::string("\"") + a + "\""; }
+    err = "invalid '" + key + "' value \"" + v + "\" (allowed: " + list + ")";
+    return false;
+}
+
+size_t editDistance(const std::string& a, const std::string& b) {
+    const size_t n = a.size(), m = b.size();
+    std::vector<size_t> prev(m + 1), cur(m + 1);
+    for (size_t j = 0; j <= m; ++j) prev[j] = j;
+    for (size_t i = 1; i <= n; ++i) {
+        cur[0] = i;
+        for (size_t j = 1; j <= m; ++j) {
+            const size_t cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            cur[j] = std::min({prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost});
+        }
+        prev = cur;
+    }
+    return prev[m];
+}
+
+// Unknown keys are noisy bugs, not fatal ones: report them, keep running.
+void warnUnknownKeys(const nlohmann::json& j, const std::vector<std::string>& known,
+                     const std::string& prefix, std::vector<std::string>& warnings) {
+    if (!j.is_object()) return;
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        const std::string key = it.key();
+        bool ok = false;
+        std::string best;
+        size_t bestDist = std::string::npos;
+        for (const auto& k : known) {
+            if (k == key) { ok = true; break; }
+            const size_t d = editDistance(toLower(key), toLower(k));
+            if (d < bestDist) { bestDist = d; best = k; }
+        }
+        if (ok) continue;
+        std::string msg = "unknown key '" + prefix + key + "'";
+        if (bestDist <= 3) msg += " (did you mean '" + prefix + best + "'?)";
+        warnings.push_back(msg);
+    }
+}
+
 } // namespace
 
 // ---- SkillConfig::loadFromJson -------------------------------------------
@@ -41,10 +92,20 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         out.converge = j.value("converge", std::string("none"));
         out.loopDetect = j.value("loop_detect", std::string(""));
         out.dynamicDispatch = j.value("dynamic_dispatch", false);
-        out.maxRecursion = j.value("max_recursion", 3);
         out.dispatchTool = j.value("dispatch_tool", std::string(""));
         out.maxToolIters = j.value("max_tool_iters", 3);
         out.toolMode = j.value("tool_mode", std::string("verb"));
+        out.thinking = j.value("thinking", std::string("on"));
+        out.warnings.clear();
+
+        // Known literals are validated: a typo here used to fall back to the
+        // default silently, which is how "toolMode" cost a whole evening.
+        if (!checkEnum("tool_mode", out.toolMode, {"verb", "auto"}, err)) return false;
+        if (!checkEnum("converge", out.converge, {"none", "all_agree"}, err)) return false;
+        if (!checkEnum("thinking", out.thinking, {"on", "off"}, err)) return false;
+        if (out.maxRounds < 1) { err = "max_rounds must be >= 1"; return false; }
+        if (out.maxToolIters < 1) { err = "max_tool_iters must be >= 1"; return false; }
+
         if (j.contains("stop_when") && j["stop_when"].is_object()) {
             out.stopWhenSlot = j["stop_when"].value("slot", std::string(""));
             out.stopWhenValue = j["stop_when"].value("equals", std::string(""));
@@ -57,15 +118,24 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
                 ag.id = a.value("id", std::string(""));
                 ag.displayName = a.value("display_name", ag.id);
                 ag.promptFile = a.value("prompt", std::string(""));
+                ag.thinking = a.value("thinking", std::string(""));
+                if (!ag.thinking.empty() &&
+                    !checkEnum("agents[].thinking", ag.thinking, {"on", "off"}, err)) return false;
+                if (ag.id.empty()) { err = "every agent needs an 'id'"; return false; }
+                warnUnknownKeys(a, {"id", "display_name", "prompt", "thinking"},
+                                "agents." + ag.id + ".", out.warnings);
                 out.agents.push_back(ag);
             }
-        auto loadSteps = [](const nlohmann::json& arr, std::vector<SkillStep>& dst) {
-            if (!arr.is_array()) return;
+
+        auto loadSteps = [&](const nlohmann::json& arr, std::vector<SkillStep>& dst) -> bool {
+            if (!arr.is_array()) return true;
             for (const auto& s : arr) {
                 SkillStep st;
                 st.when = s.value("when", std::string(""));
                 st.parallel = s.value("parallel", false);
                 st.progress = s.value("progress", std::string(""));
+                if (!checkEnum("when", st.when, {"", "round==1", "round>1"}, err)) return false;
+                warnUnknownKeys(s, {"when", "parallel", "progress", "actions"}, "", out.warnings);
                 if (s.contains("actions") && s["actions"].is_array())
                     for (const auto& a : s["actions"]) {
                         SkillAction ac;
@@ -80,16 +150,42 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
                             for (auto it = a["vars"].begin(); it != a["vars"].end(); ++it)
                                 if (it.value().is_string()) ac.vars[it.key()] = it.value().get<std::string>();
                         if (ac.into.empty()) ac.into = ac.agent;
+                        if (!checkEnum("shape", ac.shape, {"text", "vote"}, err)) return false;
+                        if (!checkEnum("emit", ac.emit, {"", "message", "vote", "document"}, err))
+                            return false;
+                        warnUnknownKeys(a, {"agent", "tool", "message", "capture", "into",
+                                            "shape", "emit", "vars"}, "", out.warnings);
                         st.actions.push_back(std::move(ac));
                     }
                 dst.push_back(std::move(st));
             }
+            return true;
         };
-        if (j.contains("round_steps")) loadSteps(j["round_steps"], out.roundSteps);
-        if (j.contains("on_converge")) loadSteps(j["on_converge"], out.onConverge);
+        if (j.contains("round_steps") && !loadSteps(j["round_steps"], out.roundSteps)) return false;
+        if (j.contains("on_converge") && !loadSteps(j["on_converge"], out.onConverge)) return false;
+
+        // Every action must point at a declared agent: a typo here silently
+        // skips the action and looks like "the agent did nothing".
+        for (const auto* steps : {&out.roundSteps, &out.onConverge})
+            for (const auto& st : *steps)
+                for (const auto& ac : st.actions) {
+                    bool known = false;
+                    for (const auto& ag : out.agents) if (ag.id == ac.agent) { known = true; break; }
+                    if (!known) { err = "action references unknown agent '" + ac.agent + "'"; return false; }
+                }
+
+        warnUnknownKeys(j, {"name", "description", "tools", "agents", "max_rounds", "converge",
+                            "loop_detect", "dynamic_dispatch", "dispatch_tool", "max_tool_iters",
+                            "tool_mode", "thinking", "stop_when", "round_steps", "on_converge"},
+                        "", out.warnings);
     } catch (const std::exception& e) { err = e.what(); return false; }
     if (out.name.empty()) { err = "skill has no name"; return false; }
     return true;
+}
+
+bool SkillConfig::thinkingEnabled(const std::string& skillLevel, const std::string& agentLevel) {
+    const std::string& v = agentLevel.empty() ? skillLevel : agentLevel;
+    return v != "off";
 }
 
 // ---- lifecycle -----------------------------------------------------------
@@ -179,13 +275,17 @@ void SkillRunner::loadAgents() {
         std::string prompt((std::istreambuf_iterator<char>(f)), {});
 
         auto sa = std::make_unique<SubAgent>(ag.displayName, prompt);
-        sa->configure(cfg_, tools_, config_.tools, config_.maxToolIters);
+        // Role-level thinking overrides the skill-level setting.
+        const bool thinkingOn = SkillConfig::thinkingEnabled(config_.thinking, ag.thinking);
+        sa->configure(cfg_, tools_, config_.tools, config_.maxToolIters, thinkingOn);
         sa->seedSharedContext(sharedContext_);
         {
             auto rit = responders_.find(ag.id);
             if (rit != responders_.end()) sa->setResponder(rit->second);
             auto mit = multiResponders_.find(ag.id);
             if (mit != multiResponders_.end()) sa->setResponderMulti(mit->second);
+            auto tit = textResponders_.find(ag.id);
+            if (tit != textResponders_.end()) sa->setResponderText(tit->second);
         }
         // Every verb tool is available to every agent (skill-local, no conflict
         // with capability tools). This lets request_agent workers -- which have
@@ -240,6 +340,9 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
         if (cbs_.onEvent) cbs_.onEvent("system", "system", "[skill] " + err);
         return;
     }
+    // Non-fatal config findings (unknown / legacy keys). Visible, not fatal.
+    for (const auto& w : config_.warnings)
+        if (cbs_.onEvent) cbs_.onEvent("system", "system", "[skill] config: " + w);
     loadAgents();
 
     for (int round = 1; round <= config_.maxRounds; ++round) {

@@ -46,7 +46,9 @@ public:
     // Test seam: scripted MULTI-call reply (parallel tool calls). Empty == unset.
     using MultiResponder = std::function<std::vector<ToolCall>(const std::string&, const std::vector<Message>&)>;
     void setResponderMulti(const std::string& agentId, MultiResponder r) { multiResponders_[agentId] = std::move(r); }
-
+    // Test seam: scripted narration text for one response ("" == none).
+    using TextResponder = std::function<std::string(const std::string&, const std::vector<Message>&)>;
+    void setResponderText(const std::string& agentId, TextResponder r) { textResponders_[agentId] = std::move(r); }
     bool converged() const { return converged_; }
     int lastRounds() const { return lastRounds_; }
     const std::string& lastDoc() const { return lastDoc_; }
@@ -104,6 +106,7 @@ private:
     mutable std::mutex snapMutex_;    // guards agents_ / displayNames_ for agentStatuses()
     std::map<std::string, Responder> responders_;
     std::map<std::string, MultiResponder> multiResponders_;
+    std::map<std::string, TextResponder> textResponders_;
     std::map<std::string, std::string> slots_;       // text slots (this round)
     std::map<std::string, std::string> prevSlots_;   // snapshot at end of round
     std::map<std::string, VoteResult> votes_;        // keyed by voting agent id

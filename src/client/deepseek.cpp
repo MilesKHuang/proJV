@@ -184,6 +184,12 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
         body["tools"] = tools;
     }
 
+    // Thinking mode is ON by default at the API. Only send the field when it
+    // must be turned off (forced tool_choice, or a role that asked for "off").
+    if (!request.thinking) {
+        body["thinking"] = {{"type", "disabled"}};
+    }
+
     if (!request.toolChoice.empty()) {
         // String tokens ("auto"/"none"/"required") are sent verbatim;
         // anything else is treated as a forced function name. Note: thinking

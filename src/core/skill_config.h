@@ -19,6 +19,7 @@ struct SkillAgent {
     std::string id;
     std::string displayName;
     std::string promptFile;   // path relative to the skill directory
+    std::string thinking;     // "" = inherit the skill-level setting, else "on" | "off"
 };
 
 struct SkillAction {
@@ -57,7 +58,18 @@ struct SkillConfig {
     std::vector<SkillStep> roundSteps;
     std::vector<SkillStep> onConverge;
 
+    // "on" (default) | "off". Role-level agents[i].thinking overrides this.
+    std::string thinking = "on";
+
+    // Non-fatal parse findings (unknown keys, legacy keys). Fill only; the
+    // runner emits them as "system" events so typos are visible instead of
+    // silently falling back to a default.
+    std::vector<std::string> warnings;
+
     // Parse config.json. Resolves each action's empty `into` to its agent id.
     // Returns false and sets `err` on read/parse error.
     static bool loadFromJson(const std::string& path, SkillConfig& out, std::string& err);
-};
+
+    // Role-level thinking overrides the skill level; empty means "inherit".
+    // Anything other than "off" is on (on is the API default).
+    static bool thinkingEnabled(const std::string& skillLevel, const std::string& agentLevel);};

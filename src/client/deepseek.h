@@ -33,6 +33,10 @@ public:
     bool streamBlocking(const ChatRequest& request, StreamCallbacks callbacks);
     void cancel();
 
+    // Serialize one chat request to the JSON body we POST. Public so tests can
+    // assert exactly which fields go on the wire (thinking, tool_choice, ...).
+    std::string buildRequestBody(const ChatRequest& request);
+
     ChatResponse sendMessage(const ChatRequest& request, std::string* errorOut = nullptr);
     bool healthCheck(std::string* errorOut = nullptr);
     std::vector<ModelInfo> fetchModels(std::string* errorOut = nullptr);
@@ -72,7 +76,6 @@ private:
     // libcurl helpers
     void* createEasyHandle();
     void initLibcurl();
-    std::string buildRequestBody(const ChatRequest& request);
     int postWithRetry(void* curl, const std::string& url, const std::string& body, long* outHttpStatus);
 
     // POST a JSON body to {baseUrl}{path} with Bearer auth + retry.

@@ -90,6 +90,11 @@ struct ChatRequest {
     bool stream = true;
     int maxTokens = 65536;
     double temperature = 0.0;
+    // Thinking mode. true (default) == do not send the field, which is what the
+    // API defaults to; false sends {"thinking":{"type":"disabled"}}. Thinking
+    // mode rejects a forced function tool_choice, so SubAgent disables it
+    // whenever a verb tool is forced.
+    bool thinking = true;
 };
 
 struct ChatResponse {

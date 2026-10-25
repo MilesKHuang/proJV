@@ -20,13 +20,18 @@ using SubAgentResponder =
 // parallel tool calling). Empty vector == no tool call.
 using SubAgentMultiResponder =
     std::function<std::vector<ToolCall>(const std::string& verb, const std::vector<Message>&)>;
+// Narration seam: lets a scripted response include plain text alongside (or
+// instead of) a tool call, so the "missed tool call" nudge is testable.
+using SubAgentTextResponder =
+    std::function<std::string(const std::string& verb, const std::vector<Message>&)>;
 
 class SubAgent {
 public:
     SubAgent(std::string name, std::string systemPrompt);
 
     void configure(const AppConfig& cfg, ToolRegistry* tools,
-                   const std::vector<std::string>& whitelist, int maxToolIters);
+                   const std::vector<std::string>& whitelist, int maxToolIters,
+                   bool thinking = true);
     void registerToolDef(const ToolDefinition& def);
     void seedSharedContext(const std::string& text);
     void setToolInterceptor(std::function<std::string(const std::string&, const std::string&)> cb) {
@@ -34,7 +39,7 @@ public:
     }
     void setResponder(SubAgentResponder r) { responder_ = std::move(r); }
     void setResponderMulti(SubAgentMultiResponder r) { multiResponder_ = std::move(r); }
-
+    void setResponderText(SubAgentTextResponder r) { textResponder_ = std::move(r); }
     // Run one interaction: returns the verb tool's raw args JSON, a plain-text
     // fallback, an "[error] ..." string, or "" (no tool call and no text).
     std::string turn(const std::string& message, const std::string& verb, bool force);
@@ -67,6 +72,7 @@ private:
     ToolRegistry* tools_ = nullptr;
     std::vector<std::string> toolWhitelist_;
     int maxToolIters_ = 3;
+    bool thinking_ = true;   // rejected together with a forced tool_choice
     DeepSeekClient client_;
     Session session_;
     std::vector<ToolDefinition> toolDefs_;
@@ -80,4 +86,5 @@ private:
     std::function<std::string(const std::string&, const std::string&)> toolInterceptor_;
     SubAgentResponder responder_;
     SubAgentMultiResponder multiResponder_;
+    SubAgentTextResponder textResponder_;
 };

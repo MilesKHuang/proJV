@@ -10,6 +10,7 @@
   "max_rounds": 8,
   "converge": "all_agree",
   "loop_detect": "leonard",
+  "tool_mode": "auto",
   "round_steps": [
     {"when": "round==1", "parallel": true,
      "progress": "Round {{round}}/{{max_rounds}} - proposals (Sheldon + Penny)",

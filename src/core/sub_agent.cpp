@@ -23,11 +23,13 @@ SubAgent::SubAgent(std::string name, std::string systemPrompt)
 }
 
 void SubAgent::configure(const AppConfig& cfg, ToolRegistry* tools,
-                         const std::vector<std::string>& whitelist, int maxToolIters) {
+                         const std::vector<std::string>& whitelist, int maxToolIters,
+                         bool thinking) {
     cfg_ = cfg;
     tools_ = tools;
     toolWhitelist_ = whitelist;
     maxToolIters_ = maxToolIters;
+    thinking_ = thinking;
     client_.setConfig(cfg);
 }
 
@@ -55,17 +57,20 @@ std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force, s
     // Thinking-mode models reject a forced function tool_choice; force=false
     // falls back to "auto" so the model still picks the tool itself.
     req.toolChoice = force ? verb : std::string("auto");
+    // Forced tools and thinking mode are mutually exclusive: disable thinking
+    // whenever we pin the call, otherwise honour the role's setting.
+    req.thinking = force ? false : thinking_;
     req.tools = toolDefs_;
     req.messages = session_.getContextMessages();
 
     if (multiResponder_) {
-        outText.clear();
+        outText = textResponder_ ? textResponder_(verb, req.messages) : std::string();
         lastReasoning_.clear();
         lastError_.clear();
         return multiResponder_(verb, req.messages);
     }
     if (responder_) {
-        outText.clear();
+        outText = textResponder_ ? textResponder_(verb, req.messages) : std::string();
         lastReasoning_.clear();
         lastError_.clear();
         ToolCall c = responder_(verb, req.messages);
@@ -157,11 +162,21 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
     BusyFlag busyGuard{&busy_};
     session_.addMessage(Message::User(message));
     std::string narr;   // last assistant narration text (used if the verb tool never fires)
+    bool nudged = false;   // "call the tool" hint is appended at most once per turn
     for (int r = 0; r < maxToolIters_; ++r) {
         std::string text;
         std::vector<ToolCall> calls = requestTool(verb, force, text);
         if (!text.empty()) { narr = text; setNarration(text); }
         if (calls.empty()) {
+            // auto mode: the model may answer in prose without ever calling the
+            // submission tool. Nudge once so the turn still produces a result.
+            if (!nudged && lastError_.empty() && !text.empty() && r < maxToolIters_ - 1) {
+                nudged = true;
+                session_.addMessage(Message::Assistant(text));
+                session_.addMessage(Message::User(
+                    "Please call the '" + verb + "' tool to submit your result."));
+                continue;
+            }
             std::string out;
             if (!lastError_.empty()) out = "[error] " + lastError_;
             else if (!text.empty()) out = text;
