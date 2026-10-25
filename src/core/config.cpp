@@ -139,7 +139,10 @@ bool saveApiKey(const std::string& key) {
     // Try to read existing config first
     toml::table tbl;
     try {
-        tbl = toml::parse_file(configPath);
+        // parse_result converts to table&, table&& and const table&, which makes
+        // `tbl = toml::parse_file(...)` ambiguous under MSVC /permissive- (the
+        // VS2022 default). Ask for the rvalue table explicitly.
+        tbl = static_cast<toml::table&&>(toml::parse_file(configPath));
         debugLog("[Config] Existing config found, updating");
     } catch (const toml::parse_error&) {
         debugLog("[Config] No existing config, creating new");
@@ -188,7 +191,7 @@ bool saveConfig(const AppConfig& cfg) {
     std::string configPath = getConfigPath();
     toml::table tbl;
     try {
-        tbl = toml::parse_file(configPath);
+        tbl = static_cast<toml::table&&>(toml::parse_file(configPath));   // see note above
     } catch (...) {
     }
 
