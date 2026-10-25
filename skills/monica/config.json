@@ -1,31 +1,39 @@
 {
   "name": "monica",
-  "description": "Supervisor-driven multi-agent project tidy-up: format files, strip full-width chars, translate Chinese comments to English, scan for dead code (report only).",
-  "tools": ["read_file", "write_file", "edit_file", "grep_files", "file_search", "exec_shell"],
+  "description": "Supervisor-driven multi-agent project tidy-up: format files, ASCII-ise punctuation, translate Chinese comments to English, report likely dead code (report only, never deletes).",
+  "thinking": "on",
+  "tools": ["read_file", "write_file", "edit_file", "grep_files", "file_search", "list_dir", "format_file"],
   "tool_mode": "auto",
   "dynamic_dispatch": true,
   "dispatch_tool": "emit",
   "max_tool_iters": 60,
-  "max_recursion": 3,
-  "max_rounds": 12,
+  "max_parallel": 16,
+  "max_rounds": 8,
   "converge": "none",
   "stop_when": {"slot": "supervisor", "equals": "DONE"},
   "agents": [
-    {"id": "supervisor", "display_name": "Supervisor",     "prompt": "supervisor.md"},
-    {"id": "formatter",  "display_name": "Formatter",      "prompt": "formatter.md"},
-    {"id": "translator", "display_name": "Translator",     "prompt": "translator.md"},
-    {"id": "auditor",    "display_name": "DeadCode Auditor","prompt": "auditor.md"}
+    {"id": "supervisor", "display_name": "Supervisor", "prompt": "supervisor.md", "thinking": "on"},
+    {"id": "worker_1",   "display_name": "Worker 1",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_2",   "display_name": "Worker 2",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_3",   "display_name": "Worker 3",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_4",   "display_name": "Worker 4",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_5",   "display_name": "Worker 5",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_6",   "display_name": "Worker 6",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_7",   "display_name": "Worker 7",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_8",   "display_name": "Worker 8",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_9",   "display_name": "Worker 9",   "prompt": "worker.md", "thinking": "off"},
+    {"id": "worker_10",  "display_name": "Worker 10",  "prompt": "worker.md", "thinking": "off"}
   ],
   "round_steps": [
-    {"progress": "Round {{round}}/{{max_rounds}} - supervisor planning", "actions": [
+    {"progress": "Round {{round}}/{{max_rounds}} - supervisor dispatch", "actions": [
       {"agent": "supervisor", "tool": "emit", "capture": "summary", "into": "supervisor", "emit": "message",
-       "message": "Project root: {{topic}}\n\nYou are MONICA, the supervisor. Each round: (1) explore the project, (2) pick the next small batch and dispatch via request_agent to formatter / translator / auditor, (3) collect reports. When everything is processed, reply with summary exactly DONE.\n\n(round {{round}}/{{max_rounds}})"}
+       "message": "Project root: {{topic}}\n\nYou are MONICA, the supervisor. This round: (1) inspect what is still unprocessed, (2) split it into batches of 6-10 files, (3) dispatch all ready batches to idle workers IN ONE REPLY via request_agent, (4) collect the reports. If every file is done, reply with exactly DONE.\n\n(round {{round}}/{{max_rounds}})"}
     ]}
   ],
   "on_converge": [
     {"progress": "Writing final report", "actions": [
       {"agent": "supervisor", "tool": "emit", "capture": "summary", "into": "report", "emit": "message",
-       "message": "Produce the FINAL consolidated report now, as ONE message: list everything you found across all rounds (dead code, unused includes, unused params, write-only fields, duplicated code, stale comments), grouped by file, in Markdown. This message IS the deliverable. Do not reply only DONE."}
+       "message": "Produce the FINAL consolidated report now, as ONE message in Markdown, grouped by file: what was formatted, which full-width characters were replaced, which Chinese comments were translated, and the suspected dead code list (file:line + why). Include any file that failed and why. This message IS the deliverable. Do not reply only DONE."}
     ]}
   ]
 }
