@@ -214,7 +214,9 @@ std::string PythonToolManager::executePyTool(const std::string& toolDir,
     if (result.timedOut) return "[PyTool Error] timed out";
 
     if (result.exitCode != 0) {
-        std::string errOut = result.stderr_;
+        // stderr_ is only populated on POSIX; on Windows stderr shares the stdout
+        // pipe, so fall back to it (this used to read an always-empty field).
+        std::string errOut = result.stderr_.empty() ? out : result.stderr_;
         while (!errOut.empty() && (errOut.back() == '\n' || errOut.back() == '\r'))
             errOut.pop_back();
         return errOut.empty() ? "[PyTool Error] exit code: " + std::to_string(result.exitCode)

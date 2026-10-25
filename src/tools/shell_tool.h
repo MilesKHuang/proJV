@@ -8,5 +8,5 @@
 class IProcessRunner;
 void registerShellTool(class ToolRegistry& registry, const std::string& workspacePath = "",
                        IProcessRunner* procRunner = nullptr);
-void registerEditFileTool(class ToolRegistry& registry);
+void registerEditFileTool(class ToolRegistry& registry, const std::string& workspacePath = "");
 void registerFileSearchTool(class ToolRegistry& registry, const std::string& workspacePath = "");

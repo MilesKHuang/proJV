@@ -122,7 +122,6 @@ class ProcessRunnerLinux : public IProcessRunner {
                 buf[n] = '\0';
                 std::lock_guard<std::mutex> lk(outMtx);
                 out += buf;
-                err += buf; // combine stderr into output
             }
             while ((n = read(errPipe[0], buf, sizeof(buf) - 1)) > 0) {
                 buf[n] = '\0';
@@ -204,12 +203,21 @@ class ProcessRunnerLinux : public IProcessRunner {
         }
         pid_ = 0;
 
+        // stdout_ stays interleaved (as before) so nothing disappears for callers
+        // that only read it; stderr_ now actually carries stderr, which is what
+        // ProcessResult promised and what python_tool_manager reads. On Windows
+        // the two streams share one pipe, so stderr_ stays empty there and
+        // callers fall back to stdout_ (see ProcessResult in the header).
         result.stdout_ = out + err;
         while (!result.stdout_.empty() &&
                (result.stdout_.back() == '\n' || result.stdout_.back() == '\r'))
             result.stdout_.pop_back();
         if (result.stdout_.size() > 32000)
             result.stdout_ = result.stdout_.substr(0, 32000) + "\n... (truncated)";
+        result.stderr_ = err;
+        while (!result.stderr_.empty() &&
+               (result.stderr_.back() == '\n' || result.stderr_.back() == '\r'))
+            result.stderr_.pop_back();
         return result;
     }
 

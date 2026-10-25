@@ -23,6 +23,9 @@ struct ProcessConfig {
 
 struct ProcessResult {
     std::string stdout_;
+    // Real stderr on POSIX (its own pipe). On Windows the child's stderr shares
+    // the stdout pipe, so this stays empty and callers must fall back to
+    // stdout_ -- every stderr_ reader in this tree does exactly that.
     std::string stderr_;
     int exitCode = 0;
     bool timedOut = false;

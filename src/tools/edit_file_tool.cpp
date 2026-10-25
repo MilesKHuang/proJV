@@ -1,5 +1,6 @@
 #include "registry.h"
 #include "shell_tool.h"
+#include "file_tool.h" // validateToolPath -- same guard as every other file tool
 #include "json_utils.h"
 #include <fstream>
 
@@ -18,19 +19,9 @@ static constexpr const char* TOOL_PARAM_REPLACE = "Text to replace the search te
 
 namespace fs = std::filesystem;
 
-// Resolve relative paths to absolute to avoid CWD-dependent failures
-static std::string resolveEditPath(const std::string& path) {
-    try {
-        fs::path p(path);
-        return fs::absolute(p).lexically_normal().string();
-    } catch (...) {
-        return path;
-    }
-}
-
 // extractStringArg is now in json_utils.h
 
-void registerEditFileTool(ToolRegistry& registry) {
+void registerEditFileTool(ToolRegistry& registry, const std::string& workspacePath) {
     ToolDefinition def;
     def.name = "edit_file";
     def.description = TOOL_EDIT_FILE_DESC;
@@ -38,7 +29,7 @@ void registerEditFileTool(ToolRegistry& registry) {
                       {"search", "string", TOOL_PARAM_SEARCH, true},
                       {"replace", "string", TOOL_PARAM_REPLACE, true}};
 
-    registry.registerTool(def, [](const std::string& args) -> std::string {
+    registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
         std::string rawPath = extractStringArg(args, "path");
         std::string searchText = extractStringArg(args, "search");
         std::string replaceText = extractStringArg(args, "replace");
@@ -46,8 +37,12 @@ void registerEditFileTool(ToolRegistry& registry) {
         if (rawPath.empty()) return "Error: Missing 'path' argument";
         if (searchText.empty()) return "Error: Missing 'search' argument";
 
-        // Resolve relative paths to absolute to avoid CWD-dependent failures
-        std::string path = resolveEditPath(rawPath);
+        // Same workspace guard as read_file / md_file / format_file. Without it
+        // this tool could rewrite any file on disk, which is how it stayed the
+        // only unguarded writer in the tool set.
+        std::string path;
+        const std::string pathErr = validateToolPath(rawPath, workspacePath, path);
+        if (!pathErr.empty()) return pathErr;
 
         // Read the file
         std::ifstream ifs(path, std::ios::binary);

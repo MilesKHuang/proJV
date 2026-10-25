@@ -340,16 +340,7 @@ static std::string findSimilarFiles(const std::string& failedPath, const std::st
             // Skip unwanted directories to speed up search
             if (entry.is_directory(ec) && !ec) {
                 std::string dirName = entry.path().filename().string();
-                bool skip = (dirName.size() > 0 && dirName[0] == '.');
-                if (!skip) {
-                    for (const auto& d : kSkipDirs) {
-                        if (dirName == d) {
-                            skip = true;
-                            break;
-                        }
-                    }
-                }
-                if (skip) {
+                if (isSkippedDirName(dirName)) {
                     it.disable_recursion_pending();
                 }
             }
@@ -374,6 +365,11 @@ bool isSkippedDirName(const std::string& name) {
     if (name[0] == '.') return true; // .git / .vs / .pytest_cache ...
     for (const auto& d : kSkipDirs)
         if (name == d) return true;
+    // Build trees are not always called "build": this repository alone has
+    // build_linux / build_strict / cmake-build-*, and an unscoped grep that
+    // descended into them truncated at the result cap (observed in a real run).
+    if (name.rfind("build_", 0) == 0) return true;
+    if (name.rfind("cmake-build", 0) == 0) return true;
     return false;
 }
 
@@ -716,16 +712,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                     // Skip known junk directories
                     if (entry.is_directory()) {
                         std::string dirName = entry.path().filename().string();
-                        bool skip = (dirName.size() > 0 && dirName[0] == '.');
-                        if (!skip) {
-                            for (const auto& d : kSkipDirs) {
-                                if (dirName == d) {
-                                    skip = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (skip) {
+                        if (isSkippedDirName(dirName)) {
                             it.disable_recursion_pending();
                             ++it;
                             continue;

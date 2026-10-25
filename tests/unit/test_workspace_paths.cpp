@@ -5,7 +5,7 @@
 #include "tools/registry.h"
 #include "tools/file_tool.h"
 #include "tools/md_file_tool.h"
-#include "tools/shell_tool.h" // registerFileSearchTool
+#include "tools/shell_tool.h" // registerFileSearchTool + registerEditFileTool
 #include "platform/iprocess_runner.h"
 #include "json.hpp"
 #include <filesystem>
@@ -154,4 +154,51 @@ TEST_CASE("file_search: stays inside the workspace and skips junk directories") 
               "notes.txt"));
     CHECK(has(reg.execute("file_search", nlohmann::json{{"pattern", "notesXtxt"}}.dump()),
               "No files found"));
+}
+
+TEST_CASE("edit_file: refuses to touch a path outside the workspace") {
+    const fs::path root = freshRoot("edit_guard");
+    writeAt(root, "src/a.cpp", "int x = 1;\n");
+    ToolRegistry reg;
+    registerEditFileTool(reg, root.string());
+
+    // Inside: works, and resolves relative to the workspace, not the CWD.
+    const std::string ok = reg.execute(
+        "edit_file",
+        nlohmann::json{{"path", "src/a.cpp"}, {"search", "int x = 1;"}, {"replace", "int x = 2;"}}
+            .dump());
+    CHECK(has(ok, "Edited"));
+    CHECK(readAt(root, "src/a.cpp") == "int x = 2;\n");
+
+    // Outside: refused before a single byte is read or written. This is the
+    // guard the tool was missing entirely.
+    const std::string bad = reg.execute(
+        "edit_file",
+        nlohmann::json{{"path", "/definitely/not/here.txt"}, {"search", "a"}, {"replace", "b"}}
+            .dump());
+    CHECK(has(bad, "outside the workspace"));
+}
+
+TEST_CASE("list_dir / grep / file_search skip build_* trees, not just 'build'") {
+    const fs::path root = freshRoot("skip_build_prefix");
+    writeAt(root, "src/a.cpp", "needle\n");
+    writeAt(root, "build_linux/gen.cpp", "needle\n");
+    writeAt(root, "build_strict/gen.cpp", "needle\n");
+    writeAt(root, "cmake-build-debug/gen.cpp", "needle\n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+
+    // A real run truncated at the result cap because leave-behind build trees
+    // were walked: the scan now ignores them.
+    const std::string listing = reg.execute("list_dir", nlohmann::json{{"depth", 2}}.dump());
+    CHECK(has(listing, "src/"));
+    CHECK(!has(listing, "build_linux/"));
+    CHECK(!has(listing, "build_strict/"));
+    CHECK(!has(listing, "cmake-build-debug/"));
+
+    const std::string hits =
+        reg.execute("grep_files", nlohmann::json{{"pattern", "needle"}}.dump());
+    CHECK(has(hits, "src"));
+    CHECK(!has(hits, "build_linux"));
+    CHECK(!has(hits, "build_strict"));
 }

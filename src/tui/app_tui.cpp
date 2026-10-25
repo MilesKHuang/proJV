@@ -40,7 +40,7 @@ void TuiApp::setupTools() {
     registerFileTools(tools, ws);
     registerFormatTool(tools, ws, procRunner_, config.clangFormatPath);
     registerMdFileTool(tools, ws);
-    registerEditFileTool(tools);
+    registerEditFileTool(tools, ws);
     registerFileSearchTool(tools, ws);
     registerSearchTool(tools, client);
     registerFetchTool(tools, client);

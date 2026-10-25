@@ -37,6 +37,10 @@ void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
             std::string cmd = extractStringArg(args, "command");
             std::string stdinContent = extractStringArg(args, "stdin");
             if (cmd.empty()) return "Error: Missing 'command' argument";
+            // The registry is wired with a runner at startup; a null here means
+            // the platform has no runner (CreateProcessRunner() returned null) or
+            // the wiring was skipped. Say so instead of dereferencing it.
+            if (!procRunner) return "Error: no process runner available on this platform";
 
             int timeoutMs = extractIntArg(args, "timeout_ms", kProcessTimeoutMs);
             if (timeoutMs <= 0) timeoutMs = kProcessTimeoutMs;
