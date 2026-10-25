@@ -77,25 +77,31 @@ static std::string resolveWorkspacePath(const std::string& path, const std::stri
 }
 
 // -- Path validation -----------------------------------------------
+// True when `resolvedPath` is the workspace root or lives under it.
+// Component-wise comparison, not string prefix: that keeps it separator
+// agnostic (Linux has no '\\') and makes D:\ws vs D:\ws2 impossible to confuse.
 static bool isPathInWorkspace(const std::string& resolvedPath, const std::string& workspace) {
     if (workspace.empty()) return true;
     try {
-        fs::path base = fs::absolute(workspace).lexically_normal();
-        fs::path target(resolvedPath);
-
-        std::string tStr = target.string();
-        std::string bStr = base.string();
-        std::transform(tStr.begin(), tStr.end(), tStr.begin(), ::tolower);
-        std::transform(bStr.begin(), bStr.end(), bStr.begin(), ::tolower);
-
-        // The workspace root itself (list_dir / grep_files default to it).
-        if (tStr == bStr) return true;
-
-        // Append separator to base to prevent false match (e.g. D:\ws vs D:\ws2)
-        if (!bStr.empty() && bStr.back() != '\\' && bStr.back() != '/')
-            bStr += '\\';
-
-        return tStr.find(bStr) == 0;
+        const fs::path base = fs::absolute(workspace).lexically_normal();
+        const fs::path target = fs::path(resolvedPath).lexically_normal();
+        auto bit = base.begin();
+        auto tit = target.begin();
+        for (; bit != base.end(); ++bit, ++tit) {
+            if (tit == target.end()) return false;   // target is above the workspace
+            std::string a = bit->string();
+            std::string b = tit->string();
+#ifdef _WIN32
+            // Windows paths are case-insensitive.
+            auto lower = [](std::string& s) {
+                for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            };
+            lower(a);
+            lower(b);
+#endif
+            if (a != b) return false;
+        }
+        return true;
     } catch (...) {
         return false;
     }

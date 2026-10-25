@@ -323,9 +323,28 @@ docs/
 
 ### 待用户操作
 
-1. `assets/raw/` 下的 6 段录屏；我据此转出 `assets/*.gif` 替换占位。
+1. `assets/raw/` 下的 5 段录屏；我据此转出 `assets/*.gif` 替换占位。
+   （Hero 已定：`assets/demo.gif` 就是首图，不再需要单独的 `hero.gif`。）
 2. `assets/social-preview.png`（1280x640）——需要 Logo 定稿后生成。
 3. 在 GitHub 网页填 Description / Topics / Social preview（文案见
    `docs/repo-settings.md`）。
 4. 打第一个 tag `v0.6.0` 触发 Release 流水线。
-5. Linux 构建与首次 CI 运行结果需要在 GitHub 上确认（本地未验证）。
+5. 首次 CI 运行结果需在 GitHub 上确认（本地无法跑 Actions）。
+
+### Linux 验证（WSL2，v0.6.0 补做）
+
+原本列为「未验证」的 Linux 构建已在 WSL2（Ubuntu 22.04，CMake 3.22.1，g++ 11.4，
+20 核）上补齐：
+
+- `cmake -B build_linux -DCMAKE_BUILD_TYPE=Release` + `cmake --build`：`proJV_tui`
+  与 `proJV_tests` 均编译链接成功，无警告级错误；
+- `ctest`：**170 用例 / 799 断言全绿**；
+- `cpack`：产出 `proJV-0.6.0-linux-x64.tar.gz`，解包核对 39 个条目，同样不含
+  `config.toml` / `sessions` / `prompts`；
+- `ldd`：只依赖系统常规库（libcurl 及其依赖树、libstdc++、libc、libm），
+  `libcurl4-openssl-dev` 是唯一需要额外安装的包。
+
+**Linux 跑测试抓到一个真 bug**：`isPathInWorkspace` 给基目录补的是 Windows 分隔符
+`\`，在 POSIX 上任何子路径都判定为「越界」，文件工具全废。已改成按路径组件逐段比较
+（不依赖分隔符，Windows 侧仍大小写不敏感）。这个 bug 是 12 个用例一起抓出来的，
+也说明「只在 Windows 上跑绿」不足以证明跨平台正确。

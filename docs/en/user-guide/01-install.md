@@ -29,18 +29,24 @@ The binary is not code-signed, so Windows may warn or quarantine it.
 
 ### Linux: dependencies
 
-libcurl is taken from the system:
+libcurl is taken from the system. Built and tested on Ubuntu 22.04 (also under
+WSL2) with CMake 3.22 and g++ 11:
 
 ```bash
 sudo apt-get install -y libcurl4-openssl-dev     # Debian / Ubuntu
 # sudo dnf install libcurl-devel                 # Fedora
 ```
 
-Check what the binary still needs:
+That is the only package you need to add; everything else the binary links to
+is part of a normal desktop install (glibc, libstdc++, and libcurl's own
+dependencies). Check what your machine still misses:
 
 ```bash
-ldd ./proJV_tui
+ldd ./proJV_tui | grep "not found"
 ```
+
+The headers usually live in the multiarch path
+(`/usr/include/x86_64-linux-gnu/curl/`), which CMake finds on its own.
 
 ## Option B - build from source
 

@@ -3,6 +3,11 @@
 This folder holds the original screen recordings. **Nothing here is shipped or
 referenced from a page** - the GIFs in `assets/` are the deliverables.
 
+## Already covered
+
+`assets/demo.gif` is the README hero. No new hero recording is needed unless
+you want to replace it.
+
 ## How to record
 
 - Terminal window fixed at **120 x 36**, font size large enough to read at
@@ -17,7 +22,6 @@ referenced from a page** - the GIFs in `assets/` are the deliverables.
 
 | File | Content | Max length |
 |------|---------|-----------|
-| `hero.mp4` | ask a question -> tool call -> streamed answer | 20 s |
 | `first-run.mp4` | launch, paste key, first message | 15 s |
 | `skill-monica.mp4` | `/monica D:\demo`, several workers busy in the sidebar | 20 s |
 | `skill-bigbang.mp4` | rounds of debate -> vote -> execution doc | 20 s |
@@ -27,7 +31,7 @@ referenced from a page** - the GIFs in `assets/` are the deliverables.
 ## Conversion (run by the maintainer)
 
 ```bash
-ffmpeg -i raw/hero.mp4 -vf "fps=12,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" assets/hero.gif
+ffmpeg -i raw/first-run.mp4 -vf "fps=12,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" assets/first-run.gif
 ```
 
 Requirements: width 720 px, 10-15 fps, **<= 5 MB** per file. If it is over,

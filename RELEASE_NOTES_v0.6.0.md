@@ -79,8 +79,17 @@ undeclared agent now fail loudly.
 ## Verification
 
 - `proJV_tests`: 170 test cases / 799 assertions, no network required.
+- Built and tested on **two platforms**: Windows (MSVC 19.29, VS 2019) and
+  Linux (Ubuntu 22.04 / WSL2, g++ 11, CMake 3.22) - both green.
+- `cpack` produces `proJV-0.6.0-windows-x64.zip` and
+  `proJV-0.6.0-linux-x64.tar.gz`; both archives were unpacked and checked: they
+  carry only the binary, `projv_files/{fonts,pytool,skills,theme}`, the READMEs
+  and the LICENSE - no `config.toml`, no sessions, no prompts.
 - New suites: `test_file_tools.cpp`, `test_skill_thinking.cpp`,
   `test_skill_parallel.cpp`, plus a rewritten `test_skill_monica.cpp`.
-- Not verified in this release: Linux build, and a full `/monica` run against a
-  200-file project on a machine with an API key (see 05_SKILL_IMPROVE.md,
-  acceptance section).
+- Found by the Linux run: `isPathInWorkspace` appended a Windows separator, so
+  every file tool rejected sub-paths of the workspace on POSIX. Rewritten as a
+  component-wise path comparison (separator agnostic, still case-insensitive on
+  Windows). 12 test cases caught it.
+- Still not verified: a full `/monica` run against a 200-file project with a
+  real API key (see 05_SKILL_IMPROVE.md, acceptance section).

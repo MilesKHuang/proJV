@@ -29,18 +29,22 @@
 
 ### Linux：依赖
 
-libcurl 用系统的：
+libcurl 用系统的。已在 Ubuntu 22.04（含 WSL2）上用 CMake 3.22 + g++ 11 编译并跑通测试：
 
 ```bash
 sudo apt-get install -y libcurl4-openssl-dev     # Debian / Ubuntu
 # sudo dnf install libcurl-devel                 # Fedora
 ```
 
-确认还依赖什么：
+只需要补这一个包；二进制链接的其余库（glibc、libstdc++、libcurl 自身的依赖）
+普通桌面系统都有。确认本机还缺什么：
 
 ```bash
-ldd ./proJV_tui
+ldd ./proJV_tui | grep "not found"
 ```
+
+头文件通常在 multiarch 路径（`/usr/include/x86_64-linux-gnu/curl/`），CMake 自己
+能找到，不用手动指定。
 
 ## 方式 B - 自己编译
 

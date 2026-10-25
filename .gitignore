@@ -42,3 +42,4 @@ __pycache__/
 build_linux/  
 
 dist/
+dist_linux/
