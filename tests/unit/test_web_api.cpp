@@ -12,34 +12,27 @@ namespace {
 std::string searchBody(std::initializer_list<nlohmann::json> items) {
     nlohmann::json j;
     j["results"] = nlohmann::json::array();
-    for (const auto& it : items) j["results"].push_back(it);
+    for (const auto& it : items)
+        j["results"].push_back(it);
     return j.dump();
 }
 
 } // namespace
 
 TEST_CASE("search: results are rendered with score, authority, summary") {
-    nlohmann::json a = {
-        {"rerank_score", 2.4},
-        {"title", "DeepSeek V4 model released"},
-        {"url", "https://example.com/deepseek-v4"},
-        {"snippet", "short"},
-        {"summary", "long summary text"},
-        {"content", "page body"},
-        {"site_name", "Example News"},
-        {"date", "2026-06-01T00:00:00+00:00"},
-        {"authority", 3}
-    };
+    nlohmann::json a = {{"rerank_score", 2.4},
+                        {"title", "DeepSeek V4 model released"},
+                        {"url", "https://example.com/deepseek-v4"},
+                        {"snippet", "short"},
+                        {"summary", "long summary text"},
+                        {"content", "page body"},
+                        {"site_name", "Example News"},
+                        {"date", "2026-06-01T00:00:00+00:00"},
+                        {"authority", 3}};
     nlohmann::json b = {
-        {"rerank_score", 0.9},
-        {"title", "Low quality"},
-        {"url", "https://example.com/low"},
-        {"snippet", "snippet only"},
-        {"content", ""},
-        {"site_name", nullptr},
-        {"date", nullptr},
-        {"authority", -1}
-    };
+        {"rerank_score", 0.9},       {"title", "Low quality"}, {"url", "https://example.com/low"},
+        {"snippet", "snippet only"}, {"content", ""},          {"site_name", nullptr},
+        {"date", nullptr},           {"authority", -1}};
     const std::string out = DeepSeekClient::formatSearchResults(searchBody({a, b}), false);
 
     CHECK(out.find("1. [score=2.4][authority=3] DeepSeek V4 model released") != std::string::npos);
@@ -56,11 +49,9 @@ TEST_CASE("search: results are rendered with score, authority, summary") {
 }
 
 TEST_CASE("search: need_content emits the page body") {
-    nlohmann::json a = {
-        {"rerank_score", 2.0}, {"title", "T"}, {"url", "https://e.com"},
-        {"snippet", "s"}, {"summary", "sum"}, {"content", "BODY TEXT"},
-        {"authority", 4}
-    };
+    nlohmann::json a = {{"rerank_score", 2.0}, {"title", "T"},     {"url", "https://e.com"},
+                        {"snippet", "s"},      {"summary", "sum"}, {"content", "BODY TEXT"},
+                        {"authority", 4}};
     const std::string out = DeepSeekClient::formatSearchResults(searchBody({a}), true);
     CHECK(out.find("--- content ---") != std::string::npos);
     CHECK(out.find("BODY TEXT") != std::string::npos);
@@ -69,8 +60,7 @@ TEST_CASE("search: need_content emits the page body") {
 TEST_CASE("search: empty results array and malformed bodies") {
     CHECK(DeepSeekClient::formatSearchResults(searchBody({}), false).empty());
     CHECK(DeepSeekClient::formatSearchResults("{\"results\":[]}", true).empty());
-    CHECK(DeepSeekClient::formatSearchResults("not json", false)
-              .rfind("Error:", 0) == 0);
+    CHECK(DeepSeekClient::formatSearchResults("not json", false).rfind("Error:", 0) == 0);
     CHECK(DeepSeekClient::formatSearchResults("{}", false).rfind("Error:", 0) == 0);
 }
 
@@ -99,15 +89,18 @@ TEST_CASE("fetch: content is truncated to 100KB") {
 }
 
 TEST_CASE("errors: OpenAI-compatible body -> readable text, no retry for 4xx") {
-    const std::string body = R"({"error":{"message":"'count' must be between 1 and 50","type":"invalid_request_error","param":null,"code":"invalid_request_error"}})";
+    const std::string body =
+        R"({"error":{"message":"'count' must be between 1 and 50","type":"invalid_request_error","param":null,"code":"invalid_request_error"}})";
 
     const std::string e400 = DeepSeekClient::formatApiError(400, body);
     CHECK(e400.rfind("Error: HTTP 400", 0) == 0);
     CHECK(e400.find("'count' must be between 1 and 50") != std::string::npos);
 
-    CHECK(DeepSeekClient::formatApiError(402, body).find("insufficient balance") != std::string::npos);
+    CHECK(DeepSeekClient::formatApiError(402, body).find("insufficient balance") !=
+          std::string::npos);
     CHECK(DeepSeekClient::formatApiError(403, body).find("security policy") != std::string::npos);
-    CHECK(DeepSeekClient::formatApiError(404, body).find("no usable page content") != std::string::npos);
+    CHECK(DeepSeekClient::formatApiError(404, body).find("no usable page content") !=
+          std::string::npos);
     CHECK(DeepSeekClient::formatApiError(413, body).find("too large") != std::string::npos);
 
     // Non-JSON bodies still yield a usable message.

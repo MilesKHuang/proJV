@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+// clang-format off
+// Hand-laid X-macro table: one screen-column layout, grouped by area. Reflowing
+// it (clang-format turns it into a cascading staircase) makes it unreadable, so
+// this block is excluded from formatting on purpose.
 #define PROJV_THEME_FIELDS(X) \
     X(windowBg) X(menuBarBg) X(frameBg) X(text) X(textDisabled) X(titleBg) \
     X(scrollbarBg) X(scrollbarGrab) X(buttonBg) X(buttonHovered) X(buttonActive) \
@@ -24,6 +28,7 @@
     X(mdH1) X(mdH2) X(mdH3) X(mdBold) X(mdItalic) X(mdCode) X(mdLink) X(mdLinkUnder) \
     X(mdBullet) X(mdHR) X(mdCodeBg) X(mdQuote) X(mdQuoteBar) X(mdTableHdr) \
     X(clearColor)
+// clang-format on
 
 struct ThemeColors {
     // Metadata.

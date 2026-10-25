@@ -4,16 +4,10 @@
 #include "debug_log.h"
 
 // -- Tool-call filter markers (moved from prompts.h) --------------------
-static constexpr const char* TOOL_CALL_START_MARKERS[] = {
-    "[TOOL_CALL]", "<tool_call",
-    "<invoke ", "<function_calls>",
-    nullptr
-};
-static constexpr const char* TOOL_CALL_END_MARKERS[] = {
-    "[/TOOL_CALL]", "</tool_call>",
-    "</invoke>", "</function_calls>",
-    nullptr
-};
+static constexpr const char* TOOL_CALL_START_MARKERS[] = {"[TOOL_CALL]", "<tool_call", "<invoke ",
+                                                          "<function_calls>", nullptr};
+static constexpr const char* TOOL_CALL_END_MARKERS[] = {"[/TOOL_CALL]", "</tool_call>", "</invoke>",
+                                                        "</function_calls>", nullptr};
 static constexpr int TOOL_CALL_MARKER_COUNT = 4;
 #include <sstream>
 #include <algorithm>
@@ -24,29 +18,30 @@ static constexpr int TOOL_CALL_MARKER_COUNT = 4;
 #include <cstdio>
 
 // -- Timeouts ----------------------------------------------------------------
-static constexpr int  kStreamTotalTimeoutSec  = 0;     // 0 = no total cap; idle timeout governs long reasoning
-static constexpr int  kStreamLowSpeedLimit    = 1;     // bytes/sec (very low -- tolerate API pauses)
-static constexpr int  kStreamLowSpeedTime     = 120;   // 2 min below limit -> timeout (was 120s; give reasoner more time)
-static constexpr int  kConnectTimeoutSec      = 30;
-static constexpr int  kSendTimeoutSec         = 60;    // sending large POST body
+static constexpr int kStreamTotalTimeoutSec =
+    0; // 0 = no total cap; idle timeout governs long reasoning
+static constexpr int kStreamLowSpeedLimit = 1; // bytes/sec (very low -- tolerate API pauses)
+static constexpr int kStreamLowSpeedTime =
+    120; // 2 min below limit -> timeout (was 120s; give reasoner more time)
+static constexpr int kConnectTimeoutSec = 30;
+static constexpr int kSendTimeoutSec = 60; // sending large POST body
 
 // -- SSE write-callback context -----------------------------------------------
 struct StreamContext {
-    DeepSeekClient*              client;
-    StreamCallbacks*             callbacks;
-    std::atomic<bool>*           cancelFlag;
-    std::string                  sseBuffer;
-    size_t                       totalBytes    = 0;
-    long                         httpStatus    = 0;
-    bool                         finished      = false;
-    bool                         headerDone    = false;
-    bool                         anyContent    = false;
-    std::string                  errorBody;           // captured on HTTP error
+    DeepSeekClient* client;
+    StreamCallbacks* callbacks;
+    std::atomic<bool>* cancelFlag;
+    std::string sseBuffer;
+    size_t totalBytes = 0;
+    long httpStatus = 0;
+    bool finished = false;
+    bool headerDone = false;
+    bool anyContent = false;
+    std::string errorBody; // captured on HTTP error
 };
 
 // -- libcurl write callback (receives SSE chunks) ----------------------------
-static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
-{
+static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* ctx = static_cast<StreamContext*>(userdata);
     size_t bytes = size * nmemb;
 
@@ -82,15 +77,13 @@ static size_t streamWriteCallback(char* ptr, size_t size, size_t nmemb, void* us
         if (newOff == offset) break;
         offset = newOff;
     }
-    if (offset > 0)
-        ctx->sseBuffer = ctx->sseBuffer.substr(offset);
+    if (offset > 0) ctx->sseBuffer = ctx->sseBuffer.substr(offset);
 
     return bytes;
 }
 
 // -- libcurl header callback (capture HTTP status) ---------------------------
-static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
-{
+static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* ctx = static_cast<StreamContext*>(userdata);
     size_t total = size * nmemb;
     std::string line(ptr, total);
@@ -107,8 +100,7 @@ static size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdat
 }
 
 // -- libcurl progress callback (frequent -> used for cancel detection) --------
-static int progressCallback(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
-{
+static int progressCallback(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
     auto* ctx = static_cast<StreamContext*>(userdata);
     if (ctx->cancelFlag && ctx->cancelFlag->load(std::memory_order_acquire))
         return 1; // non-zero -> abort transfer
@@ -121,11 +113,9 @@ struct BlockContext {
     std::atomic<bool>* cancelFlag;
 };
 
-static size_t blockWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
-{
+static size_t blockWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* ctx = static_cast<BlockContext*>(userdata);
-    if (ctx->cancelFlag && ctx->cancelFlag->load())
-        return 0;
+    if (ctx->cancelFlag && ctx->cancelFlag->load()) return 0;
     ctx->body.append(ptr, size * nmemb);
     return size * nmemb;
 }
@@ -169,7 +159,7 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
     nlohmann::json msgs = nlohmann::json::array();
     for (const auto& msg : request.messages) {
         nlohmann::json m;
-        to_json(m, msg);  // delegates to models.cpp -> handles content=null for tool_calls, etc.
+        to_json(m, msg); // delegates to models.cpp -> handles content=null for tool_calls, etc.
         msgs.push_back(m);
     }
     body["messages"] = msgs;
@@ -199,17 +189,16 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
             request.toolChoice == "required") {
             body["tool_choice"] = request.toolChoice;
         } else {
-            body["tool_choice"] = {
-                {"type", "function"},
-                {"function", { {"name", request.toolChoice} }}
-            };
+            body["tool_choice"] = {{"type", "function"},
+                                   {"function", {{"name", request.toolChoice}}}};
         }
     }
 
     return body.dump(2);
 }
 
-int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std::string& body, long* outHttpStatus) {
+int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std::string& body,
+                                  long* outHttpStatus) {
     int retries = 0;
     while (true) {
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
@@ -223,13 +212,13 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
         }
 
         if (res == CURLE_OK) {
-            if (*outHttpStatus == 200 || *outHttpStatus == 0)
-                return (int)res;
+            if (*outHttpStatus == 200 || *outHttpStatus == 0) return (int)res;
             if (isRetryableHttpStatus(*outHttpStatus) && retries < retryConfig_.maxRetries) {
                 ++retries;
-                debugLogf("[DeepSeek] HTTP %ld retryable, attempt %d/%d",
-                    *outHttpStatus, retries, retryConfig_.maxRetries);
-                std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
+                debugLogf("[DeepSeek] HTTP %ld retryable, attempt %d/%d", *outHttpStatus, retries,
+                          retryConfig_.maxRetries);
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
                 continue;
             }
             return (int)res;
@@ -238,9 +227,10 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
         // Network-level error -> retry if we haven't exceeded limit
         if (retries < retryConfig_.maxRetries) {
             ++retries;
-            debugLogf("[DeepSeek] curl_easy_perform error %d, retry %d/%d",
-                (int)res, retries, retryConfig_.maxRetries);
-            std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
+            debugLogf("[DeepSeek] curl_easy_perform error %d, retry %d/%d", (int)res, retries,
+                      retryConfig_.maxRetries);
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
             continue;
         }
         return (int)res;
@@ -264,9 +254,9 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
     dsmlDetected_ = false;
 
     StreamContext ctx;
-    ctx.client      = this;
-    ctx.callbacks   = &callbacks;
-    ctx.cancelFlag  = &cancelFlag;
+    ctx.client = this;
+    ctx.callbacks = &callbacks;
+    ctx.cancelFlag = &cancelFlag;
 
     int transparentRetries = 0;
     static constexpr int MAX_RETRIES = 3;
@@ -275,12 +265,25 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
     while (true) {
         CURL* curl = (CURL*)createEasyHandle();
         if (!curl) {
-            if (ctx.anyContent) { if (callbacks.onFinish) callbacks.onFinish(); success = true; break; }
-            if (transparentRetries < MAX_RETRIES && !cancelFlag.load(std::memory_order_acquire)) { ++transparentRetries; std::this_thread::sleep_for(std::chrono::milliseconds(500)); continue; }
+            if (ctx.anyContent) {
+                if (callbacks.onFinish) callbacks.onFinish();
+                success = true;
+                break;
+            }
+            if (transparentRetries < MAX_RETRIES && !cancelFlag.load(std::memory_order_acquire)) {
+                ++transparentRetries;
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
             if (callbacks.onError) callbacks.onError("Failed to init curl");
             break;
         }
-        struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
+        struct CurlGuard {
+            CURL* h;
+            ~CurlGuard() {
+                if (h) curl_easy_cleanup(h);
+            }
+        };
         CurlGuard guard{curl};
 
         std::string body = buildRequestBody(request);
@@ -295,8 +298,11 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
         headers = curl_slist_append(headers, auth.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
-        ctx.sseBuffer.clear(); ctx.totalBytes = 0;
-        ctx.httpStatus = 0; ctx.finished = false; ctx.headerDone = false;
+        ctx.sseBuffer.clear();
+        ctx.totalBytes = 0;
+        ctx.httpStatus = 0;
+        ctx.finished = false;
+        ctx.headerDone = false;
 
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.data());
@@ -317,18 +323,31 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
 
         long httpStatus = ctx.httpStatus;
         if (res != CURLE_OK && !ctx.finished) {
-            if (ctx.anyContent) { if (callbacks.onFinish) callbacks.onFinish(); success = true; break; }
+            if (ctx.anyContent) {
+                if (callbacks.onFinish) callbacks.onFinish();
+                success = true;
+                break;
+            }
             const char* es = curl_easy_strerror(res);
-            if (transparentRetries < MAX_RETRIES && !cancelFlag.load(std::memory_order_acquire)) { ++transparentRetries; std::this_thread::sleep_for(std::chrono::milliseconds(retryConfig_.delayForAttempt(transparentRetries-1))); continue; }
+            if (transparentRetries < MAX_RETRIES && !cancelFlag.load(std::memory_order_acquire)) {
+                ++transparentRetries;
+                std::this_thread::sleep_for(std::chrono::milliseconds(
+                    retryConfig_.delayForAttempt(transparentRetries - 1)));
+                continue;
+            }
             if (callbacks.onError) callbacks.onError(std::string("Stream error: ") + es);
             break;
         }
         if (httpStatus != 200) {
-            if (isRetryableHttpStatus(httpStatus) && !ctx.anyContent && transparentRetries < MAX_RETRIES && !cancelFlag.load(std::memory_order_acquire)) {
-                ++transparentRetries; int d = (httpStatus==429)?2000:retryConfig_.delayForAttempt(transparentRetries-1);
-                std::this_thread::sleep_for(std::chrono::milliseconds(d)); continue;
+            if (isRetryableHttpStatus(httpStatus) && !ctx.anyContent &&
+                transparentRetries < MAX_RETRIES && !cancelFlag.load(std::memory_order_acquire)) {
+                ++transparentRetries;
+                int d = (httpStatus == 429) ? 2000
+                                            : retryConfig_.delayForAttempt(transparentRetries - 1);
+                std::this_thread::sleep_for(std::chrono::milliseconds(d));
+                continue;
             }
-            std::string errMsg = "HTTP "+std::to_string(httpStatus);
+            std::string errMsg = "HTTP " + std::to_string(httpStatus);
             if (!ctx.errorBody.empty()) errMsg += ": " + ctx.errorBody;
             if (callbacks.onError) callbacks.onError(errMsg);
             break;
@@ -360,7 +379,12 @@ ChatResponse DeepSeekClient::sendMessage(const ChatRequest& request, std::string
         if (errorOut) *errorOut = "Failed to init curl";
         return resp;
     }
-    struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
+    struct CurlGuard {
+        CURL* h;
+        ~CurlGuard() {
+            if (h) curl_easy_cleanup(h);
+        }
+    };
     CurlGuard guard{curl};
 
     // A previous cancel() leaves cancelFlag set. streamBlocking() resets it
@@ -412,18 +436,27 @@ ChatResponse DeepSeekClient::sendMessage(const ChatRequest& request, std::string
         }
         if (j.contains("usage")) {
             auto& u = j["usage"];
-            resp.promptTokens     = u.value("prompt_tokens", 0);
+            resp.promptTokens = u.value("prompt_tokens", 0);
             resp.completionTokens = u.value("completion_tokens", 0);
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return resp;
 }
 
 // -- healthCheck --------------------------------------------------------------
 bool DeepSeekClient::healthCheck(std::string* errorOut) {
     CURL* curl = (CURL*)createEasyHandle();
-    if (!curl) { if (errorOut) *errorOut = "curl init failed"; return false; }
-    struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
+    if (!curl) {
+        if (errorOut) *errorOut = "curl init failed";
+        return false;
+    }
+    struct CurlGuard {
+        CURL* h;
+        ~CurlGuard() {
+            if (h) curl_easy_cleanup(h);
+        }
+    };
     CurlGuard guard{curl};
 
     BlockContext blockCtx;
@@ -462,8 +495,16 @@ std::vector<ModelInfo> DeepSeekClient::fetchModels(std::string* errorOut) {
     debugLog("[DeepSeek] fetchModels called");
 
     CURL* curl = (CURL*)createEasyHandle();
-    if (!curl) { if (errorOut) *errorOut = "curl init failed"; return models; }
-    struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
+    if (!curl) {
+        if (errorOut) *errorOut = "curl init failed";
+        return models;
+    }
+    struct CurlGuard {
+        CURL* h;
+        ~CurlGuard() {
+            if (h) curl_easy_cleanup(h);
+        }
+    };
     CurlGuard guard{curl};
 
     BlockContext blockCtx;
@@ -511,8 +552,8 @@ std::vector<ModelInfo> DeepSeekClient::fetchModels(std::string* errorOut) {
 //  Official Search / Fetch tools (POST /v1/tools/search, /v1/tools/fetch)
 // ============================================================================
 
-static constexpr size_t kSearchContentTrunc = 50 * 1024;   // need_content=true per item
-static constexpr size_t kFetchContentTrunc  = 100 * 1024;  // page markdown
+static constexpr size_t kSearchContentTrunc = 50 * 1024; // need_content=true per item
+static constexpr size_t kFetchContentTrunc = 100 * 1024; // page markdown
 
 // Trim ASCII whitespace (local copy: the parser-level trim() lives further down).
 static std::string trimWs(const std::string& s) {
@@ -536,11 +577,14 @@ std::string DeepSeekClient::formatApiError(long httpStatus, const std::string& b
         auto j = nlohmann::json::parse(body);
         if (j.contains("error")) {
             const auto& e = j["error"];
-            if (e.is_object()) detail = strField(e, "message");
-            else if (e.is_string()) detail = e.get<std::string>();
+            if (e.is_object())
+                detail = strField(e, "message");
+            else if (e.is_string())
+                detail = e.get<std::string>();
         }
         if (detail.empty()) detail = strField(j, "message");
-    } catch (...) {}
+    } catch (...) {
+    }
     if (detail.empty()) {
         detail = trimWs(body);
         if (detail.size() > 300) detail = detail.substr(0, 300) + "...";
@@ -548,17 +592,33 @@ std::string DeepSeekClient::formatApiError(long httpStatus, const std::string& b
 
     std::string hint;
     switch (httpStatus) {
-        case 400: hint = " (invalid request)"; break;
-        case 401: hint = " (missing or invalid API key)"; break;
-        case 402: hint = " (insufficient balance -- top up before retrying)"; break;
-        case 403: hint = " (rejected by the provider's security policy)"; break;
-        case 404: hint = " (no usable page content could be retrieved)"; break;
-        case 408: hint = " (request body read timed out)"; break;
-        case 413: hint = " (request body too large)"; break;
-        case 429: hint = " (rate limit exceeded)"; break;
-        default:
-            if (httpStatus >= 500) hint = " (provider error)";
-            break;
+    case 400:
+        hint = " (invalid request)";
+        break;
+    case 401:
+        hint = " (missing or invalid API key)";
+        break;
+    case 402:
+        hint = " (insufficient balance -- top up before retrying)";
+        break;
+    case 403:
+        hint = " (rejected by the provider's security policy)";
+        break;
+    case 404:
+        hint = " (no usable page content could be retrieved)";
+        break;
+    case 408:
+        hint = " (request body read timed out)";
+        break;
+    case 413:
+        hint = " (request body too large)";
+        break;
+    case 429:
+        hint = " (rate limit exceeded)";
+        break;
+    default:
+        if (httpStatus >= 500) hint = " (provider error)";
+        break;
     }
 
     std::string out = "Error: HTTP " + std::to_string(httpStatus) + hint;
@@ -576,7 +636,7 @@ std::string DeepSeekClient::formatSearchResults(const std::string& jsonBody, boo
     if (!j.contains("results") || !j["results"].is_array())
         return "Error: malformed search response (no results array)";
     const auto& results = j["results"];
-    if (results.empty()) return "";  // caller turns this into "No results found"
+    if (results.empty()) return ""; // caller turns this into "No results found"
 
     std::string out;
     int idx = 0;
@@ -599,17 +659,31 @@ std::string DeepSeekClient::formatSearchResults(const std::string& jsonBody, boo
         out += "\n";
 
         std::string date = strField(r, "date");
-        if (date.empty()) date = strField(r, "publish_time");  // older field name
-        if (!date.empty()) { out += "   date: "; out += date; out += "\n"; }
+        if (date.empty()) date = strField(r, "publish_time"); // older field name
+        if (!date.empty()) {
+            out += "   date: ";
+            out += date;
+            out += "\n";
+        }
         std::string site = strField(r, "site_name");
-        if (!site.empty()) { out += "   site: "; out += site; out += "\n"; }
+        if (!site.empty()) {
+            out += "   site: ";
+            out += site;
+            out += "\n";
+        }
 
         std::string summary = strField(r, "summary");
         if (!summary.empty()) {
-            out += "   "; out += summary; out += "\n";
+            out += "   ";
+            out += summary;
+            out += "\n";
         } else {
             std::string snippet = strField(r, "snippet");
-            if (!snippet.empty()) { out += "   "; out += snippet; out += "\n"; }
+            if (!snippet.empty()) {
+                out += "   ";
+                out += snippet;
+                out += "\n";
+            }
         }
 
         if (needContent) {
@@ -647,11 +721,16 @@ std::string DeepSeekClient::formatFetchPage(const std::string& jsonBody) {
     return "# " + title + "\n\n" + content;
 }
 
-int DeepSeekClient::postJson(const std::string& path, const std::string& body,
-                             std::string& outBody, long* outHttpStatus) {
+int DeepSeekClient::postJson(const std::string& path, const std::string& body, std::string& outBody,
+                             long* outHttpStatus) {
     CURL* curl = (CURL*)createEasyHandle();
     if (!curl) return (int)CURLE_FAILED_INIT;
-    struct CurlGuard { CURL* h; ~CurlGuard() { if (h) curl_easy_cleanup(h); } };
+    struct CurlGuard {
+        CURL* h;
+        ~CurlGuard() {
+            if (h) curl_easy_cleanup(h);
+        }
+    };
     CurlGuard guard{curl};
 
     cancelFlag.store(false, std::memory_order_release);
@@ -661,8 +740,10 @@ int DeepSeekClient::postJson(const std::string& path, const std::string& body,
 
     std::string url = config.baseUrl;
     if (!url.empty() && url.back() != '/') url += '/';
-    if (!path.empty() && path.front() == '/') url += path.substr(1);
-    else url += path;
+    if (!path.empty() && path.front() == '/')
+        url += path.substr(1);
+    else
+        url += path;
 
     std::string auth = "Authorization: Bearer " + config.apiKey;
     curl_slist* headers = nullptr;
@@ -715,8 +796,7 @@ std::string DeepSeekClient::searchWeb(const std::string& query, int count, bool 
     if (formatted.empty()) {
         return "Error: No results found for \"" + query + "\"";
     }
-    debugLogf("[DeepSeek] searchWeb: %zu bytes, %d results requested",
-              formatted.size(), count);
+    debugLogf("[DeepSeek] searchWeb: %zu bytes, %d results requested", formatted.size(), count);
     return formatted;
 }
 
@@ -761,8 +841,8 @@ std::string DeepSeekClient::fetchWeb(const std::string& url, std::string* errorO
 // ======================================================================
 
 // -- Tool-call filter: find earliest marker -------------------------------
-static std::pair<size_t, size_t> findFirstMarker(
-    const std::string& text, const char* const* markers, int count) {
+static std::pair<size_t, size_t> findFirstMarker(const std::string& text,
+                                                 const char* const* markers, int count) {
     size_t bestIdx = std::string::npos;
     size_t bestLen = 0;
     for (int i = 0; i < count; ++i) {
@@ -788,7 +868,8 @@ static std::string filterToolCallDelta(const std::string& delta, bool& inToolCal
             pos += idx + len;
             inToolCall = false;
         } else {
-            auto [idx, len] = findFirstMarker(tail, TOOL_CALL_START_MARKERS, TOOL_CALL_MARKER_COUNT);
+            auto [idx, len] =
+                findFirstMarker(tail, TOOL_CALL_START_MARKERS, TOOL_CALL_MARKER_COUNT);
             if (idx == std::string::npos) {
                 output.append(tail);
                 break;
@@ -819,11 +900,8 @@ static std::string trim(const std::string& s) {
     return s.substr(start, end - start + 1);
 }
 
-size_t DeepSeekClient::parseSSEChunk(
-    const std::string& buffer,
-    size_t startOffset,
-    StreamCallbacks& callbacks
-) {
+size_t DeepSeekClient::parseSSEChunk(const std::string& buffer, size_t startOffset,
+                                     StreamCallbacks& callbacks) {
     auto eventEnd = buffer.find("\n\n", startOffset);
     if (eventEnd == std::string::npos) return startOffset;
 
@@ -871,7 +949,8 @@ size_t DeepSeekClient::parseSSEChunk(
         if (!choice.contains("delta") || !choice["delta"].is_object()) {
             if (choice.contains("finish_reason") && !choice["finish_reason"].is_null()) {
                 std::string finishReason = choice["finish_reason"].is_string()
-                    ? choice["finish_reason"].get<std::string>() : "";
+                                               ? choice["finish_reason"].get<std::string>()
+                                               : "";
                 debugLogf("[DeepSeek] SSE: finish_reason=%s (no delta)", finishReason.c_str());
                 if (callbacks.onFinishReason) callbacks.onFinishReason(finishReason);
                 if (callbacks.onFinish) callbacks.onFinish();
@@ -887,15 +966,51 @@ size_t DeepSeekClient::parseSSEChunk(
                 // -- DSML filtering (copied from CodeWhale) ----------
                 if (!dsmlDetected_) {
                     static const char* dsmlMarkers[] = {
-                        "<|DSML|>", "<|tool_calls_begin|>",
-                        "\xEF\xBD\x9C" "DSML" "\xEF\xBD\x9C" ">",
-                        "\xEF\xBD\x9C" "tool" "\xE2\x96\x81" "calls" "\xE2\x96\x81" "begin" "\xEF\xBD\x9C" ">",
-                        "\xEF\xBD\x9C" "tool" "\xEF\xBD\x9C" "calls" "\xEF\xBD\x9C" ">",
-                        "</" "\xEF\xBD\x9C" "tool" "\xE2\x96\x81" "calls" "\xEF\xBD\x9C" ">",
-                        "</" "\xEF\xBD\x9C" "tool" "\xEF\xBD\x9C" "calls" "\xEF\xBD\x9C" ">",
+                        "<|DSML|>",
+                        "<|tool_calls_begin|>",
+                        "\xEF\xBD\x9C"
+                        "DSML"
+                        "\xEF\xBD\x9C"
+                        ">",
+                        "\xEF\xBD\x9C"
+                        "tool"
+                        "\xE2\x96\x81"
+                        "calls"
+                        "\xE2\x96\x81"
+                        "begin"
+                        "\xEF\xBD\x9C"
+                        ">",
+                        "\xEF\xBD\x9C"
+                        "tool"
+                        "\xEF\xBD\x9C"
+                        "calls"
+                        "\xEF\xBD\x9C"
+                        ">",
+                        "</"
+                        "\xEF\xBD\x9C"
+                        "tool"
+                        "\xE2\x96\x81"
+                        "calls"
+                        "\xEF\xBD\x9C"
+                        ">",
+                        "</"
+                        "\xEF\xBD\x9C"
+                        "tool"
+                        "\xEF\xBD\x9C"
+                        "calls"
+                        "\xEF\xBD\x9C"
+                        ">",
                         "</tool_calls>",
-                        "</" "\xEF\xBD\x9C" "DSML" "\xEF\xBD\x9C" ">",
-                        "<" "\xEF\xBD\x9C" "DSML" "\xEF\xBD\x9C" ">",
+                        "</"
+                        "\xEF\xBD\x9C"
+                        "DSML"
+                        "\xEF\xBD\x9C"
+                        ">",
+                        "<"
+                        "\xEF\xBD\x9C"
+                        "DSML"
+                        "\xEF\xBD\x9C"
+                        ">",
                     };
                     size_t early = std::string::npos;
                     for (const char* m : dsmlMarkers) {
@@ -912,8 +1027,9 @@ size_t DeepSeekClient::parseSSEChunk(
                     }
                     if (early != std::string::npos) {
                         content = content.substr(0, early);
-                        while (!content.empty() && (content.back() == ' ' || content.back() == '\t'
-                            || content.back() == '\r' || content.back() == '\n'))
+                        while (!content.empty() &&
+                               (content.back() == ' ' || content.back() == '\t' ||
+                                content.back() == '\r' || content.back() == '\n'))
                             content.pop_back();
                         dsmlDetected_ = true;
                         debugLog("[DeepSeek] DSML marker detected, suppressing further content");
@@ -936,7 +1052,8 @@ size_t DeepSeekClient::parseSSEChunk(
             }
         }
 
-        if (delta.contains("tool_calls") && delta["tool_calls"].is_array() && callbacks.onToolCall) {
+        if (delta.contains("tool_calls") && delta["tool_calls"].is_array() &&
+            callbacks.onToolCall) {
             for (const auto& tcItem : delta["tool_calls"]) {
                 ToolCall tc;
                 if (tcItem.contains("index") && tcItem["index"].is_number_integer())
@@ -959,7 +1076,8 @@ size_t DeepSeekClient::parseSSEChunk(
             const auto& usage = j["usage"];
             if (usage.contains("prompt_tokens") && usage["prompt_tokens"].is_number_integer())
                 prompt = usage["prompt_tokens"].get<int>();
-            if (usage.contains("completion_tokens") && usage["completion_tokens"].is_number_integer())
+            if (usage.contains("completion_tokens") &&
+                usage["completion_tokens"].is_number_integer())
                 completion = usage["completion_tokens"].get<int>();
             if (prompt > 0 || completion > 0) {
                 callbacks.onUsage(prompt, completion);
@@ -968,7 +1086,8 @@ size_t DeepSeekClient::parseSSEChunk(
 
         if (choice.contains("finish_reason") && !choice["finish_reason"].is_null()) {
             std::string finishReason = choice["finish_reason"].is_string()
-                ? choice["finish_reason"].get<std::string>() : "";
+                                           ? choice["finish_reason"].get<std::string>()
+                                           : "";
             debugLogf("[DeepSeek] SSE: finish_reason=%s", finishReason.c_str());
             if (callbacks.onFinishReason) callbacks.onFinishReason(finishReason);
             if (callbacks.onFinish) callbacks.onFinish();

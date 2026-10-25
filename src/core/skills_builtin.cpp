@@ -41,7 +41,8 @@ static const char* SKILL_MAKER_CONFIG = R"JSON({
 }
 )JSON";
 
-static const char* SKILL_MAKER_CREATOR_MD = R"MD(You are the Skill Creator for proJV. A "skill" is a directory that turns a
+static const char* SKILL_MAKER_CREATOR_MD =
+    R"MD(You are the Skill Creator for proJV. A "skill" is a directory that turns a
 multi-agent workflow into data. You produce files. You do not run the skill.
 
 ## Where files go
@@ -89,7 +90,8 @@ Rules:
 - When finished, call emit with a one-line summary that lists the files you wrote.
 )MD";
 
-static const char* SKILL_MAKER_VERIFIER_MD = R"MD(You are the Skill Verifier. A skill was just written under <skills_dir>/<name>/.
+static const char* SKILL_MAKER_VERIFIER_MD =
+    R"MD(You are the Skill Verifier. A skill was just written under <skills_dir>/<name>/.
 Validate it READ-ONLY. Do not modify anything.
 
 Steps:

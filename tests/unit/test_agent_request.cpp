@@ -26,18 +26,21 @@ void driveTodo(ToolRegistry& tools, const std::string& args) {
 TEST_CASE("R2: clearSession clears overview/TODO/briefs/user-request context") {
     DeepSeekClient client;
     ToolRegistry tools;
-    Agent agent(client, tools);   // constructor calls registerTodoTool
+    Agent agent(client, tools); // constructor calls registerTodoTool
 
     // 1) Produce an archived overview: init -> update -> done
     agent.startTurn("fix the build");
     driveTodo(tools, R"({"action":"init","tasks":"1. Fix A\n2. Fix B"})");
-    driveTodo(tools, R"({"action":"update","task":"Fix A","status":"done","brief":"A.h: fixed ctor"})");
+    driveTodo(tools,
+              R"({"action":"update","task":"Fix A","status":"done","brief":"A.h: fixed ctor"})");
     driveTodo(tools, R"({"action":"done"})");
 
     // 2) Produce an active TODO + brief + user-request: init + update, no done
     agent.startTurn("add feature C");
     driveTodo(tools, R"({"action":"init","tasks":"3. Add feature C"})");
-    driveTodo(tools, R"({"action":"update","task":"Add feature C","status":"in_progress","brief":"C.h: added stub"})");
+    driveTodo(
+        tools,
+        R"({"action":"update","task":"Add feature C","status":"in_progress","brief":"C.h: added stub"})");
 
     // Baseline: all four fields are non-empty before clearing (otherwise the
     // test would pass vacuously).

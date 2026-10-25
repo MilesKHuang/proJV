@@ -23,27 +23,31 @@
 
 // --- Compatibility shims for existing code -------------------------
 // Overload: accepts both std::string and const char*
-inline const char* _dbg_str(const std::string& s) { return s.c_str(); }
-inline const char* _dbg_str(const char* s) { return s; }
+inline const char* _dbg_str(const std::string& s) {
+    return s.c_str();
+}
+inline const char* _dbg_str(const char* s) {
+    return s;
+}
 
 #ifdef PROJV_RELEASE
 // Disable all loguru macros in Release builds -- no log output of any kind
 #undef LOG_F
-#define LOG_F(level, ...)       ((void)0)
+#define LOG_F(level, ...) ((void)0)
 #undef DLOG_F
-#define DLOG_F(level, ...)      ((void)0)
+#define DLOG_F(level, ...) ((void)0)
 #undef VLOG_F
-#define VLOG_F(verbosity, ...)  ((void)0)
+#define VLOG_F(verbosity, ...) ((void)0)
 
 #define debugLog(msg)
 #define debugLogf(fmt, ...)
 #else
 #ifndef debugLog
-#define debugLog(msg)        LOG_F(INFO, "%s", _dbg_str(msg))
+#define debugLog(msg) LOG_F(INFO, "%s", _dbg_str(msg))
 #endif
 
 #ifndef debugLogf
-#define debugLogf(fmt, ...)  LOG_F(INFO, fmt, ##__VA_ARGS__)
+#define debugLogf(fmt, ...) LOG_F(INFO, fmt, ##__VA_ARGS__)
 #endif
 #endif
 
@@ -53,7 +57,8 @@ inline const char* _dbg_str(const char* s) { return s; }
 
 inline std::string truncateForLog(const std::string& s, size_t maxLen = 500) {
     if (s.size() <= maxLen) return s;
-    return s.substr(0, maxLen) + "\n... [truncated " + std::to_string(s.size() - maxLen) + " bytes]";
+    return s.substr(0, maxLen) + "\n... [truncated " + std::to_string(s.size() - maxLen) +
+           " bytes]";
 }
 
 // --- Utility: replace non-printable chars for safe logging ---------
@@ -61,10 +66,14 @@ inline std::string safeForLog(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
-        if (c >= 32 && c < 127) out += c;
-        else if (c == '\n') out += "\\n";
-        else if (c == '\r') out += "\\r";
-        else if (c == '\t') out += "\\t";
+        if (c >= 32 && c < 127)
+            out += c;
+        else if (c == '\n')
+            out += "\\n";
+        else if (c == '\r')
+            out += "\\r";
+        else if (c == '\t')
+            out += "\\t";
         else {
             char buf[8];
             snprintf(buf, sizeof(buf), "\\x%02x", (unsigned char)c);
@@ -84,44 +93,66 @@ inline std::string sanitizeUTF8(const std::string& s) {
     while (i < s.size()) {
         unsigned char c = (unsigned char)s[i];
         if (c < 0x80) {
-            out += c; ++i;
+            out += c;
+            ++i;
         } else if (c < 0xC0) {
-            out += "\xEF\xBF\xBD"; ++i;
+            out += "\xEF\xBF\xBD";
+            ++i;
         } else if (c < 0xE0) {
-            if (c >= 0xC2 && i + 1 < s.size()
-                && ((unsigned char)s[i+1] & 0xC0) == 0x80) {
-                out += s[i]; out += s[i+1]; i += 2;
+            if (c >= 0xC2 && i + 1 < s.size() && ((unsigned char)s[i + 1] & 0xC0) == 0x80) {
+                out += s[i];
+                out += s[i + 1];
+                i += 2;
             } else {
-                out += "\xEF\xBF\xBD"; ++i;
+                out += "\xEF\xBF\xBD";
+                ++i;
             }
         } else if (c < 0xF0) {
-            if (i + 2 < s.size()
-                && ((unsigned char)s[i+1] & 0xC0) == 0x80
-                && ((unsigned char)s[i+2] & 0xC0) == 0x80) {
-                unsigned char b2 = (unsigned char)s[i+1];
+            if (i + 2 < s.size() && ((unsigned char)s[i + 1] & 0xC0) == 0x80 &&
+                ((unsigned char)s[i + 2] & 0xC0) == 0x80) {
+                unsigned char b2 = (unsigned char)s[i + 1];
                 bool ok = true;
                 if (c == 0xE0 && b2 < 0xA0) ok = false;
                 if (c == 0xED && b2 >= 0xA0) ok = false;
                 if (ok) {
-                    out += s[i]; out += s[i+1]; out += s[i+2]; i += 3;
-                } else { out += "\xEF\xBF\xBD"; ++i; }
-            } else { out += "\xEF\xBF\xBD"; ++i; }
+                    out += s[i];
+                    out += s[i + 1];
+                    out += s[i + 2];
+                    i += 3;
+                } else {
+                    out += "\xEF\xBF\xBD";
+                    ++i;
+                }
+            } else {
+                out += "\xEF\xBF\xBD";
+                ++i;
+            }
         } else if (c < 0xF8) {
-            if (i + 3 < s.size()
-                && ((unsigned char)s[i+1] & 0xC0) == 0x80
-                && ((unsigned char)s[i+2] & 0xC0) == 0x80
-                && ((unsigned char)s[i+3] & 0xC0) == 0x80) {
-                unsigned char b2 = (unsigned char)s[i+1];
+            if (i + 3 < s.size() && ((unsigned char)s[i + 1] & 0xC0) == 0x80 &&
+                ((unsigned char)s[i + 2] & 0xC0) == 0x80 &&
+                ((unsigned char)s[i + 3] & 0xC0) == 0x80) {
+                unsigned char b2 = (unsigned char)s[i + 1];
                 bool ok = true;
                 if (c == 0xF0 && b2 < 0x90) ok = false;
                 if (c == 0xF4 && b2 >= 0x90) ok = false;
                 if (c > 0xF4) ok = false;
                 if (ok) {
-                    out += s[i]; out += s[i+1]; out += s[i+2]; out += s[i+3]; i += 4;
-                } else { out += "\xEF\xBF\xBD"; ++i; }
-            } else { out += "\xEF\xBF\xBD"; ++i; }
+                    out += s[i];
+                    out += s[i + 1];
+                    out += s[i + 2];
+                    out += s[i + 3];
+                    i += 4;
+                } else {
+                    out += "\xEF\xBF\xBD";
+                    ++i;
+                }
+            } else {
+                out += "\xEF\xBF\xBD";
+                ++i;
+            }
         } else {
-            out += "\xEF\xBF\xBD"; ++i;
+            out += "\xEF\xBF\xBD";
+            ++i;
         }
     }
     return out;

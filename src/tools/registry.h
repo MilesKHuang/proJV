@@ -7,10 +7,10 @@
 
 using ToolExecutor = std::function<std::string(const std::string& args)>;
 
-class IProcessRunner;  // platform/iprocess_runner.h
+class IProcessRunner; // platform/iprocess_runner.h
 
 class ToolRegistry {
-public:
+  public:
     void registerTool(const ToolDefinition& def, ToolExecutor executor);
     std::vector<ToolDefinition> getToolDefinitions() const;
     std::string execute(const std::string& name, const std::string& args);
@@ -34,7 +34,7 @@ public:
         return turnEndRequested_.exchange(false, std::memory_order_acq_rel);
     }
 
-private:
+  private:
     std::unordered_map<std::string, ToolDefinition> definitions;
     std::unordered_map<std::string, ToolExecutor> executors;
     std::atomic<bool> cancelRequested_{false};

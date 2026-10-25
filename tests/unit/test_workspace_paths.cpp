@@ -5,7 +5,7 @@
 #include "tools/registry.h"
 #include "tools/file_tool.h"
 #include "tools/md_file_tool.h"
-#include "tools/shell_tool.h"      // registerFileSearchTool
+#include "tools/shell_tool.h" // registerFileSearchTool
 #include "platform/iprocess_runner.h"
 #include "json.hpp"
 #include <filesystem>
@@ -46,29 +46,34 @@ TEST_CASE("md_file: sub-paths inside the workspace are allowed on every platform
     registerMdFileTool(reg, root.string());
 
     // A nested path used to fail on POSIX: the guard appended a Windows '\\'.
-    const std::string w = reg.execute("md_file",
-        nlohmann::json{{"action", "write"}, {"path", "docs/design/plan.md"},
-                       {"content", "# plan\n"}}.dump());
+    const std::string w = reg.execute("md_file", nlohmann::json{{"action", "write"},
+                                                                {"path", "docs/design/plan.md"},
+                                                                {"content", "# plan\n"}}
+                                                     .dump());
     CHECK(has(w, "Written"));
     CHECK(readAt(root, "docs/design/plan.md") == "# plan\n");
 
     // The edit action must reach the same file.
-    const std::string e = reg.execute("md_file",
-        nlohmann::json{{"action", "edit"}, {"path", "docs/design/plan.md"},
-                       {"search", "# plan"}, {"replace", "# plan v2"}}.dump());
+    const std::string e = reg.execute("md_file", nlohmann::json{{"action", "edit"},
+                                                                {"path", "docs/design/plan.md"},
+                                                                {"search", "# plan"},
+                                                                {"replace", "# plan v2"}}
+                                                     .dump());
     CHECK(has(e, "Edited"));
     CHECK(readAt(root, "docs/design/plan.md") == "# plan v2\n");
 
     // Still refuses to escape the workspace.
-    CHECK(has(reg.execute("md_file",
-              nlohmann::json{{"action", "write"}, {"path", "../escape.md"},
-                             {"content", "x"}}.dump()),
-              "outside the workspace"));
+    CHECK(has(
+        reg.execute(
+            "md_file",
+            nlohmann::json{{"action", "write"}, {"path", "../escape.md"}, {"content", "x"}}.dump()),
+        "outside the workspace"));
     // ... and still refuses non-.md files.
-    CHECK(has(reg.execute("md_file",
-              nlohmann::json{{"action", "write"}, {"path", "notes.txt"},
-                             {"content", "x"}}.dump()),
-              "must end with .md"));
+    CHECK(has(
+        reg.execute(
+            "md_file",
+            nlohmann::json{{"action", "write"}, {"path", "notes.txt"}, {"content", "x"}}.dump()),
+        "must end with .md"));
 }
 
 TEST_CASE("grep_files: a file path searches that file instead of returning nothing") {
@@ -78,15 +83,15 @@ TEST_CASE("grep_files: a file path searches that file instead of returning nothi
     registerFileTools(reg, root.string());
 
     // Used to answer "No matches found", which reads as "no callers".
-    const std::string out = reg.execute("grep_files",
-        nlohmann::json{{"pattern", "keepMe"}, {"path", "src/a.cpp"}}.dump());
+    const std::string out = reg.execute(
+        "grep_files", nlohmann::json{{"pattern", "keepMe"}, {"path", "src/a.cpp"}}.dump());
     CHECK(has(out, "keepMe"));
     CHECK(has(out, "a.cpp:1"));
     CHECK(!has(out, "No matches found"));
 
     // No hit in a single file still says so, and does not fall through to a walk.
-    const std::string miss = reg.execute("grep_files",
-        nlohmann::json{{"pattern", "absent"}, {"path", "src/a.cpp"}}.dump());
+    const std::string miss = reg.execute(
+        "grep_files", nlohmann::json{{"pattern", "absent"}, {"path", "src/a.cpp"}}.dump());
     CHECK(has(miss, "No matches found"));
 }
 
@@ -128,27 +133,25 @@ TEST_CASE("file_search: stays inside the workspace and skips junk directories") 
 
     // Default path is the workspace root, and build/ node_modules/ .git/ are
     // skipped -- before this fix the tool walked all of them.
-    const std::string all = reg.execute("file_search",
-        nlohmann::json{{"pattern", "*.cpp"}}.dump());
+    const std::string all = reg.execute("file_search", nlohmann::json{{"pattern", "*.cpp"}}.dump());
     CHECK(has(all, "agent.cpp"));
     CHECK(!has(all, "generated.cpp"));
     CHECK(!has(all, "node_modules"));
 
     // Nested path inside the workspace works.
-    const std::string scoped = reg.execute("file_search",
-        nlohmann::json{{"pattern", "*.txt"}, {"path", "src"}}.dump());
+    const std::string scoped =
+        reg.execute("file_search", nlohmann::json{{"pattern", "*.txt"}, {"path", "src"}}.dump());
     CHECK(has(scoped, "notes.txt"));
 
     // Outside the workspace is refused, exactly like read_file.
-    CHECK(has(reg.execute("file_search",
-              nlohmann::json{{"pattern", "*.cpp"}, {"path", "/definitely/not/here"}}.dump()),
-              "outside the workspace"));
+    CHECK(has(
+        reg.execute("file_search",
+                    nlohmann::json{{"pattern", "*.cpp"}, {"path", "/definitely/not/here"}}.dump()),
+        "outside the workspace"));
 
     // A dot in a pattern is literal, not "any character".
-    CHECK(has(reg.execute("file_search",
-              nlohmann::json{{"pattern", "notes.txt"}}.dump()),
+    CHECK(has(reg.execute("file_search", nlohmann::json{{"pattern", "notes.txt"}}.dump()),
               "notes.txt"));
-    CHECK(has(reg.execute("file_search",
-              nlohmann::json{{"pattern", "notesXtxt"}}.dump()),
+    CHECK(has(reg.execute("file_search", nlohmann::json{{"pattern", "notesXtxt"}}.dump()),
               "No files found"));
 }

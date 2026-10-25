@@ -23,8 +23,8 @@ void initTerminal() {
 
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
     if (hIn != INVALID_HANDLE_VALUE && GetConsoleMode(hIn, &mode)) {
-        mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;  // 0x0200, not VT *processing*
-        mode |= ENABLE_MOUSE_INPUT;             // traditional mouse (fallback for ConHost)
+        mode |= ENABLE_VIRTUAL_TERMINAL_INPUT; // 0x0200, not VT *processing*
+        mode |= ENABLE_MOUSE_INPUT;            // traditional mouse (fallback for ConHost)
         SetConsoleMode(hIn, mode);
     }
 #else
@@ -34,9 +34,9 @@ void initTerminal() {
 
 void beepIdle() {
 #ifdef _WIN32
-    MessageBeep(0xFFFFFFFFu);  // MB_OK default sound; non-blocking
+    MessageBeep(0xFFFFFFFFu); // MB_OK default sound; non-blocking
 #else
-    std::fputc('\a', stderr);   // best-effort terminal bell
+    std::fputc('\a', stderr); // best-effort terminal bell
     std::fflush(stderr);
 #endif
 }

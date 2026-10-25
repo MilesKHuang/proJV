@@ -64,12 +64,11 @@ void TuiApp::setupTools() {
             "turn to report the result. EXPENSIVE and SLOW (minutes, many model calls) -- "
             "use it only when the task needs a multi-role workflow the skill is designed "
             "for. Call it at most once per task; never call it again to 'check' the result.";
-        def.parameters = {
-            {"name", "string",
-             "Installed skill name (use the exact folder name; see /skill list).", true},
-            {"topic", "string",
-             "What the skill should work on -- the user's task, in full.", true}
-        };
+        def.parameters = {{"name", "string",
+                           "Installed skill name (use the exact folder name; see /skill list).",
+                           true},
+                          {"topic", "string",
+                           "What the skill should work on -- the user's task, in full.", true}};
         tools.registerTool(def, [this](const std::string& args) -> std::string {
             std::string name = extractStringArg(args, "name");
             std::string topic = extractStringArg(args, "topic");
@@ -83,16 +82,17 @@ void TuiApp::setupTools() {
             // trigger uses (tolerate a leading "/" from the model).
             std::string guess = name;
             if (!guess.empty() && guess[0] == '/') guess.erase(0, 1);
-            const auto resolved = skill_trigger::parse(
-                "/" + guess, SkillRunner::listSkills(skillsDir_));
-            const std::string folder =
-                resolved.kind == skill_trigger::Result::Kind::Trigger
-                    ? resolved.name : std::string();
+            const auto resolved =
+                skill_trigger::parse("/" + guess, SkillRunner::listSkills(skillsDir_));
+            const std::string folder = resolved.kind == skill_trigger::Result::Kind::Trigger
+                                           ? resolved.name
+                                           : std::string();
             if (folder.empty()) {
                 std::string avail;
-                for (const auto& n : SkillRunner::listSkills(skillsDir_)) avail += "\n- " + n;
-                return "Error: unknown skill '" + name + "'. Installed skills:" +
-                       (avail.empty() ? "\n(none)" : avail);
+                for (const auto& n : SkillRunner::listSkills(skillsDir_))
+                    avail += "\n- " + n;
+                return "Error: unknown skill '" + name +
+                       "'. Installed skills:" + (avail.empty() ? "\n(none)" : avail);
             }
 
             {
@@ -101,7 +101,8 @@ void TuiApp::setupTools() {
                     return "Error: skill '" + pendingSkill_->name +
                            "' is already queued for this turn";
                 if (lastSkillThisTurn_ == folder)
-                    return "Error: skill '" + folder + "' already ran in this turn. Its output "
+                    return "Error: skill '" + folder +
+                           "' already ran in this turn. Its output "
                            "is above -- read the produced files and report it instead of "
                            "re-running the workflow.";
                 if (skillCallsThisTurn_ >= 2)
@@ -116,7 +117,8 @@ void TuiApp::setupTools() {
             // End the turn after this tool round; runAgentTurnLoop picks the
             // skill up and resumes the conversation when it is done.
             tools.requestTurnEnd();
-            return "[skill] '" + folder + "' started. It runs as its own phase now; its "
+            return "[skill] '" + folder +
+                   "' started. It runs as its own phase now; its "
                    "narration and final document will be above your next turn. Ending this "
                    "turn loses nothing.";
         });
@@ -154,12 +156,14 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
 
     // Prompt files from projv_files/prompts/.
     promptFiles_ = ensureDefaultPrompts();
-    promptFiles_.erase(
-        std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
-        promptFiles_.end());
+    promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
+                       promptFiles_.end());
     activePromptIndex_ = 0;
     for (size_t i = 0; i < promptFiles_.size(); ++i) {
-        if (promptFiles_[i] == "coder.md") { activePromptIndex_ = static_cast<int>(i); break; }
+        if (promptFiles_[i] == "coder.md") {
+            activePromptIndex_ = static_cast<int>(i);
+            break;
+        }
     }
     std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
     agent->setSystemPrompt(sp);
@@ -169,8 +173,8 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     std::error_code ec;
     fs::create_directories(sessionsDir_, ec);
     if (ec) {
-        debugLogf("[TuiApp] Failed to create sessions dir '%s': %s",
-            sessionsDir_.c_str(), ec.message().c_str());
+        debugLogf("[TuiApp] Failed to create sessions dir '%s': %s", sessionsDir_.c_str(),
+                  ec.message().c_str());
     }
 
     agent->ensureStorage = [this]() {
@@ -218,7 +222,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     };
 
     buildBubblesFromMessages();
-    refreshModels();  // kick off model list fetch (async)
+    refreshModels(); // kick off model list fetch (async)
     return true;
 }
 
@@ -251,7 +255,7 @@ void TuiApp::syncChatFromAgent() {
 
     auto newMsgs = agent->getNewMessagesSince(lastMessageId_);
     if (!newMsgs.empty()) {
-        resetChatScroll();  // new content -> scroll back to bottom
+        resetChatScroll(); // new content -> scroll back to bottom
     }
     for (const auto& msg : newMsgs) {
         auto derived = bubble_model::deriveBubbles(msg, knownSpeakers_);
@@ -319,25 +323,34 @@ void TuiApp::sendMessage(const std::string& text) {
 
         if (trig.kind == skill_trigger::Result::Kind::List) {
             std::string msg = "[skill] available:";
-            for (const auto& n : installed) msg += "\n- " + n;
-            if (installed.empty()) msg += "\n(none)";
-            else msg += "\n\nUsage: /<skill> <topic>";
-            bubble_model::Bubble cb; cb.role = "system"; cb.content = msg;
-            chatHistory.push_back(cb); resetChatScroll();
+            for (const auto& n : installed)
+                msg += "\n- " + n;
+            if (installed.empty())
+                msg += "\n(none)";
+            else
+                msg += "\n\nUsage: /<skill> <topic>";
+            bubble_model::Bubble cb;
+            cb.role = "system";
+            cb.content = msg;
+            chatHistory.push_back(cb);
+            resetChatScroll();
             return;
         }
 
         if (trig.kind == skill_trigger::Result::Kind::Trigger) {
             if (trig.topic.empty()) {
-                bubble_model::Bubble cb; cb.role = "system";
+                bubble_model::Bubble cb;
+                cb.role = "system";
                 cb.content = "[skill] usage: /" + trig.name + " <topic>";
-                chatHistory.push_back(cb); resetChatScroll();
+                chatHistory.push_back(cb);
+                resetChatScroll();
                 return;
             }
             // Skills carry no image input yet: say so instead of silently
             // dropping the attachments.
             if (trimmed.find('@') != std::string::npos) {
-                bubble_model::Bubble cb; cb.role = "system";
+                bubble_model::Bubble cb;
+                cb.role = "system";
                 cb.content = "[image] images ignored: skills do not carry "
                              "image input yet.";
                 chatHistory.push_back(cb);
@@ -361,18 +374,22 @@ void TuiApp::sendMessage(const std::string& text) {
     {
         auto parsed = image_input::parseMarkers(trimmed, config.workspacePath);
         if (!parsed.ok()) {
-            bubble_model::Bubble cb; cb.role = "system";
+            bubble_model::Bubble cb;
+            cb.role = "system";
             cb.content = parsed.error + "\n(message not sent)";
-            chatHistory.push_back(cb); resetChatScroll();
+            chatHistory.push_back(cb);
+            resetChatScroll();
             return;
         }
         if (!parsed.images.empty()) {
             if (!modelSupportsVision(config.model)) {
-                bubble_model::Bubble cb; cb.role = "system";
+                bubble_model::Bubble cb;
+                cb.role = "system";
                 cb.content = "[image] model '" + config.model +
-                    "' does not accept image input. Switch to a Flash model (F10).\n"
-                    "(message not sent)";
-                chatHistory.push_back(cb); resetChatScroll();
+                             "' does not accept image input. Switch to a Flash model (F10).\n"
+                             "(message not sent)";
+                chatHistory.push_back(cb);
+                resetChatScroll();
                 return;
             }
             images = std::move(parsed.images);
@@ -432,16 +449,17 @@ void TuiApp::runAgentTurnLoop() {
         // One-shot System message for the follow-up turn. Kept as short as the
         // hard rules in the system prompt: three bullets, no restating.
         agent->setTurnNudge(
-            skillOk
-                ? "[skill done] '" + sk.name + "' finished -- its narration and final "
-                  "document are the messages above.\n"
-                  "- Read the produced files if you need exact details.\n"
-                  "- Do not call run_skill again; report what came out.\n"
-                  "- 3-5 lines: result, where it is, single next step. Point at the "
-                  "document above instead of repeating it.\n"
-                : "[skill stopped] '" + sk.name + "' did not finish -- cancelled or failed.\n"
-                  "- Do not retry unless the user asks.\n"
-                  "- 3-5 lines: what happened, next step.\n");
+            skillOk ? "[skill done] '" + sk.name +
+                          "' finished -- its narration and final "
+                          "document are the messages above.\n"
+                          "- Read the produced files if you need exact details.\n"
+                          "- Do not call run_skill again; report what came out.\n"
+                          "- 3-5 lines: result, where it is, single next step. Point at the "
+                          "document above instead of repeating it.\n"
+                    : "[skill stopped] '" + sk.name +
+                          "' did not finish -- cancelled or failed.\n"
+                          "- Do not retry unless the user asks.\n"
+                          "- 3-5 lines: what happened, next step.\n");
         // Loop: one more turn consumes the nudge and reports the result.
     }
 
@@ -455,13 +473,19 @@ void TuiApp::runAgentTurnLoop() {
 
 void TuiApp::joinAgentThread() {
     if (agentThread_.joinable()) {
-        try { agentThread_.join(); } catch (...) {}
+        try {
+            agentThread_.join();
+        } catch (...) {
+        }
     }
 }
 
 void TuiApp::joinSkillThread() {
     if (skillThread_.joinable()) {
-        try { skillThread_.join(); } catch (...) {}
+        try {
+            skillThread_.join();
+        } catch (...) {
+        }
     }
 }
 
@@ -493,7 +517,8 @@ std::string TuiApp::buildSharedContext() const {
     }
     if (b.empty()) return std::string();
     return "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
-           "Reference material only; use it to resolve vague references.]\n\n" + b;
+           "Reference material only; use it to resolve vague references.]\n\n" +
+           b;
 }
 
 // ----- single skill execution path (both triggers go through here) ----------
@@ -513,11 +538,15 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
     if (onStreamingTick) onStreamingTick();
 
     SkillRunner::Callbacks cbs;
-    cbs.onEvent = [this](const std::string& role, const std::string& kind, const std::string& text) {
+    cbs.onEvent = [this](const std::string& role, const std::string& kind,
+                         const std::string& text) {
         std::string content;
-        if (kind == "vote") content = "**[" + role + " vote]** " + text;
-        else if (kind == "document") content = text;
-        else content = "**[" + role + "]** " + text;   // message / system
+        if (kind == "vote")
+            content = "**[" + role + " vote]** " + text;
+        else if (kind == "document")
+            content = text;
+        else
+            content = "**[" + role + "]** " + text; // message / system
         if (agent) agent->addPersistedMessage(Message::Assistant(content));
     };
     cbs.onProgress = [this](const std::string& st) {
@@ -528,8 +557,8 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
         if (onStreamingTick) onStreamingTick();
     };
 
-    auto runner = std::make_unique<SkillRunner>(config, &tools, cbs,
-                                               buildSharedContext(), skillsDir_);
+    auto runner =
+        std::make_unique<SkillRunner>(config, &tools, cbs, buildSharedContext(), skillsDir_);
     runner->setCancelProbe([this]() { return tools.isCancelled(); });
 
     SkillRunner* r = runner.get();
@@ -542,7 +571,8 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
 
     try {
         r->run(name, topic);
-    } catch (...) {}
+    } catch (...) {
+    }
 
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
@@ -584,7 +614,7 @@ void TuiApp::cancelTurn() {
     pendingQueue_.clear();
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
-        pendingSkill_.reset();   // drop a queued-but-not-started skill
+        pendingSkill_.reset(); // drop a queued-but-not-started skill
         if (skillRunner_) skillRunner_->cancel();
     }
     if (agent) agent->cancel();
@@ -599,7 +629,7 @@ void TuiApp::shutdown() {
     if (agent) agent->cancel();
     joinAgentThread();
     joinModelsThread();
-    tools.setProcessRunner(nullptr);  // detach before main deletes the runner
+    tools.setProcessRunner(nullptr); // detach before main deletes the runner
     delete agent;
     agent = nullptr;
     // Explicitly close the DB and checkpoint the WAL on exit (bug fix).
@@ -626,8 +656,10 @@ status_bar::Data TuiApp::getStatusBarData() const {
     d.completionTokens = totalCompletionTokens_.load(std::memory_order_relaxed);
     d.status = getStatus();
     d.workspace = config.workspacePath;
-    d.cost = totalPromptTokens_.load() * lookupModelPrice(config.modelPrices, config.model, true) * 1e-6
-           + totalCompletionTokens_.load() * lookupModelPrice(config.modelPrices, config.model, false) * 1e-6;
+    d.cost = totalPromptTokens_.load() * lookupModelPrice(config.modelPrices, config.model, true) *
+                 1e-6 +
+             totalCompletionTokens_.load() *
+                 lookupModelPrice(config.modelPrices, config.model, false) * 1e-6;
     if (activePromptIndex_ >= 0 && activePromptIndex_ < static_cast<int>(promptFiles_.size())) {
         d.roleName = promptFiles_[activePromptIndex_];
         if (d.roleName.size() > 3 && d.roleName.substr(d.roleName.size() - 3) == ".md") {
@@ -659,8 +691,8 @@ void TuiApp::saveApiKeyAndConnect(const std::string& apiKey) {
     config.loadError.clear();
 }
 
-void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUrl,
-                            int maxTokens, double temperature, const std::string& workspace,
+void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUrl, int maxTokens,
+                            double temperature, const std::string& workspace,
                             const std::string& compiler, const std::string& python,
                             const std::string& model) {
     config.apiKey = apiKey;
@@ -679,11 +711,11 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
     }
 
     client.setConfig(config);
-    setupTools();  // re-register tools with new workspace path
+    setupTools(); // re-register tools with new workspace path
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setModel(config.model);
-    agent->setContextWindow(0);  // reset auto-detect on model switch
+    agent->setContextWindow(0); // reset auto-detect on model switch
     config.loadError.clear();
 }
 
@@ -734,7 +766,10 @@ std::vector<std::string> TuiApp::listSessions() const {
     std::vector<std::string> out;
     std::error_code ec;
     for (const auto& entry : fs::directory_iterator(sessionsDir_, ec)) {
-        if (ec) { ec.clear(); continue; }
+        if (ec) {
+            ec.clear();
+            continue;
+        }
         if (!entry.is_regular_file(ec)) continue;
         if (entry.path().extension() != ".db") continue;
         out.push_back(entry.path().string());
@@ -745,7 +780,7 @@ std::vector<std::string> TuiApp::listSessions() const {
 }
 
 void TuiApp::switchPrompt(int index) {
-    if (!agent || agentThreadRunning_.load()) return;  // only while idle
+    if (!agent || agentThreadRunning_.load()) return; // only while idle
     if (index < 0 || index >= static_cast<int>(promptFiles_.size())) return;
     if (index == activePromptIndex_) return;
     activePromptIndex_ = index;
@@ -757,13 +792,13 @@ void TuiApp::setModel(const std::string& model) {
     config.model = model;
     if (agent) {
         agent->setModel(model);
-        agent->setContextWindow(0);  // reset auto-detect on model switch
+        agent->setContextWindow(0); // reset auto-detect on model switch
     }
     saveConfig(config);
 }
 
 void TuiApp::refreshModels() {
-    if (modelsLoading_.exchange(true)) return;  // already loading
+    if (modelsLoading_.exchange(true)) return; // already loading
     joinModelsThread();
     modelsThread_ = std::thread([this]() {
         std::string err;
@@ -784,7 +819,10 @@ std::vector<ModelInfo> TuiApp::getAvailableModels() const {
 
 void TuiApp::joinModelsThread() {
     if (modelsThread_.joinable()) {
-        try { modelsThread_.join(); } catch (...) {}
+        try {
+            modelsThread_.join();
+        } catch (...) {
+        }
     }
 }
 
@@ -793,13 +831,13 @@ void TuiApp::toggleReasoning() {
 }
 
 void TuiApp::scrollChat(int delta) {
-    int maxScroll = chatContentRows_ > chatViewportRows_
-        ? chatContentRows_ - chatViewportRows_ - 1 : 0;
+    int maxScroll =
+        chatContentRows_ > chatViewportRows_ ? chatContentRows_ - chatViewportRows_ - 1 : 0;
     if (chatFollowBottom_) {
-        chatScrollRow_ = maxScroll;   // snap to the current bottom before scrolling
+        chatScrollRow_ = maxScroll; // snap to the current bottom before scrolling
         chatFollowBottom_ = false;
     }
-    chatScrollRow_ -= delta;          // delta > 0 = scroll up (row index decreases)
+    chatScrollRow_ -= delta; // delta > 0 = scroll up (row index decreases)
     if (chatScrollRow_ < 0) chatScrollRow_ = 0;
     if (chatScrollRow_ >= maxScroll) {
         chatScrollRow_ = maxScroll;

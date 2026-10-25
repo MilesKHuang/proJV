@@ -45,10 +45,11 @@ std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
         size_t byteCount = msg.content.size();
         if (msg.name == "read_file" || msg.name == "file_search" || msg.name == "grep_files") {
             int lineCount = 0;
-            for (char c : msg.content) if (c == '\n') ++lineCount;
+            for (char c : msg.content)
+                if (c == '\n') ++lineCount;
             char buf[128];
-            snprintf(buf, sizeof(buf), "%s (%d lines, %zu bytes)",
-                msg.name.c_str(), lineCount, byteCount);
+            snprintf(buf, sizeof(buf), "%s (%d lines, %zu bytes)", msg.name.c_str(), lineCount,
+                     byteCount);
             d = buf;
         } else {
             char buf[96];
@@ -63,8 +64,7 @@ std::pair<std::string, std::string> formatToolMsg(const Message& msg) {
     }
 }
 
-std::vector<Bubble> deriveBubbles(const Message& msg,
-                                  const std::set<std::string>& knownRoles) {
+std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string>& knownRoles) {
     std::vector<Bubble> out;
 
     // Skip system messages (visual noise; /workspace special-cased).
@@ -145,9 +145,8 @@ std::vector<Bubble> deriveBubbles(const Message& msg,
     // prefix: "**[<name>]** ..." or "**[<name> vote]** ...". A prefix is treated
     // as a speaker ONLY when <name> is in the registry (knownRoles), so ordinary
     // bold markdown like "**[Note]**" is never misread. No name is hard-coded.
-    if (msg.role == "assistant" && !knownRoles.empty() &&
-        cb.content.rfind("**[", 0) == 0) {
-        size_t close = cb.content.find("]** ", 3);   // "]** " is 4 chars
+    if (msg.role == "assistant" && !knownRoles.empty() && cb.content.rfind("**[", 0) == 0) {
+        size_t close = cb.content.find("]** ", 3); // "]** " is 4 chars
         if (close != std::string::npos) {
             std::string name = cb.content.substr(3, close - 3);
             bool isVote = false;
@@ -158,7 +157,7 @@ std::vector<Bubble> deriveBubbles(const Message& msg,
             if (knownRoles.count(name)) {
                 cb.speaker = name;
                 cb.isVote = isVote;
-                cb.content = cb.content.substr(close + 4);   // skip "]** "
+                cb.content = cb.content.substr(close + 4); // skip "]** "
             }
         }
     }

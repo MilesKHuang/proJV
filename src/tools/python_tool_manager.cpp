@@ -67,9 +67,7 @@ std::string PythonToolManager::autoDetectPython() {
 // Constructor
 // ============================================================================
 PythonToolManager::PythonToolManager(std::string pythonPath, std::string workspacePath)
-    : pythonPath_(std::move(pythonPath))
-    , workspacePath_(std::move(workspacePath))
-{
+    : pythonPath_(std::move(pythonPath)), workspacePath_(std::move(workspacePath)) {
     if (pythonPath_.empty()) {
         pythonPath_ = autoDetectPython();
     } else {
@@ -99,9 +97,15 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
     int skipped = 0;
 
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
-        if (ec) { ec.clear(); continue; }
+        if (ec) {
+            ec.clear();
+            continue;
+        }
         if (!entry.is_directory(ec)) continue;
-        if (ec) { ec.clear(); continue; }
+        if (ec) {
+            ec.clear();
+            continue;
+        }
 
         auto toolDir = entry.path();
         auto toolName = toolDir.filename().string();
@@ -110,7 +114,8 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
         auto jsonPath = toolDir / "tool.json";
         if (!fs::is_regular_file(jsonPath)) {
             debugLogf("[PyTool] skipping '%s': no tool.json", toolName.c_str());
-            skipped++; continue;
+            skipped++;
+            continue;
         }
 
         nlohmann::json j;
@@ -118,28 +123,31 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
             std::ifstream ifs(jsonPath);
             ifs >> j;
         } catch (const std::exception& e) {
-            debugLogf("[PyTool] skipping '%s': tool.json parse error: %s",
-                toolName.c_str(), e.what());
-            skipped++; continue;
+            debugLogf("[PyTool] skipping '%s': tool.json parse error: %s", toolName.c_str(),
+                      e.what());
+            skipped++;
+            continue;
         }
 
-        if (!j.contains("name") || !j["name"].is_string() ||
-            !j.contains("description") || !j["description"].is_string()) {
+        if (!j.contains("name") || !j["name"].is_string() || !j.contains("description") ||
+            !j["description"].is_string()) {
             debugLogf("[PyTool] skipping '%s': tool.json missing name/description",
-                toolName.c_str());
-            skipped++; continue;
+                      toolName.c_str());
+            skipped++;
+            continue;
         }
 
         std::string jsonName = j["name"].get<std::string>();
         if (jsonName != toolName) {
             debugLogf("[PyTool] warning: json name '%s' != dir '%s', using dir name",
-                jsonName.c_str(), toolName.c_str());
+                      jsonName.c_str(), toolName.c_str());
         }
 
         // (b) Check main.py
         if (!fs::is_regular_file(toolDir / "main.py")) {
             debugLogf("[PyTool] skipping '%s': no main.py", toolName.c_str());
-            skipped++; continue;
+            skipped++;
+            continue;
         }
 
         // Build ToolDefinition
@@ -154,8 +162,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
                 tp.type = p.value("type", "string");
                 tp.description = p.value("description", "");
                 tp.required = p.value("required", false);
-                if (!tp.name.empty())
-                    def.parameters.push_back(std::move(tp));
+                if (!tp.name.empty()) def.parameters.push_back(std::move(tp));
             }
         }
 
@@ -164,14 +171,13 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
         std::string py = pythonPath_;
         std::string ws = workspacePath_;
 
-        registry.registerTool(def,
-            [tdir, py, ws, procRunner](const std::string& args) -> std::string {
+        registry.registerTool(
+            def, [tdir, py, ws, procRunner](const std::string& args) -> std::string {
                 return PythonToolManager::executePyTool(tdir, py, ws, args, procRunner);
             });
 
         registered++;
-        debugLogf("[PyTool] Registered '%s' (%zu params)",
-            toolName.c_str(), def.parameters.size());
+        debugLogf("[PyTool] Registered '%s' (%zu params)", toolName.c_str(), def.parameters.size());
     }
 
     debugLogf("[PyTool] scan done: %d registered, %d skipped", registered, skipped);
@@ -180,26 +186,23 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
 // ============================================================================
 // executePyTool (static, via IProcessRunner -- dual platform)
 // ============================================================================
-std::string PythonToolManager::executePyTool(
-    const std::string& toolDir,
-    const std::string& pythonPath,
-    const std::string& workspacePath,
-    const std::string& args,
-    IProcessRunner* procRunner)
-{
+std::string PythonToolManager::executePyTool(const std::string& toolDir,
+                                             const std::string& pythonPath,
+                                             const std::string& workspacePath,
+                                             const std::string& args, IProcessRunner* procRunner) {
     if (pythonPath.empty()) return "[PyTool Error] Python not configured";
     if (!procRunner) return "[PyTool Error] Process runner not available";
 
     std::string mainPy = (fs::path(toolDir) / "main.py").string();
 
     ProcessConfig cfg;
-    cfg.command      = "\"" + pythonPath + "\" \"" + mainPy + "\"";
-    cfg.workDir      = workspacePath;
+    cfg.command = "\"" + pythonPath + "\" \"" + mainPy + "\"";
+    cfg.workDir = workspacePath;
     cfg.stdinContent = args;
-    cfg.timeoutMs    = kProcessTimeoutMs;
-    cfg.inheritEnv   = true;
+    cfg.timeoutMs = kProcessTimeoutMs;
+    cfg.inheritEnv = true;
     cfg.extraEnv["PROJV_WORKSPACE"] = workspacePath;
-    cfg.extraEnv["PROJV_TOOL_DIR"]  = toolDir;
+    cfg.extraEnv["PROJV_TOOL_DIR"] = toolDir;
 
     ProcessResult result = procRunner->Run(cfg);
 
@@ -207,18 +210,15 @@ std::string PythonToolManager::executePyTool(
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r'))
         out.pop_back();
 
-    if (result.cancelled)
-        return "[PyTool Error] cancelled";
-    if (result.timedOut)
-        return "[PyTool Error] timed out";
+    if (result.cancelled) return "[PyTool Error] cancelled";
+    if (result.timedOut) return "[PyTool Error] timed out";
 
     if (result.exitCode != 0) {
         std::string errOut = result.stderr_;
         while (!errOut.empty() && (errOut.back() == '\n' || errOut.back() == '\r'))
             errOut.pop_back();
-        return errOut.empty()
-            ? "[PyTool Error] exit code: " + std::to_string(result.exitCode)
-            : "[PyTool Error] " + errOut;
+        return errOut.empty() ? "[PyTool Error] exit code: " + std::to_string(result.exitCode)
+                              : "[PyTool Error] " + errOut;
     }
 
     if (out.size() > 32000) {

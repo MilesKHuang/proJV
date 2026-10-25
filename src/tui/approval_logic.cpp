@@ -23,7 +23,8 @@ std::vector<std::string> extractDeleteFiles(const std::string& command) {
     std::vector<std::string> files;
 
     std::string clower = command;
-    for (auto& c : clower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (auto& c : clower)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
     size_t cmdPos = std::string::npos;
     const char* deleteKws[] = {"del ", "erase ", "rm ", "rmdir ", "rd "};
@@ -53,8 +54,12 @@ std::vector<std::string> extractDeleteFiles(const std::string& command) {
             }
         } else if (c == '"') {
             ++i;
-            while (i < args.size() && args[i] != '"') current += args[i++];
-            if (!current.empty()) { files.push_back(current); current.clear(); }
+            while (i < args.size() && args[i] != '"')
+                current += args[i++];
+            if (!current.empty()) {
+                files.push_back(current);
+                current.clear();
+            }
         } else {
             current += c;
         }

@@ -61,7 +61,8 @@ constexpr int kReasoningTailLines = 18;
 
 int countLines(const std::string& text) {
     int n = 1;
-    for (char c : text) if (c == '\n') ++n;
+    for (char c : text)
+        if (c == '\n') ++n;
     return n;
 }
 
@@ -97,11 +98,11 @@ std::string collapseBlankLines(const std::string& text) {
 }
 
 std::string reasoningSummary(const std::string& text) {
-    std::string s = "Thinking (" + std::to_string(text.size()) + " chars, "
-        + std::to_string(countLines(text)) + " lines)";
+    std::string s = "Thinking (" + std::to_string(text.size()) + " chars, " +
+                    std::to_string(countLines(text)) + " lines)";
     size_t end = text.size();
-    while (end > 0 && (text[end - 1] == '\n' || text[end - 1] == '\r' ||
-                       text[end - 1] == ' ' || text[end - 1] == '\t')) {
+    while (end > 0 && (text[end - 1] == '\n' || text[end - 1] == '\r' || text[end - 1] == ' ' ||
+                       text[end - 1] == '\t')) {
         --end;
     }
     size_t start = (end == 0) ? 0 : text.rfind('\n', end - 1);
@@ -115,8 +116,7 @@ std::string reasoningSummary(const std::string& text) {
 
 } // namespace
 
-Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
-                     bool reasoningExpanded) {
+Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, bool reasoningExpanded) {
     refreshPalette();
 
     int total = static_cast<int>(bubbles.size());
@@ -137,8 +137,9 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
                 if (countLines(b.reasoningText) > kReasoningTailLines) {
                     els.push_back(ftxui::text("… (earlier thinking omitted)") | ftxui::dim);
                 }
-                els.push_back(markdown_view::renderPlainText(collapseBlankLines(tailLines(b.reasoningText, kReasoningTailLines)))
-                              | ftxui::color(P.reasoningBody));
+                els.push_back(markdown_view::renderPlainText(collapseBlankLines(
+                                  tailLines(b.reasoningText, kReasoningTailLines))) |
+                              ftxui::color(P.reasoningBody));
             } else {
                 els.push_back(ftxui::text(reasoningSummary(b.reasoningText)) | ftxui::dim);
             }
@@ -163,8 +164,9 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
                     if (countLines(b.reasoningText) > kReasoningTailLines) {
                         els.push_back(ftxui::text("… (earlier thinking omitted)") | ftxui::dim);
                     }
-                    els.push_back(markdown_view::renderPlainText(collapseBlankLines(tailLines(b.reasoningText, kReasoningTailLines)))
-                                  | ftxui::color(P.reasoningBody));
+                    els.push_back(markdown_view::renderPlainText(collapseBlankLines(
+                                      tailLines(b.reasoningText, kReasoningTailLines))) |
+                                  ftxui::color(P.reasoningBody));
                 } else {
                     els.push_back(ftxui::text(reasoningSummary(b.reasoningText)) | ftxui::dim);
                 }
@@ -186,13 +188,16 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
             }
             std::string displayResults = results;
             int nl = 0;
-            for (char c : results) if (c == '\n') ++nl;
+            for (char c : results)
+                if (c == '\n') ++nl;
             if (nl >= 5) {
-                int found = 0; size_t pos = 0;
+                int found = 0;
+                size_t pos = 0;
                 while (found < 5 && pos < results.size()) {
                     pos = results.find('\n', pos);
                     if (pos == std::string::npos) break;
-                    ++pos; ++found;
+                    ++pos;
+                    ++found;
                 }
                 displayResults = results.substr(0, pos) + "...";
             }
@@ -200,7 +205,8 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles,
             toolEls.push_back(label("── Tool ──", P.tool));
             toolEls.push_back(markdown_view::renderPlainText(title) | ftxui::color(P.tool));
             if (!results.empty()) {
-                toolEls.push_back(markdown_view::renderPlainText(displayResults) | ftxui::color(P.toolResult));
+                toolEls.push_back(markdown_view::renderPlainText(displayResults) |
+                                  ftxui::color(P.toolResult));
             }
             block = ftxui::vbox(std::move(toolEls));
         } else if (b.role == "tool_result") {
@@ -234,8 +240,9 @@ Element renderStreamingBubble(const AgentStatus& status) {
         if (countLines(status.reasoningText) > kReasoningTailLines) {
             els.push_back(ftxui::text("… (earlier thinking omitted)") | ftxui::dim);
         }
-        els.push_back(markdown_view::renderPlainText(collapseBlankLines(tailLines(status.reasoningText, kReasoningTailLines)))
-                      | ftxui::color(P.reasoningBody));
+        els.push_back(markdown_view::renderPlainText(collapseBlankLines(
+                          tailLines(status.reasoningText, kReasoningTailLines))) |
+                      ftxui::color(P.reasoningBody));
     }
     if (!status.streamingText.empty()) {
         els.push_back(label("── proJV ──", P.text));

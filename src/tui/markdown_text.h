@@ -11,15 +11,27 @@
 namespace markdown_text {
 
 enum class Style {
-    Normal, Bold, Italic, Code, Link,
-    H1, H2, H3, Quote, Bullet, Ordered,
-    HR, CodeBlock, TableHeader, TableCell
+    Normal,
+    Bold,
+    Italic,
+    Code,
+    Link,
+    H1,
+    H2,
+    H3,
+    Quote,
+    Bullet,
+    Ordered,
+    HR,
+    CodeBlock,
+    TableHeader,
+    TableCell
 };
 
 struct Segment {
     std::string text;
     Style style = Style::Normal;
-    std::string url;   // non-empty only for Link segments
+    std::string url; // non-empty only for Link segments
 };
 
 struct Line {

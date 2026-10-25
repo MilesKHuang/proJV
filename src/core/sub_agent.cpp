@@ -22,7 +22,7 @@ struct BusyFlag {
 
 // Bounded concurrency for request_agent groups: max_parallel == in flight.
 class Semaphore {
-public:
+  public:
     explicit Semaphore(int n) : slots_(n < 1 ? 1 : n) {}
     void acquire() {
         std::unique_lock<std::mutex> lk(m_);
@@ -36,7 +36,8 @@ public:
         }
         cv_.notify_one();
     }
-private:
+
+  private:
     std::mutex m_;
     std::condition_variable cv_;
     int slots_;
@@ -60,7 +61,8 @@ void SubAgent::configure(const AppConfig& cfg, ToolRegistry* tools,
 }
 
 void SubAgent::registerToolDef(const ToolDefinition& def) {
-    for (auto& d : toolDefs_) if (d.name == def.name) return;   // dedup
+    for (auto& d : toolDefs_)
+        if (d.name == def.name) return; // dedup
     toolDefs_.push_back(def);
 }
 
@@ -74,7 +76,8 @@ void SubAgent::setNarration(const std::string& s) {
     lastNarration_ = s;
 }
 
-std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force, std::string& outText) {
+std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force,
+                                          std::string& outText) {
     ChatRequest req;
     req.model = cfg_.model;
     req.maxTokens = cfg_.maxTokens;
@@ -101,7 +104,7 @@ std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force, s
         lastError_.clear();
         ToolCall c = responder_(verb, req.messages);
         if (!c.valid) return {};
-        return { c };
+        return {c};
     }
 
     std::vector<ToolCall> parts;
@@ -127,22 +130,23 @@ std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force, s
 
     client_.streamBlocking(req, cb);
     if (!lastError_.empty()) {
-        debugLogf("[Skill][%s] '%s' failed: %s",
-                  name_.c_str(), verb.c_str(), lastError_.c_str());
+        debugLogf("[Skill][%s] '%s' failed: %s", name_.c_str(), verb.c_str(), lastError_.c_str());
     }
 
     // Return ALL calls in this response (parallel tool calling), not just one.
     std::vector<ToolCall> result;
-    if (got) for (auto& p : parts) if (!p.name.empty()) result.push_back(p);
+    if (got)
+        for (auto& p : parts)
+            if (!p.name.empty()) result.push_back(p);
     return result;
 }
 
-std::vector<ToolCall> SubAgent::requestTool(const std::string& verb, bool force, std::string& outText) {
+std::vector<ToolCall> SubAgent::requestTool(const std::string& verb, bool force,
+                                            std::string& outText) {
     outText.clear();
-    std::vector<ToolCall> calls = doRequest(verb, force, outText);   // honor force
+    std::vector<ToolCall> calls = doRequest(verb, force, outText); // honor force
     if (calls.empty() && force && lastError_.find("tool_choice") != std::string::npos) {
-        debugLogf("[Skill][%s] forced tool_choice rejected, retrying with auto",
-                  name_.c_str());
+        debugLogf("[Skill][%s] forced tool_choice rejected, retrying with auto", name_.c_str());
         calls = doRequest(verb, false, outText);
     }
     return calls;
@@ -154,7 +158,10 @@ std::string SubAgent::executeFileRequests(const std::vector<std::string>& paths)
     int n = 0;
     for (const auto& p : paths) {
         if (p.empty() || seen.count(p)) continue;
-        if (n >= 3) { out += "\n[skill] file_requests truncated to 3 per turn.\n"; break; }
+        if (n >= 3) {
+            out += "\n[skill] file_requests truncated to 3 per turn.\n";
+            break;
+        }
         seen.insert(p);
         ++n;
         // "path#L120-L480" -> read_file(path, start_line=120, end_line=480).
@@ -190,8 +197,8 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
     busy_.store(true, std::memory_order_relaxed);
     BusyFlag busyGuard{&busy_};
     session_.addMessage(Message::User(message));
-    std::string narr;   // last assistant narration text (used if the verb tool never fires)
-    bool nudged = false;   // "call the tool" hint is appended at most once per turn
+    std::string narr;    // last assistant narration text (used if the verb tool never fires)
+    bool nudged = false; // "call the tool" hint is appended at most once per turn
     bool budgetNudged = false;
     for (int r = 0; r < maxToolIters_; ++r) {
         // Budget backpressure (opt-in, see submit_reserve): when the turn is
@@ -199,32 +206,39 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
         // forcing tool_choice here would kill the thinking chain.
         if (!budgetNudged && submitReserve_ > 0 && r >= maxToolIters_ - submitReserve_) {
             budgetNudged = true;
-            session_.addMessage(Message::User(
-                "Tool budget nearly exhausted (" + std::to_string(maxToolIters_ - r) +
-                " call(s) left of " + std::to_string(maxToolIters_) + "). Stop exploring "
-                "and call the '" + verb + "' tool now with what you have."));
+            session_.addMessage(Message::User("Tool budget nearly exhausted (" +
+                                              std::to_string(maxToolIters_ - r) +
+                                              " call(s) left of " + std::to_string(maxToolIters_) +
+                                              "). Stop exploring "
+                                              "and call the '" +
+                                              verb + "' tool now with what you have."));
         }
         std::string text;
         std::vector<ToolCall> calls = requestTool(verb, force, text);
-        if (!text.empty()) { narr = text; setNarration(text); }
+        if (!text.empty()) {
+            narr = text;
+            setNarration(text);
+        }
         if (calls.empty()) {
             // auto mode: the model may answer in prose without ever calling the
             // submission tool. Nudge once so the turn still produces a result.
             if (!nudged && lastError_.empty() && !text.empty() && r < maxToolIters_ - 1) {
                 nudged = true;
                 session_.addMessage(Message::Assistant(text));
-                session_.addMessage(Message::User(
-                    "Please call the '" + verb + "' tool to submit your result."));
+                session_.addMessage(
+                    Message::User("Please call the '" + verb + "' tool to submit your result."));
                 continue;
             }
             std::string out;
-            if (!lastError_.empty()) out = "[error] " + lastError_;
-            else if (!text.empty()) out = text;
+            if (!lastError_.empty())
+                out = "[error] " + lastError_;
+            else if (!text.empty())
+                out = text;
             // Contract: a turn always returns something a caller can reason
             // about. Silence used to propagate as "", which every caller then
             // swallowed (empty slot -> no event -> "the batch never existed").
-            else out = "[no report] '" + name_ +
-                       "' returned no text and no tool call";
+            else
+                out = "[no report] '" + name_ + "' returned no text and no tool call";
             lastIters_ = r + 1;
             lastMarker_ = out.rfind("[no report]", 0) == 0;
             session_.addMessage(Message::Assistant(out));
@@ -239,7 +253,10 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
 
         int verbIdx = -1;
         for (int i = 0; i < static_cast<int>(calls.size()); ++i)
-            if (calls[i].name == verb) { verbIdx = i; break; }
+            if (calls[i].name == verb) {
+                verbIdx = i;
+                break;
+            }
 
         bool finalize = false;
         if (verbIdx >= 0) {
@@ -249,9 +266,11 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
                 if (args.contains("file_requests") && args["file_requests"].is_array())
                     for (const auto& v : args["file_requests"])
                         if (v.is_string()) files.push_back(v.get<std::string>());
-            } catch (...) {}
+            } catch (...) {
+            }
             if (!files.empty() && r < maxToolIters_ - 1) {
-                session_.addMessage(Message::Tool(calls[verbIdx].id, verb, executeFileRequests(files)));
+                session_.addMessage(
+                    Message::Tool(calls[verbIdx].id, verb, executeFileRequests(files)));
             } else {
                 session_.addMessage(Message::Tool(calls[verbIdx].id, verb, "OK"));
                 finalize = true;
@@ -266,12 +285,20 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
         std::map<std::string, std::vector<int>> groups;
         for (int i = 0; i < static_cast<int>(calls.size()); ++i) {
             if (i == verbIdx) continue;
-            if (calls[i].name != "request_agent") { serialIdx.push_back(i); continue; }
+            if (calls[i].name != "request_agent") {
+                serialIdx.push_back(i);
+                continue;
+            }
             std::string target;
-            try { target = nlohmann::json::parse(calls[i].arguments).value("agent_id", std::string("")); }
-            catch (...) {}
-            if (target.empty()) serialIdx.push_back(i);   // malformed -> answer in order
-            else groups[target].push_back(i);
+            try {
+                target =
+                    nlohmann::json::parse(calls[i].arguments).value("agent_id", std::string(""));
+            } catch (...) {
+            }
+            if (target.empty())
+                serialIdx.push_back(i); // malformed -> answer in order
+            else
+                groups[target].push_back(i);
         }
 
         for (int i : serialIdx) {
@@ -312,12 +339,14 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
                     slots.release();
                 });
             }
-            for (auto& t : workers) t.join();
+            for (auto& t : workers)
+                t.join();
         }
 
         for (int i = 0; i < static_cast<int>(calls.size()); ++i) {
             if (i == verbIdx) continue;
-            const std::string& r = sideResults[i].empty() ? std::string("Error: no result") : sideResults[i];
+            const std::string& r =
+                sideResults[i].empty() ? std::string("Error: no result") : sideResults[i];
             session_.addMessage(Message::Tool(calls[i].id, calls[i].name, r));
         }
         if (finalize) {
@@ -328,7 +357,7 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
     }
     lastIters_ = maxToolIters_;
     lastMarker_ = narr.empty();
-    if (!narr.empty()) return narr;   // loop exhausted: surface the narration
-    return "[no report] '" + name_ + "' ran out of tool budget (" +
-           std::to_string(maxToolIters_) + " calls) without calling '" + verb + "'";
+    if (!narr.empty()) return narr; // loop exhausted: surface the narration
+    return "[no report] '" + name_ + "' ran out of tool budget (" + std::to_string(maxToolIters_) +
+           " calls) without calling '" + verb + "'";
 }

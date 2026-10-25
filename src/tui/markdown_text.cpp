@@ -11,7 +11,8 @@ namespace {
 
 // skipSpace: advance past spaces/tabs.
 size_t skipSpace(const std::string& s, size_t pos) {
-    while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t')) ++pos;
+    while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t'))
+        ++pos;
     return pos;
 }
 
@@ -44,7 +45,8 @@ std::vector<Segment> parseInline(const std::string& line) {
         // `code`
         if (line[p] == '`') {
             size_t e = p + 1;
-            while (e < line.size() && line[e] != '`') ++e;
+            while (e < line.size() && line[e] != '`')
+                ++e;
             if (e < line.size() && e > p + 1) {
                 pushNormal(p);
                 Segment s;
@@ -58,7 +60,8 @@ std::vector<Segment> parseInline(const std::string& line) {
         // **bold**
         if (p + 1 < line.size() && line[p] == '*' && line[p + 1] == '*') {
             size_t e = p + 2;
-            while (e + 1 < line.size() && !(line[e] == '*' && line[e + 1] == '*')) ++e;
+            while (e + 1 < line.size() && !(line[e] == '*' && line[e + 1] == '*'))
+                ++e;
             if (e + 1 < line.size() && e > p + 2) {
                 pushNormal(p);
                 Segment s;
@@ -73,7 +76,8 @@ std::vector<Segment> parseInline(const std::string& line) {
         if (line[p] == '*' && (p == 0 || line[p - 1] != '*') &&
             (p + 1 >= line.size() || line[p + 1] != '*')) {
             size_t e = p + 1;
-            while (e < line.size() && line[e] != '*') ++e;
+            while (e < line.size() && line[e] != '*')
+                ++e;
             if (e < line.size() && e > p + 1) {
                 pushNormal(p);
                 Segment s;
@@ -87,11 +91,12 @@ std::vector<Segment> parseInline(const std::string& line) {
         // [text](url)
         if (line[p] == '[') {
             size_t rb = p + 1;
-            while (rb < line.size() && line[rb] != ']') ++rb;
-            if (rb < line.size() && rb > p + 1 &&
-                rb + 1 < line.size() && line[rb + 1] == '(') {
+            while (rb < line.size() && line[rb] != ']')
+                ++rb;
+            if (rb < line.size() && rb > p + 1 && rb + 1 < line.size() && line[rb + 1] == '(') {
                 size_t rp = rb + 2;
-                while (rp < line.size() && line[rp] != ')') ++rp;
+                while (rp < line.size() && line[rp] != ')')
+                    ++rp;
                 if (rp < line.size()) {
                     pushNormal(p);
                     Segment s;
@@ -122,8 +127,10 @@ std::vector<std::string> parseTableRow(const std::string& line) {
         size_t firstPipe = line.find('|');
         if (firstPipe != std::string::npos) {
             size_t s = 0, e = firstPipe;
-            while (s < e && (line[s] == ' ' || line[s] == '\t')) ++s;
-            while (e > s && (line[e - 1] == ' ' || line[e - 1] == '\t')) --e;
+            while (s < e && (line[s] == ' ' || line[s] == '\t'))
+                ++s;
+            while (e > s && (line[e - 1] == ' ' || line[e - 1] == '\t'))
+                --e;
             cells.emplace_back(line.substr(s, e - s));
             p = firstPipe;
         }
@@ -133,23 +140,30 @@ std::vector<std::string> parseTableRow(const std::string& line) {
         if (line[p] == '|') {
             ++p;
             size_t start = p;
-            while (p < line.size() && line[p] != '|') ++p;
-            while (start < p && line[start] == ' ') ++start;
+            while (p < line.size() && line[p] != '|')
+                ++p;
+            while (start < p && line[start] == ' ')
+                ++start;
             size_t end = p;
-            while (end > start && line[end - 1] == ' ') --end;
+            while (end > start && line[end - 1] == ' ')
+                --end;
             cells.emplace_back(line.substr(start, end - start));
         } else {
             ++p;
         }
     }
-    while (!cells.empty() && cells.back().empty()) cells.pop_back();
+    while (!cells.empty() && cells.back().empty())
+        cells.pop_back();
     return cells;
 }
 
 bool isTableSep(const std::string& line) {
     bool hasPipe = false;
     for (char c : line) {
-        if (c == '|') { hasPipe = true; continue; }
+        if (c == '|') {
+            hasPipe = true;
+            continue;
+        }
         if (c == ' ' || c == '-' || c == ':' || c == '\t') continue;
         return false;
     }
@@ -163,15 +177,21 @@ std::vector<int> parseTableAlign(const std::string& line, int expectedCols) {
         if (line[p] == '|') {
             ++p;
             size_t segStart = p;
-            while (p < line.size() && line[p] != '|') ++p;
-            while (segStart < p && line[segStart] == ' ') ++segStart;
+            while (p < line.size() && line[p] != '|')
+                ++p;
+            while (segStart < p && line[segStart] == ' ')
+                ++segStart;
             size_t segEnd = p;
-            while (segEnd > segStart && line[segEnd - 1] == ' ') --segEnd;
+            while (segEnd > segStart && line[segEnd - 1] == ' ')
+                --segEnd;
             bool lc = (segStart < segEnd && line[segStart] == ':');
             bool rc = (segStart < segEnd && line[segEnd - 1] == ':');
-            if (lc && rc) result.push_back(1);
-            else if (rc) result.push_back(2);
-            else result.push_back(0);
+            if (lc && rc)
+                result.push_back(1);
+            else if (rc)
+                result.push_back(2);
+            else
+                result.push_back(0);
             if (static_cast<int>(result.size()) >= expectedCols) break;
         } else {
             ++p;
@@ -236,7 +256,7 @@ std::vector<Line> parseMarkdown(const std::string& text) {
                 std::vector<Segment> cellSegs;
                 for (auto& sg : parseInline(h)) {
                     if (sg.style == Style::Normal) sg.style = Style::TableHeader;
-                    l.segs.push_back(sg);  // flat view (legacy-compatible)
+                    l.segs.push_back(sg); // flat view (legacy-compatible)
                     cellSegs.push_back(std::move(sg));
                 }
                 l.cells.push_back(std::move(cellSegs));
@@ -251,7 +271,7 @@ std::vector<Line> parseMarkdown(const std::string& text) {
                 // Keep inline styles inside cells (one cells[] entry per cell).
                 for (auto& sg : parseInline(c)) {
                     if (sg.style == Style::Normal) sg.style = Style::TableCell;
-                    l.segs.push_back(sg);  // flat view (legacy-compatible)
+                    l.segs.push_back(sg); // flat view (legacy-compatible)
                     cellSegs.push_back(std::move(sg));
                 }
                 l.cells.push_back(std::move(cellSegs));
@@ -287,7 +307,11 @@ std::vector<Line> parseMarkdown(const std::string& text) {
                 if (isTableSep(ln.substr(ts))) continue;
                 auto cells = parseTableRow(ln.substr(ts));
                 bool any = false;
-                for (auto& c : cells) if (!c.empty()) { any = true; break; }
+                for (auto& c : cells)
+                    if (!c.empty()) {
+                        any = true;
+                        break;
+                    }
                 if (any) {
                     tableRows.push_back(std::move(cells));
                     continue;
@@ -319,11 +343,14 @@ std::vector<Line> parseMarkdown(const std::string& text) {
         // HR: >=3 identical chars (with trailing spaces allowed).
         if (trimmedLen >= 3) {
             char ch = ln[ls];
-            if ((ch == '-' || ch == '*' || ch == '_') &&
-                ln[ls] == ch && ln[ls + 1] == ch && ln[ls + 2] == ch) {
+            if ((ch == '-' || ch == '*' || ch == '_') && ln[ls] == ch && ln[ls + 1] == ch &&
+                ln[ls + 2] == ch) {
                 bool allSame = true;
                 for (size_t k = 3; k < trimmedLen; ++k) {
-                    if (ln[ls + k] != ch && ln[ls + k] != ' ') { allSame = false; break; }
+                    if (ln[ls + k] != ch && ln[ls + k] != ' ') {
+                        allSame = false;
+                        break;
+                    }
                 }
                 if (allSame) {
                     flushTable();
@@ -343,7 +370,10 @@ std::vector<Line> parseMarkdown(const std::string& text) {
             flushTable();
             int level = 0;
             size_t h = ls;
-            while (h < ln.size() && ln[h] == '#') { ++level; ++h; }
+            while (h < ln.size() && ln[h] == '#') {
+                ++level;
+                ++h;
+            }
             if (h < ln.size() && ln[h] == ' ' && level <= 6) {
                 ++h;
                 Line l;
@@ -397,7 +427,7 @@ std::vector<Line> parseMarkdown(const std::string& text) {
                 if (i + 1 < lines.size()) {
                     size_t sls = skipSpace(lines[i + 1], 0);
                     tableAlign = parseTableAlign(lines[i + 1].substr(sls),
-                        static_cast<int>(tableHeaders.size()));
+                                                 static_cast<int>(tableHeaders.size()));
                 }
                 continue;
             }
@@ -409,7 +439,8 @@ std::vector<Line> parseMarkdown(const std::string& text) {
             flushTable();
             Line l;
             l.segs = parseInline(ln.substr(ls + 2));
-            for (auto& sg : l.segs) if (sg.style == Style::Normal) sg.style = Style::Bullet;
+            for (auto& sg : l.segs)
+                if (sg.style == Style::Normal) sg.style = Style::Bullet;
             emitLine(std::move(l));
             continue;
         }
@@ -417,9 +448,10 @@ std::vector<Line> parseMarkdown(const std::string& text) {
         // Ordered list: digits + '. '.
         {
             size_t ns = ls;
-            while (ns < ln.size() && std::isdigit(static_cast<unsigned char>(ln[ns]))) ++ns;
-            if (ns > ls && ns < ln.size() && ln[ns] == '.' &&
-                ns + 1 < ln.size() && ln[ns + 1] == ' ') {
+            while (ns < ln.size() && std::isdigit(static_cast<unsigned char>(ln[ns])))
+                ++ns;
+            if (ns > ls && ns < ln.size() && ln[ns] == '.' && ns + 1 < ln.size() &&
+                ln[ns + 1] == ' ') {
                 flushTable();
                 Line l;
                 Segment num;

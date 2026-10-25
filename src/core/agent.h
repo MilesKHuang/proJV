@@ -13,16 +13,10 @@
 #include <condition_variable>
 #include <vector>
 
-enum class AgentPhase {
-    Idle,
-    Streaming,
-    ExecutingTools,
-    AwaitApproval,
-    Error
-};
+enum class AgentPhase { Idle, Streaming, ExecutingTools, AwaitApproval, Error };
 
 class Agent {
-public:
+  public:
     Agent(DeepSeekClient& client, ToolRegistry& tools);
     ~Agent();
 
@@ -35,8 +29,7 @@ public:
     // `images` are vision attachments parsed from the user's "@path" markers.
     // They are persisted with the message row (paths only); an empty vector
     // keeps the plain-text behavior.
-    void startTurn(const std::string& text,
-                   std::vector<ImageAttachment> images = {});
+    void startTurn(const std::string& text, std::vector<ImageAttachment> images = {});
     void run();
 
     // One-shot System message injected at the start of the NEXT turn. Used after
@@ -90,10 +83,8 @@ public:
 
     std::vector<Message> getNewMessagesSince(int64_t sinceId) const;
 
-private:
-    void reloadAllowedTools() {
-        allowedTools_ = parseAvailableTools(systemPrompt_);
-    }
+  private:
+    void reloadAllowedTools() { allowedTools_ = parseAvailableTools(systemPrompt_); }
     std::vector<ToolDefinition> getFilteredToolDefinitions() const;
     StreamCallbacks makeCallbacks();
     ChatRequest buildChatRequest() const;

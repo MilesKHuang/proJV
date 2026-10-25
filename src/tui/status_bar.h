@@ -21,15 +21,15 @@ struct Data {
     size_t estimatedTokens = 0;
     size_t windowTokens = 0;
     std::string workspace;
-    std::string roleName;  // current system prompt role (without .md)
-    double cost = 0.0;     // estimated cost in USD
+    std::string roleName; // current system prompt role (without .md)
+    double cost = 0.0;    // estimated cost in USD
 };
 
 // One colored segment of the status bar. `color` points at a ThemeColors field
 // so every segment keeps the exact legacy status-bar color (never invented).
 struct Segment {
     std::string text;
-    std::string ThemeColors::* color;
+    std::string ThemeColors::*color;
 };
 
 // Render the status bar as colored segments (1:1 with the legacy status bar).

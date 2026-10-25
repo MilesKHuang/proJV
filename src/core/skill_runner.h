@@ -18,16 +18,17 @@
 class SubAgent;
 
 class SkillRunner {
-public:
+  public:
     struct Callbacks {
         // kind: "message" | "vote" | "document" | "system"
         std::function<void(const std::string& role, const std::string& kind,
-                           const std::string& text)> onEvent;
+                           const std::string& text)>
+            onEvent;
         std::function<void(const std::string& status)> onProgress;
     };
 
-    SkillRunner(AppConfig cfg, ToolRegistry* tools, Callbacks cbs,
-                std::string sharedContext = "", std::string skillsDir = "");
+    SkillRunner(AppConfig cfg, ToolRegistry* tools, Callbacks cbs, std::string sharedContext = "",
+                std::string skillsDir = "");
     ~SkillRunner();
 
     // Blocking: runs the whole skill on the calling thread.
@@ -43,13 +44,21 @@ public:
 
     // Test seam: scripted reply for one agent (empty == real API).
     using Responder = std::function<ToolCall(const std::string&, const std::vector<Message>&)>;
-    void setResponder(const std::string& agentId, Responder r) { responders_[agentId] = std::move(r); }
+    void setResponder(const std::string& agentId, Responder r) {
+        responders_[agentId] = std::move(r);
+    }
     // Test seam: scripted MULTI-call reply (parallel tool calls). Empty == unset.
-    using MultiResponder = std::function<std::vector<ToolCall>(const std::string&, const std::vector<Message>&)>;
-    void setResponderMulti(const std::string& agentId, MultiResponder r) { multiResponders_[agentId] = std::move(r); }
+    using MultiResponder =
+        std::function<std::vector<ToolCall>(const std::string&, const std::vector<Message>&)>;
+    void setResponderMulti(const std::string& agentId, MultiResponder r) {
+        multiResponders_[agentId] = std::move(r);
+    }
     // Test seam: scripted narration text for one response ("" == none).
-    using TextResponder = std::function<std::string(const std::string&, const std::vector<Message>&)>;
-    void setResponderText(const std::string& agentId, TextResponder r) { textResponders_[agentId] = std::move(r); }
+    using TextResponder =
+        std::function<std::string(const std::string&, const std::vector<Message>&)>;
+    void setResponderText(const std::string& agentId, TextResponder r) {
+        textResponders_[agentId] = std::move(r);
+    }
     bool converged() const { return converged_; }
     int lastRounds() const { return lastRounds_; }
     const std::string& lastDoc() const { return lastDoc_; }
@@ -63,7 +72,7 @@ public:
     struct AgentSnapshot {
         std::string id;
         std::string displayName;
-        std::string status;   // last narration summary
+        std::string status; // last narration summary
         int msgCount = 0;
         bool busy = false;
         AgentActivity activity = AgentActivity::Idle;
@@ -75,7 +84,7 @@ public:
     static std::vector<std::string> listSkills(const std::string& skillsDir);
     static void ensureDefaultSkills(const std::string& skillsDir);
 
-private:
+  private:
     void loadAgents();
     void executeSteps(const std::vector<SkillStep>& steps, int round);
     void mergeAction(const SkillAction& a, const std::string& result, int round);
@@ -104,20 +113,20 @@ private:
     SkillConfig config_;
 
     std::map<std::string, std::unique_ptr<SubAgent>> agents_;
-    mutable std::mutex snapMutex_;    // guards agents_ / displayNames_ for agentStatuses()
+    mutable std::mutex snapMutex_; // guards agents_ / displayNames_ for agentStatuses()
     std::map<std::string, Responder> responders_;
     std::map<std::string, MultiResponder> multiResponders_;
     std::map<std::string, TextResponder> textResponders_;
-    std::map<std::string, std::string> slots_;       // text slots (this round)
-    std::map<std::string, std::string> prevSlots_;   // snapshot at end of round
-    std::map<std::string, VoteResult> votes_;        // keyed by voting agent id
+    std::map<std::string, std::string> slots_;     // text slots (this round)
+    std::map<std::string, std::string> prevSlots_; // snapshot at end of round
+    std::map<std::string, VoteResult> votes_;      // keyed by voting agent id
     std::map<std::string, std::string> displayNames_;
-    std::set<std::string> drivers_;   // agents allowed to dispatch (one layer only)
-    std::string roundContext_;                       // last round's vote summary
+    std::set<std::string> drivers_; // agents allowed to dispatch (one layer only)
+    std::string roundContext_;      // last round's vote summary
 
     bool converged_ = false;
     int lastRounds_ = 0;
     std::string lastDoc_;
     std::atomic<bool> cancelRequested_{false};
-    std::function<bool()> cancelProbe_;   // optional external cancel source
+    std::function<bool()> cancelProbe_; // optional external cancel source
 };

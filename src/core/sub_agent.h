@@ -26,7 +26,7 @@ using SubAgentTextResponder =
     std::function<std::string(const std::string& verb, const std::vector<Message>&)>;
 
 class SubAgent {
-public:
+  public:
     SubAgent(std::string name, std::string systemPrompt);
 
     void configure(const AppConfig& cfg, ToolRegistry* tools,
@@ -69,7 +69,7 @@ public:
     int lastIterations() const { return lastIters_; }
     bool lastWasReport() const { return !lastMarker_; }
 
-private:
+  private:
     std::vector<ToolCall> doRequest(const std::string& verb, bool force, std::string& outText);
     std::vector<ToolCall> requestTool(const std::string& verb, bool force, std::string& outText);
     std::string executeFileRequests(const std::vector<std::string>& paths);
@@ -81,10 +81,10 @@ private:
     ToolRegistry* tools_ = nullptr;
     std::vector<std::string> toolWhitelist_;
     int maxToolIters_ = 3;
-    bool thinking_ = true;   // rejected together with a forced tool_choice
-    int maxParallel_ = 16;   // concurrent request_agent groups per turn
-    int submitReserve_ = 0;  // iterations reserved for the verb (0 = off)
-    std::mutex turnMutex_;   // turn() is not reentrant: one turn per agent at a time
+    bool thinking_ = true;  // rejected together with a forced tool_choice
+    int maxParallel_ = 16;  // concurrent request_agent groups per turn
+    int submitReserve_ = 0; // iterations reserved for the verb (0 = off)
+    std::mutex turnMutex_;  // turn() is not reentrant: one turn per agent at a time
     DeepSeekClient client_;
     Session session_;
     std::vector<ToolDefinition> toolDefs_;
@@ -93,8 +93,8 @@ private:
     std::string lastReasoning_;
     std::string lastError_;
     std::atomic<bool> busy_{false};
-    int lastIters_ = 0;        // iterations used by the last turn
-    bool lastMarker_ = false;  // true when the turn ended in a [no report] marker
+    int lastIters_ = 0;       // iterations used by the last turn
+    bool lastMarker_ = false; // true when the turn ended in a [no report] marker
     mutable std::mutex narrMutex_;
     std::string lastNarration_;
     std::function<std::string(const std::string&, const std::string&)> toolInterceptor_;

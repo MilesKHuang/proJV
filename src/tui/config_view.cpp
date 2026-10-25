@@ -42,16 +42,23 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     Component cppInput = Input(compiler.get(), singleLine);
     Component pyInput = Input(python.get(), singleLine);
 
-    Component saveBtn = Button("Save & Connect", [&app, onClose, apiKey, baseUrl,
-                                                   maxTokens, temperature, workspace,
-                                                   compiler, python, model] {
+    Component saveBtn = Button("Save & Connect", [&app, onClose, apiKey, baseUrl, maxTokens,
+                                                  temperature, workspace, compiler, python, model] {
         int mt = 0;
-        try { mt = std::stoi(*maxTokens); } catch (...) { mt = 0; }
+        try {
+            mt = std::stoi(*maxTokens);
+        } catch (...) {
+            mt = 0;
+        }
         if (mt < 512) mt = 512;
         if (mt > 65536) mt = 65536;
 
         double t = 0.0;
-        try { t = std::stod(*temperature); } catch (...) { t = 0.0; }
+        try {
+            t = std::stod(*temperature);
+        } catch (...) {
+            t = 0.0;
+        }
         if (t < 0.0) t = 0.0;
         if (t > 2.0) t = 2.0;
 
@@ -61,26 +68,41 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     Component cancelBtn = Button("Cancel", onClose);
 
     auto container = Container::Vertical({
-        apiKeyInput, baseUrlInput, modelInput, maxTokensInput, tempInput,
-        wsInput, cppInput, pyInput,
-        Container::Horizontal({ saveBtn, cancelBtn }),
+        apiKeyInput,
+        baseUrlInput,
+        modelInput,
+        maxTokensInput,
+        tempInput,
+        wsInput,
+        cppInput,
+        pyInput,
+        Container::Horizontal({saveBtn, cancelBtn}),
     });
 
     return Renderer(container, [=] {
         return vbox({
-            text("Configuration") | bold,
-            separator(),
-            hbox({ text("API Key: ") | size(WIDTH, EQUAL, 16), apiKeyInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("Base URL: ") | size(WIDTH, EQUAL, 16), baseUrlInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("Model: ") | size(WIDTH, EQUAL, 16), modelInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("Max Tokens: ") | size(WIDTH, EQUAL, 16), maxTokensInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("Temperature: ") | size(WIDTH, EQUAL, 16), tempInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("Workspace: ") | size(WIDTH, EQUAL, 16), wsInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("C++ Compiler: ") | size(WIDTH, EQUAL, 16), cppInput->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ text("Python: ") | size(WIDTH, EQUAL, 16), pyInput->Render() | size(WIDTH, EQUAL, 44) }),
-            separator(),
-            hbox({ saveBtn->Render(), text("  "), cancelBtn->Render() }),
-        }) | border;
+                   text("Configuration") | bold,
+                   separator(),
+                   hbox({text("API Key: ") | size(WIDTH, EQUAL, 16),
+                         apiKeyInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("Base URL: ") | size(WIDTH, EQUAL, 16),
+                         baseUrlInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("Model: ") | size(WIDTH, EQUAL, 16),
+                         modelInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("Max Tokens: ") | size(WIDTH, EQUAL, 16),
+                         maxTokensInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("Temperature: ") | size(WIDTH, EQUAL, 16),
+                         tempInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("Workspace: ") | size(WIDTH, EQUAL, 16),
+                         wsInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("C++ Compiler: ") | size(WIDTH, EQUAL, 16),
+                         cppInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({text("Python: ") | size(WIDTH, EQUAL, 16),
+                         pyInput->Render() | size(WIDTH, EQUAL, 44)}),
+                   separator(),
+                   hbox({saveBtn->Render(), text("  "), cancelBtn->Render()}),
+               }) |
+               border;
     });
 }
 
@@ -108,25 +130,35 @@ Component makeWelcome(TuiApp& app, std::function<void()> onSaved) {
         }
     });
 
-    auto container = Container::Vertical({ input, saveBtn });
+    auto container = Container::Vertical({input, saveBtn});
     return Renderer(container, [=] {
         return vbox({
-            text("Welcome to proJV") | bold,
-            separator(),
-            text("You need a DeepSeek API key to get started."),
-            hbox({ text("API Key: "), input->Render() | size(WIDTH, EQUAL, 44) }),
-            hbox({ saveBtn->Render() }),
-            separator(),
-            text("Commands: /help, /workspace, /clear, /compress, /skill") | dim,
-        }) | border;
+                   text("Welcome to proJV") | bold,
+                   separator(),
+                   text("You need a DeepSeek API key to get started."),
+                   hbox({text("API Key: "), input->Render() | size(WIDTH, EQUAL, 44)}),
+                   hbox({saveBtn->Render()}),
+                   separator(),
+                   text("Commands: /help, /workspace, /clear, /compress, /skill") | dim,
+               }) |
+               border;
     });
 }
 
 Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
-    Component yes = Button("YES -- Execute Once", [&app, onClose] { app.approveTool(1); onClose(); });
-    Component always = Button("ALWAYS -- Allow This Session", [&app, onClose] { app.approveTool(2); onClose(); });
-    Component no = Button("NO -- Cancel", [&app, onClose] { app.approveTool(0); onClose(); });
-    auto buttons = Container::Horizontal({ yes, always, no });
+    Component yes = Button("YES -- Execute Once", [&app, onClose] {
+        app.approveTool(1);
+        onClose();
+    });
+    Component always = Button("ALWAYS -- Allow This Session", [&app, onClose] {
+        app.approveTool(2);
+        onClose();
+    });
+    Component no = Button("NO -- Cancel", [&app, onClose] {
+        app.approveTool(0);
+        onClose();
+    });
+    auto buttons = Container::Horizontal({yes, always, no});
 
     return Renderer(buttons, [&app, yes, always, no] {
         Elements els;
@@ -157,7 +189,8 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
 
         els.push_back(separator());
         els.push_back(text("Approve this delete operation?"));
-        els.push_back(hbox({ yes->Render(), text("  "), always->Render(), text("  "), no->Render() }));
+        els.push_back(
+            hbox({yes->Render(), text("  "), always->Render(), text("  "), no->Render()}));
         return vbox(std::move(els)) | border;
     });
 }

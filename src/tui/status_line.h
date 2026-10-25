@@ -12,7 +12,7 @@ namespace status_line {
 // the text, so it follows the active theme (same pattern as status_bar).
 struct Line {
     std::string text;
-    std::string ThemeColors::* color;
+    std::string ThemeColors::*color;
 };
 
 // Render the one-line agent status text + theme color for the given snapshot.

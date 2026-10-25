@@ -30,7 +30,7 @@ ToolCall fakeCall(const std::string& name) {
 
 TEST_CASE("turn end: a tool can request it and the Agent consumes it once") {
     ToolRegistry tools;
-    CHECK_FALSE(tools.consumeTurnEndRequest());      // nothing pending
+    CHECK_FALSE(tools.consumeTurnEndRequest()); // nothing pending
 
     ToolDefinition def;
     def.name = "run_skill";
@@ -42,8 +42,8 @@ TEST_CASE("turn end: a tool can request it and the Agent consumes it once") {
 
     const std::string out = tools.execute("run_skill", "{}");
     CHECK(out == "[skill] queued");
-    CHECK(tools.consumeTurnEndRequest());            // honoured exactly once
-    CHECK_FALSE(tools.consumeTurnEndRequest());      // and cleared
+    CHECK(tools.consumeTurnEndRequest());       // honoured exactly once
+    CHECK_FALSE(tools.consumeTurnEndRequest()); // and cleared
 }
 
 TEST_CASE("turn end: cancelling a turn must not leave a pending request") {
@@ -63,8 +63,8 @@ TEST_CASE("turn end: the placeholder tool result keeps the pairing legal") {
     asst.toolCalls.push_back(fakeCall("run_skill"));
     s.addMessage(asst);
     // What the executor returns, written by Agent before the early break.
-    s.addMessage(Message::Tool("call_run_skill", "run_skill",
-                               "[skill] 'monica' is starting now.", false));
+    s.addMessage(
+        Message::Tool("call_run_skill", "run_skill", "[skill] 'monica' is starting now.", false));
 
     CHECK_FALSE(s.hasOrphanedTools());
     CHECK(s.messageCount() == 4);
@@ -86,6 +86,6 @@ TEST_CASE("turn end: dropping the placeholder would orphan the tool_calls") {
     Message asst = Message::Assistant("");
     asst.toolCalls.push_back(fakeCall("run_skill"));
     s.addMessage(asst);
-    s.addMessage(Message::System("[skill] finished"));   // never do this
+    s.addMessage(Message::System("[skill] finished")); // never do this
     CHECK(s.hasOrphanedTools());
 }

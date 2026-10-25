@@ -38,7 +38,7 @@ namespace {
 // overwrite the captured box, so the height survives for the next frame's
 // row-granular scrolling.
 class ObserveHeightNode : public ftxui::Node {
-public:
+  public:
     ObserveHeightNode(ftxui::Elements children, std::function<void(int)> on_height)
         : Node(std::move(children)), on_height_(std::move(on_height)) {}
 
@@ -53,32 +53,38 @@ public:
         children_[0]->SetBox(box);
     }
 
-private:
+  private:
     std::function<void(int)> on_height_;
 };
 
 ftxui::Element observeHeight(ftxui::Element child, std::function<void(int)> on_height) {
-    return std::make_shared<ObserveHeightNode>(
-        ftxui::unpack(std::move(child)), std::move(on_height));
+    return std::make_shared<ObserveHeightNode>(ftxui::unpack(std::move(child)),
+                                               std::move(on_height));
 }
 
 // Map a subagent activity to the theme color of its state word (mirrors
 // status_line::render for the main agent).
 std::string ThemeColors::*panelActivityColor(SkillRunner::AgentActivity a) {
     switch (a) {
-        case SkillRunner::AgentActivity::Working: return &ThemeColors::phaseStreaming;
-        case SkillRunner::AgentActivity::Error:   return &ThemeColors::statusError;
-        case SkillRunner::AgentActivity::Idle:
-        default:                                   return &ThemeColors::statusIdle;
+    case SkillRunner::AgentActivity::Working:
+        return &ThemeColors::phaseStreaming;
+    case SkillRunner::AgentActivity::Error:
+        return &ThemeColors::statusError;
+    case SkillRunner::AgentActivity::Idle:
+    default:
+        return &ThemeColors::statusIdle;
     }
 }
 
 const char* panelActivityLabel(SkillRunner::AgentActivity a) {
     switch (a) {
-        case SkillRunner::AgentActivity::Working: return "working";
-        case SkillRunner::AgentActivity::Error:   return "error";
-        case SkillRunner::AgentActivity::Idle:
-        default:                                   return "idle";
+    case SkillRunner::AgentActivity::Working:
+        return "working";
+    case SkillRunner::AgentActivity::Error:
+        return "error";
+    case SkillRunner::AgentActivity::Idle:
+    default:
+        return "idle";
     }
 }
 
@@ -89,12 +95,22 @@ std::string truncateToCols(const std::string& s, int maxCols) {
     size_t i = 0, last = 0;
     while (i < s.size()) {
         unsigned char c = static_cast<unsigned char>(s[i]);
-        size_t len = 1; int w = 1;
-        if (c >= 0xF0) { len = 4; w = 2; }
-        else if (c >= 0xE0) { len = 3; w = 2; }
-        else if (c >= 0xC0) { len = 2; w = 1; }
+        size_t len = 1;
+        int w = 1;
+        if (c >= 0xF0) {
+            len = 4;
+            w = 2;
+        } else if (c >= 0xE0) {
+            len = 3;
+            w = 2;
+        } else if (c >= 0xC0) {
+            len = 2;
+            w = 1;
+        }
         if (cols + w > maxCols) break;
-        cols += w; i += len; last = i;
+        cols += w;
+        i += len;
+        last = i;
     }
     std::string out = s.substr(0, last);
     if (last < s.size()) out += "..";
@@ -119,10 +135,10 @@ ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& a
         ftxui::Color stateColor = theme_map::hexToColor(T.*panelActivityColor(a.activity));
         ftxui::Color nameColor = speaker_colors::forRole(a.displayName);
         ftxui::Elements line1;
-        line1.push_back(ftxui::text("[" + a.displayName + "]")
-                        | ftxui::bold | ftxui::color(nameColor));
-        line1.push_back(ftxui::text(" " + std::string(panelActivityLabel(a.activity)))
-                        | ftxui::color(stateColor));
+        line1.push_back(ftxui::text("[" + a.displayName + "]") | ftxui::bold |
+                        ftxui::color(nameColor));
+        line1.push_back(ftxui::text(" " + std::string(panelActivityLabel(a.activity))) |
+                        ftxui::color(stateColor));
         if (a.activity == SkillRunner::AgentActivity::Working) {
             line1.push_back(ftxui::text(" "));
             line1.push_back(ftxui::spinner(6, spinnerFrame) | ftxui::color(stateColor));
@@ -131,12 +147,12 @@ ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& a
 
         // Line 2: dim, truncated last narration.
         std::string st = a.status;
-        auto nl = st.find('\n');                       // first line only
+        auto nl = st.find('\n'); // first line only
         if (nl != std::string::npos) st = st.substr(0, nl);
         if (st.empty())
             st = (a.activity == SkillRunner::AgentActivity::Working) ? "working..." : "(idle)";
-        els.push_back(ftxui::text(truncateToCols(st, 34))
-                      | ftxui::dim | ftxui::color(theme_map::hexToColor(T.textDisabled)));
+        els.push_back(ftxui::text(truncateToCols(st, 34)) | ftxui::dim |
+                      ftxui::color(theme_map::hexToColor(T.textDisabled)));
     }
     return ftxui::vbox(std::move(els));
 }
@@ -145,7 +161,7 @@ ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& a
 // OnAnimation when a frame was requested, so this component re-requests frames
 // continuously during busy states and lets the animation go idle otherwise.
 class SpinnerTicker : public ftxui::ComponentBase {
-public:
+  public:
     SpinnerTicker(std::function<bool()> busy, std::function<void()> onTick)
         : busy_(std::move(busy)), onTick_(std::move(onTick)) {}
 
@@ -157,7 +173,7 @@ public:
         ftxui::animation::RequestAnimationFrame();
     }
 
-private:
+  private:
     std::function<bool()> busy_;
     std::function<void()> onTick_;
 };
@@ -188,9 +204,7 @@ int main() {
 
     // Window close / Ctrl+C must still close the DB before the process is
     // reaped (FTXUI does not handle console close events on its own).
-    SystemUtil::Instance().InstallExitHandler([&app]() {
-        app.emergencyShutdown();
-    });
+    SystemUtil::Instance().InstallExitHandler([&app]() { app.emergencyShutdown(); });
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string input;
@@ -215,9 +229,8 @@ int main() {
     // Agent turns AND skill runs both share the busy flag, so the
     // spinner keeps animating during a debate (phase stays Idle then).
     auto busy = [&] { return app.isBusy(); };
-    auto spinner_ticker = std::make_shared<SpinnerTicker>(busy, [&] {
-        spinnerFrame = (spinnerFrame + 1) % 8;
-    });
+    auto spinner_ticker =
+        std::make_shared<SpinnerTicker>(busy, [&] { spinnerFrame = (spinnerFrame + 1) % 8; });
 
     // Idle-edge detector: plays a short system beep once a turn (or debate)
     // finishes and the app goes idle.
@@ -230,7 +243,8 @@ int main() {
         model_names->clear();
         auto models = app.getAvailableModels();
         if (!models.empty()) {
-            for (auto& m : models) model_names->push_back(m.id);
+            for (auto& m : models)
+                model_names->push_back(m.id);
         } else if (app.modelsLoading()) {
             model_names->push_back("(loading models...)");
         } else {
@@ -241,7 +255,10 @@ int main() {
         }
         *model_selected = 0;
         for (int mi = 0; mi < static_cast<int>(model_names->size()); ++mi) {
-            if ((*model_names)[mi] == app.getConfig().model) { *model_selected = mi; break; }
+            if ((*model_names)[mi] == app.getConfig().model) {
+                *model_selected = mi;
+                break;
+            }
         }
     };
     refresh_models();
@@ -274,12 +291,13 @@ int main() {
     input_opt.cursor_position = Ref<int>(&input_cursor);
     input_opt.transform = [&input, &input_cursor](InputState state) -> Element {
         if (input.empty()) {
-            return state.element;  // placeholder
+            return state.element; // placeholder
         }
-        return markdown_view::renderSoftWrappedInput(input, input_cursor, state.focused)
-            | yframe | size(HEIGHT, LESS_THAN, 8) | xflex;
+        return markdown_view::renderSoftWrappedInput(input, input_cursor, state.focused) | yframe |
+               size(HEIGHT, LESS_THAN, 8) | xflex;
     };
-    Component input_comp = Input(&input, "type a message (Enter=send, Esc=quit, F2=config)", input_opt);
+    Component input_comp =
+        Input(&input, "type a message (Enter=send, Esc=quit, F2=config)", input_opt);
 
     input_comp |= CatchEvent([&](Event e) {
         if (e == Event::Return) {
@@ -290,8 +308,10 @@ int main() {
             return true;
         }
         if (e == Event::Escape) {
-            if (app.isBusy()) app.cancelTurn();
-            else screen.Exit();
+            if (app.isBusy())
+                app.cancelTurn();
+            else
+                screen.Exit();
             return true;
         }
         if (e == Event::F2) {
@@ -373,8 +393,10 @@ int main() {
         if (busy()) screen.RequestAnimationFrame();
 
         // Drive the approval modal from the agent phase.
-        if (app.getPhase() == AgentPhase::AwaitApproval) show_approval = true;
-        else if (show_approval && app.getPhase() != AgentPhase::AwaitApproval) show_approval = false;
+        if (app.getPhase() == AgentPhase::AwaitApproval)
+            show_approval = true;
+        else if (show_approval && app.getPhase() != AgentPhase::AwaitApproval)
+            show_approval = false;
 
         Elements els;
         els.push_back(text("proJV (TUI)") | bold);
@@ -382,17 +404,32 @@ int main() {
         // Agent phase indicator (1:1 with renderChatArea's state machine line).
         {
             const char* phaseName = "?";
-            std::string ThemeColors::* phaseColor = &ThemeColors::phaseIdle;
+            std::string ThemeColors::*phaseColor = &ThemeColors::phaseIdle;
             switch (app.getPhase()) {
-                case AgentPhase::Idle:           phaseName = "Idle"; phaseColor = &ThemeColors::phaseIdle; break;
-                case AgentPhase::Streaming:      phaseName = "Streaming"; phaseColor = &ThemeColors::phaseStreaming; break;
-                case AgentPhase::ExecutingTools: phaseName = "ExecutingTools"; phaseColor = &ThemeColors::phaseExecutingTools; break;
-                case AgentPhase::AwaitApproval:  phaseName = "AwaitApproval"; phaseColor = &ThemeColors::phaseAwaitApproval; break;
-                case AgentPhase::Error:          phaseName = "Error"; phaseColor = &ThemeColors::phaseError; break;
+            case AgentPhase::Idle:
+                phaseName = "Idle";
+                phaseColor = &ThemeColors::phaseIdle;
+                break;
+            case AgentPhase::Streaming:
+                phaseName = "Streaming";
+                phaseColor = &ThemeColors::phaseStreaming;
+                break;
+            case AgentPhase::ExecutingTools:
+                phaseName = "ExecutingTools";
+                phaseColor = &ThemeColors::phaseExecutingTools;
+                break;
+            case AgentPhase::AwaitApproval:
+                phaseName = "AwaitApproval";
+                phaseColor = &ThemeColors::phaseAwaitApproval;
+                break;
+            case AgentPhase::Error:
+                phaseName = "Error";
+                phaseColor = &ThemeColors::phaseError;
+                break;
             }
             const auto& T = ThemeManager::instance().current();
-            els.push_back(text(" [Agent: " + std::string(phaseName) + "]")
-                | color(theme_map::hexToColor(T.*phaseColor)));
+            els.push_back(text(" [Agent: " + std::string(phaseName) + "]") |
+                          color(theme_map::hexToColor(T.*phaseColor)));
         }
         els.push_back(separator());
 
@@ -403,27 +440,26 @@ int main() {
         if (app.getPhase() == AgentPhase::Streaming) {
             auto st = app.getStatus();
             if (!st.streamingText.empty() || !st.reasoningText.empty()) {
-                chat = vbox({ chat, chat_view::renderStreamingBubble(st) });
+                chat = vbox({chat, chat_view::renderStreamingBubble(st)});
             }
         }
 
         Element chatColumn =
-            observeHeight(
-                observeHeight(chat, [&](int rows) { app.setChatContentRows(rows); })
-                    | focusPosition(0, app.chatFocusRow())
-                    | vscroll_indicator | yframe,
-                [&](int rows) { app.setChatViewportRows(rows); });
+            observeHeight(observeHeight(chat, [&](int rows) { app.setChatContentRows(rows); }) |
+                              focusPosition(0, app.chatFocusRow()) | vscroll_indicator | yframe,
+                          [&](int rows) { app.setChatViewportRows(rows); });
 
         // Right-side dock: TODO panel on top, live Agent status below
         // (legacy GUI layout, not a bottom strip).
         Element mainArea;
         if (show_todo) {
             Element dock = vbox({
-                todo_view::renderTodoPanel(app.copyTodoData())
-                    | flex | yframe | vscroll_indicator,
-                separator(),
-                renderAgentPanel(app.skillAgentStatuses(), spinnerFrame),
-            }) | size(WIDTH, EQUAL, 36);
+                               todo_view::renderTodoPanel(app.copyTodoData()) | flex | yframe |
+                                   vscroll_indicator,
+                               separator(),
+                               renderAgentPanel(app.skillAgentStatuses(), spinnerFrame),
+                           }) |
+                           size(WIDTH, EQUAL, 36);
             mainArea = hbox({
                 std::move(chatColumn) | flex,
                 separator(),
@@ -452,8 +488,8 @@ int main() {
                 if (!ds.empty()) {
                     statusEl = hbox({
                         statusEl,
-                        text("  [skill] " + ds)
-                            | color(theme_map::hexToColor(T.phaseAwaitApproval)),
+                        text("  [skill] " + ds) |
+                            color(theme_map::hexToColor(T.phaseAwaitApproval)),
                     });
                 }
             }
@@ -461,7 +497,9 @@ int main() {
         }
         els.push_back(input_comp->Render());
         if (app.pendingCount() > 0) {
-            els.push_back(text("Queued: " + std::to_string(app.pendingCount()) + " message(s) - sends after current turn") | color(Color::RGB(224, 200, 96)));
+            els.push_back(text("Queued: " + std::to_string(app.pendingCount()) +
+                               " message(s) - sends after current turn") |
+                          color(Color::RGB(224, 200, 96)));
         }
         els.push_back(separator());
         {
@@ -473,15 +511,14 @@ int main() {
             }
             // Role pill: user-bubble background with the streaming accent so the
             // active role pops against the status bar.
-            Element role = text(sb.roleName.empty() ? "?" : sb.roleName)
-                | bold
-                | color(theme_map::hexToColor(T.phaseStreaming))
-                | bgcolor(theme_map::hexToColor(T.bubbleUserBg));
+            Element role = text(sb.roleName.empty() ? "?" : sb.roleName) | bold |
+                           color(theme_map::hexToColor(T.phaseStreaming)) |
+                           bgcolor(theme_map::hexToColor(T.bubbleUserBg));
             segEls.push_back(text("  role: "));
             segEls.push_back(role);
             segEls.push_back(text("  (Tab)") | dim);
-            els.push_back(xflex_grow(hbox(std::move(segEls)))
-                          | bgcolor(theme_map::hexToColor(T.menuBarBg)));
+            els.push_back(xflex_grow(hbox(std::move(segEls))) |
+                          bgcolor(theme_map::hexToColor(T.menuBarBg)));
         }
         {
             // Compact keycap hint bar: colored keycaps replace the long "F1 about"
@@ -493,21 +530,15 @@ int main() {
                 return text(k) | bold | color(capFg) | bgcolor(capBg);
             };
             auto hint = [&](Element cap, const std::string& label) {
-                return hbox({ std::move(cap), text(" " + label) | dim });
+                return hbox({std::move(cap), text(" " + label) | dim});
             };
             els.push_back(hbox({
-                hint(keycap("F1"), "help"), text("  "),
-                hint(keycap("F2"), "cfg"), text("  "),
-                hint(keycap("F3"), "new"), text("  "),
-                hint(keycap("F5"), "open"), text("  "),
-                hint(keycap("F6"), "theme"), text("  "),
-                hint(keycap("F7"), "edit"), text("  "),
-                hint(keycap("F8"), "think"), text("  "),
-                hint(keycap("F9"), "todo"), text("  "),
-                hint(keycap("F10"), "model"), text("  "),
-                hint(keycap("↑↓"), "scroll"), text("  "),
-                hint(keycap("Enter"), "send"), text("  "),
-                hint(keycap("Esc"), "quit"),
+                hint(keycap("F1"), "help"),    text("  "), hint(keycap("F2"), "cfg"),    text("  "),
+                hint(keycap("F3"), "new"),     text("  "), hint(keycap("F5"), "open"),   text("  "),
+                hint(keycap("F6"), "theme"),   text("  "), hint(keycap("F7"), "edit"),   text("  "),
+                hint(keycap("F8"), "think"),   text("  "), hint(keycap("F9"), "todo"),   text("  "),
+                hint(keycap("F10"), "model"),  text("  "), hint(keycap("↑↓"), "scroll"), text("  "),
+                hint(keycap("Enter"), "send"), text("  "), hint(keycap("Esc"), "quit"),
             }));
         }
         return vbox(std::move(els));
@@ -517,29 +548,34 @@ int main() {
     main_renderer->Add(spinner_ticker);
 
     Component config_dialog = config_view::makeConfigDialog(app, [&] { show_config = false; });
-    Component approval_dialog = config_view::makeApprovalDialog(app, [&] { show_approval = false; });
+    Component approval_dialog =
+        config_view::makeApprovalDialog(app, [&] { show_approval = false; });
 
     // F5: session picker (sessions live in a fixed directory).
     MenuOption open_opt;
     open_opt.on_enter = [&] {
-        if (*session_selected >= 0 && *session_selected < (int)session_paths->size()
-            && !(*session_paths)[*session_selected].empty()) {
+        if (*session_selected >= 0 && *session_selected < (int)session_paths->size() &&
+            !(*session_paths)[*session_selected].empty()) {
             app.switchToDialog((*session_paths)[*session_selected]);
         }
         show_open = false;
     };
     Component open_menu = Menu(session_names.get(), session_selected.get(), open_opt);
     open_menu |= CatchEvent([&](Event e) {
-        if (e == Event::Escape) { show_open = false; return true; }
+        if (e == Event::Escape) {
+            show_open = false;
+            return true;
+        }
         return false;
     });
     Component open_dialog = Renderer(open_menu, [open_menu] {
         return vbox({
-            text("Open Session") | bold,
-            separator(),
-            open_menu->Render() | frame | size(HEIGHT, LESS_THAN, 16),
-            text("Esc close · ↑↓ select · Enter open") | dim,
-        }) | border;
+                   text("Open Session") | bold,
+                   separator(),
+                   open_menu->Render() | frame | size(HEIGHT, LESS_THAN, 16),
+                   text("Esc close · ↑↓ select · Enter open") | dim,
+               }) |
+               border;
     });
     Component theme_menu = theme_editor::makeThemeMenu([&] { show_theme = false; });
     Component theme_editor_dlg = theme_editor::makeThemeEditor([&] { show_theme_editor = false; });
@@ -547,54 +583,62 @@ int main() {
     // F11: model picker (state + refresh lambda defined above).
     MenuOption model_opt;
     model_opt.on_enter = [&, model_names, model_selected] {
-        if (*model_selected >= 0 && *model_selected < static_cast<int>(model_names->size())
-            && (*model_names)[*model_selected] != "(loading models...)") {
+        if (*model_selected >= 0 && *model_selected < static_cast<int>(model_names->size()) &&
+            (*model_names)[*model_selected] != "(loading models...)") {
             app.setModel((*model_names)[*model_selected]);
         }
         show_model = false;
     };
     Component model_menu = Menu(model_names.get(), model_selected.get(), model_opt);
     model_menu |= CatchEvent([&](Event e) {
-        if (e == Event::Escape) { show_model = false; return true; }
+        if (e == Event::Escape) {
+            show_model = false;
+            return true;
+        }
         return false;
     });
     Component model_dialog = Renderer(model_menu, [model_menu] {
         return vbox({
-            text("Model") | bold,
-            separator(),
-            model_menu->Render() | frame | size(HEIGHT, LESS_THAN, 14),
-            text("Esc close · ↑↓ select · Enter apply") | dim,
-        }) | border;
+                   text("Model") | bold,
+                   separator(),
+                   model_menu->Render() | frame | size(HEIGHT, LESS_THAN, 14),
+                   text("Esc close · ↑↓ select · Enter apply") | dim,
+               }) |
+               border;
     });
 
     // F1: about.
     Component about_close = Button("Close", [&] { show_about = false; });
     Component about_dialog = Renderer(about_close, [about_close] {
         return vbox({
-            text("About proJV") | bold,
-            separator(),
-            text("proJV v" PROJV_VERSION),
-            text("Native C++ DeepSeek AI agent (FTXUI)."),
-            separator(),
-            about_close->Render(),
-        }) | border;
+                   text("About proJV") | bold,
+                   separator(),
+                   text("proJV v" PROJV_VERSION),
+                   text("Native C++ DeepSeek AI agent (FTXUI)."),
+                   separator(),
+                   about_close->Render(),
+               }) |
+               border;
     });
     about_dialog |= CatchEvent([&](Event e) {
-        if (e == Event::Escape) { show_about = false; return true; }
+        if (e == Event::Escape) {
+            show_about = false;
+            return true;
+        }
         return false;
     });
 
     bool showWelcome = !app.hasApiKey();
     Component welcome = config_view::makeWelcome(app, [&] { showWelcome = false; });
 
-    Component with_modals = Modal(Modal(Modal(Modal(Modal(Modal(Modal(
-        main_renderer, config_dialog, &show_config),
-        approval_dialog, &show_approval),
-        open_dialog, &show_open),
-        theme_menu, &show_theme),
-        theme_editor_dlg, &show_theme_editor),
-        model_dialog, &show_model),
-        about_dialog, &show_about);
+    Component with_modals =
+        Modal(Modal(Modal(Modal(Modal(Modal(Modal(main_renderer, config_dialog, &show_config),
+                                            approval_dialog, &show_approval),
+                                      open_dialog, &show_open),
+                                theme_menu, &show_theme),
+                          theme_editor_dlg, &show_theme_editor),
+                    model_dialog, &show_model),
+              about_dialog, &show_about);
 
     // Welcome page is a modal overlay while no API key is configured; once
     // saved, showWelcome flips false and the main UI takes focus. This keeps
@@ -604,9 +648,8 @@ int main() {
     // Apply the theme background across the whole screen.
     Component themed_root = Renderer(root, [root] {
         const auto& T = ThemeManager::instance().current();
-        return root->Render() | flex
-             | bgcolor(theme_map::hexToColor(T.windowBg))
-             | color(theme_map::hexToColor(T.text));
+        return root->Render() | flex | bgcolor(theme_map::hexToColor(T.windowBg)) |
+               color(theme_map::hexToColor(T.text));
     });
 
     screen.Loop(themed_root);

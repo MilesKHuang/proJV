@@ -16,14 +16,26 @@
 namespace {
 
 void ensureSysUtil() {
-    static bool once = [] { SystemUtil::Init(CreateSystemUtil()); return true; }();
+    static bool once = [] {
+        SystemUtil::Init(CreateSystemUtil());
+        return true;
+    }();
     (void)once;
 }
 ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
-    ToolCall tc; tc.id = "call_" + name; tc.name = name;
-    tc.arguments = args.dump(); tc.index = 0; tc.valid = true; return tc;
+    ToolCall tc;
+    tc.id = "call_" + name;
+    tc.name = name;
+    tc.arguments = args.dump();
+    tc.index = 0;
+    tc.valid = true;
+    return tc;
 }
-AppConfig testConfig() { AppConfig c; c.model = "deepseek-v4-flash"; return c; }
+AppConfig testConfig() {
+    AppConfig c;
+    c.model = "deepseek-v4-flash";
+    return c;
+}
 
 // Writes a temp skill (config + tools/emit.json) and returns the skills root.
 std::string makeSkill(const std::string& name, const std::string& cfg) {
@@ -31,9 +43,14 @@ std::string makeSkill(const std::string& name, const std::string& cfg) {
     std::string root = getProjvDir() + "/_enginetest";
     std::string sd = root + "/" + name;
     std::filesystem::create_directories(sd + "/tools", ec);
-    { std::ofstream f(sd + "/config.json"); f << cfg; }
-    { std::ofstream f(sd + "/tools/emit.json");
-      f << R"JSON({"name":"emit","parameters":[{"name":"summary","type":"string","required":true}]})JSON"; }
+    {
+        std::ofstream f(sd + "/config.json");
+        f << cfg;
+    }
+    {
+        std::ofstream f(sd + "/tools/emit.json");
+        f << R"JSON({"name":"emit","parameters":[{"name":"summary","type":"string","required":true}]})JSON";
+    }
     return root;
 }
 
@@ -86,12 +103,19 @@ TEST_CASE("engine: tool_mode=auto reaches capability tools, max_tool_iters honor
 
     ToolRegistry reg;
     int capCalls = 0;
-    { ToolDefinition d; d.name = "cap"; d.description = "cap";
-      reg.registerTool(d, [&capCalls](const std::string&) { ++capCalls; return std::string("cap-ok"); }); }
+    {
+        ToolDefinition d;
+        d.name = "cap";
+        d.description = "cap";
+        reg.registerTool(d, [&capCalls](const std::string&) {
+            ++capCalls;
+            return std::string("cap-ok");
+        });
+    }
 
     int n = 0;
     auto a = [&n](const std::string&, const std::vector<Message>&) {
-        if (++n <= 4) return makeCall("cap", nlohmann::json{{"i", n}});   // 4 capability calls
+        if (++n <= 4) return makeCall("cap", nlohmann::json{{"i", n}}); // 4 capability calls
         return makeCall("emit", nlohmann::json{{"summary", "done"}});
     };
     std::vector<std::string> events;
@@ -103,9 +127,10 @@ TEST_CASE("engine: tool_mode=auto reaches capability tools, max_tool_iters honor
     sr.setResponder("a", a);
     sr.run("t_auto", "T");
 
-    CHECK(capCalls == 4);   // max_tool_iters=5 allowed 4 caps + 1 emit
+    CHECK(capCalls == 4); // max_tool_iters=5 allowed 4 caps + 1 emit
     bool found = false;
-    for (auto& e : events) if (e == "A|message|done") found = true;
+    for (auto& e : events)
+        if (e == "A|message|done") found = true;
     CHECK(found);
 }
 
@@ -113,13 +138,13 @@ TEST_CASE("engine: stop_when halts the round loop early") {
     ensureSysUtil();
     std::string root = makeSkill("t_stop", CFG_STOP);
     auto a = [](const std::string&, const std::vector<Message>&) {
-        return makeCall("emit", nlohmann::json{{"summary", "STOP"}});   // slot a == "STOP"
+        return makeCall("emit", nlohmann::json{{"summary", "STOP"}}); // slot a == "STOP"
     };
     SkillRunner::Callbacks cbs;
     SkillRunner sr(testConfig(), nullptr, cbs, "", root);
     sr.setResponder("a", a);
     sr.run("t_stop", "T");
-    CHECK(sr.lastRounds() == 1);   // stopped at round 1, not max_rounds=5
+    CHECK(sr.lastRounds() == 1); // stopped at round 1, not max_rounds=5
 }
 
 TEST_CASE("engine: a response with multiple tool_calls executes ALL of them") {
@@ -128,20 +153,37 @@ TEST_CASE("engine: a response with multiple tool_calls executes ALL of them") {
 
     ToolRegistry reg;
     int a = 0, b = 0;
-    { ToolDefinition d; d.name = "cap_a"; d.description = "a";
-      reg.registerTool(d, [&a](const std::string&) { ++a; return std::string("a"); }); }
-    { ToolDefinition d; d.name = "cap_b"; d.description = "b";
-      reg.registerTool(d, [&b](const std::string&) { ++b; return std::string("b"); }); }
+    {
+        ToolDefinition d;
+        d.name = "cap_a";
+        d.description = "a";
+        reg.registerTool(d, [&a](const std::string&) {
+            ++a;
+            return std::string("a");
+        });
+    }
+    {
+        ToolDefinition d;
+        d.name = "cap_b";
+        d.description = "b";
+        reg.registerTool(d, [&b](const std::string&) {
+            ++b;
+            return std::string("b");
+        });
+    }
 
     int n = 0;
     SkillRunner::Callbacks cbs;
     SkillRunner sr(testConfig(), &reg, cbs, "", root);
-    sr.setResponderMulti("a", [&n](const std::string&, const std::vector<Message>&) -> std::vector<ToolCall> {
-        if (++n == 1) return { makeCall("cap_a", nlohmann::json{{"i", 1}}), makeCall("cap_b", nlohmann::json{{"i", 2}}) };
-        return { makeCall("emit", nlohmann::json{{"summary", "done"}}) };
-    });
+    sr.setResponderMulti(
+        "a", [&n](const std::string&, const std::vector<Message>&) -> std::vector<ToolCall> {
+            if (++n == 1)
+                return {makeCall("cap_a", nlohmann::json{{"i", 1}}),
+                        makeCall("cap_b", nlohmann::json{{"i", 2}})};
+            return {makeCall("emit", nlohmann::json{{"summary", "done"}})};
+        });
     sr.run("t_multi", "T");
 
-    CHECK(a == 1);   // both parallel calls ran, not just the first
+    CHECK(a == 1); // both parallel calls ran, not just the first
     CHECK(b == 1);
 }

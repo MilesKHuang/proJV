@@ -10,7 +10,7 @@
 struct VoteResult {
     bool agree = false;
     std::vector<std::string> agreedPoints;
-    std::vector<std::string> concerns;      // each "[severity] issue"
+    std::vector<std::string> concerns; // each "[severity] issue"
     std::string suggestedTweak;
 };
 #endif
@@ -18,23 +18,23 @@ struct VoteResult {
 struct SkillAgent {
     std::string id;
     std::string displayName;
-    std::string promptFile;   // path relative to the skill directory
-    std::string thinking;     // "" = inherit the skill-level setting, else "on" | "off"
+    std::string promptFile; // path relative to the skill directory
+    std::string thinking;   // "" = inherit the skill-level setting, else "on" | "off"
 };
 
 struct SkillAction {
     std::string agent;
-    std::string tool;         // verb tool name (from tools/*.json)
-    std::string message;      // template
-    std::string capture;      // field to extract (shape == "text")
-    std::string into;         // text slot; empty -> resolved to agent id
-    std::string shape = "text";   // "text" | "vote"
-    std::string emit;             // "" | message | vote | document
+    std::string tool;           // verb tool name (from tools/*.json)
+    std::string message;        // template
+    std::string capture;        // field to extract (shape == "text")
+    std::string into;           // text slot; empty -> resolved to agent id
+    std::string shape = "text"; // "text" | "vote"
+    std::string emit;           // "" | message | vote | document
     std::map<std::string, std::string> vars;
 };
 
 struct SkillStep {
-    std::string when;         // "" | round==1 | round>1
+    std::string when; // "" | round==1 | round>1
     bool parallel = false;
     std::string progress;
     std::vector<SkillAction> actions;
@@ -43,23 +43,24 @@ struct SkillStep {
 struct SkillConfig {
     std::string name;
     std::string description;
-    std::vector<std::string> tools;      // capability-tool whitelist
+    std::vector<std::string> tools; // capability-tool whitelist
     std::vector<SkillAgent> agents;
     int maxRounds = 8;
-    std::string converge = "none";       // "all_agree" | "none"
-    std::string loopDetect;              // text slot; "" = off
+    std::string converge = "none"; // "all_agree" | "none"
+    std::string loopDetect;        // text slot; "" = off
     bool dynamicDispatch = false;
-    int maxParallel = 16;                // concurrent request_agent groups (default 16)
-    std::string dispatchTool;            // verb used for request_agent targets ("" = first tool)
-    int maxToolIters = 3;                // tool-call iterations per turn (default preserves old behavior)
+    int maxParallel = 16;     // concurrent request_agent groups (default 16)
+    std::string dispatchTool; // verb used for request_agent targets ("" = first tool)
+    int maxToolIters = 3;     // tool-call iterations per turn (default preserves old behavior)
     // Keep the last N iterations free for the submission tool: when a turn gets
     // close to its budget, the agent is told to stop exploring and call the verb.
     // 0 (default) == off, which is byte-for-byte today's behaviour. Skills that
     // hand out big batches (monica) turn it on; short ones (bigbang, 3 iters)
     // must leave it off or the first iteration is already "nearly exhausted".
     int submitReserve = 0;
-    std::string toolMode = "verb";       // "verb" (force the action tool) | "auto" (model may use any tool)
-    std::string stopWhenSlot;            // optional: stop the round loop when stopWhenSlot == stopWhenValue
+    std::string toolMode =
+        "verb";               // "verb" (force the action tool) | "auto" (model may use any tool)
+    std::string stopWhenSlot; // optional: stop the round loop when stopWhenSlot == stopWhenValue
     std::string stopWhenValue;
     std::vector<SkillStep> roundSteps;
     std::vector<SkillStep> onConverge;

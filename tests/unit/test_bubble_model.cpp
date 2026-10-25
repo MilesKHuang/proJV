@@ -98,7 +98,7 @@ TEST_CASE("formatToolMsg: tool_call key-argument extraction") {
 
 TEST_CASE("formatToolMsg: unparseable args fall back to truncated raw") {
     Message m = Message::Assistant("");
-    std::string raw = std::string(80, 'x');  // > 60 chars -> truncate to 57 + "..."
+    std::string raw = std::string(80, 'x'); // > 60 chars -> truncate to 57 + "..."
     m.toolCalls.push_back(makeCall("unknown_tool", raw, 0));
     auto [role, text] = formatToolMsg(m);
     CHECK(role == "tool_call");

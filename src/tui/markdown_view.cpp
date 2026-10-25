@@ -30,21 +30,35 @@ namespace {
 Color styleColor(Style s) {
     const auto& T = ThemeManager::instance().current();
     switch (s) {
-        case Style::Bold:   return theme_map::hexToColor(T.mdBold);
-        case Style::Italic: return theme_map::hexToColor(T.mdItalic);
-        case Style::Code:   return theme_map::hexToColor(T.mdCode);
-        case Style::Link:   return theme_map::hexToColor(T.mdLink);
-        case Style::H1:     return theme_map::hexToColor(T.mdH1);
-        case Style::H2:     return theme_map::hexToColor(T.mdH2);
-        case Style::H3:     return theme_map::hexToColor(T.mdH3);
-        case Style::Quote:  return theme_map::hexToColor(T.mdQuote);
-        case Style::Bullet: return theme_map::hexToColor(T.mdBullet);
-        case Style::Ordered:return theme_map::hexToColor(T.mdBullet);
-        case Style::HR:     return theme_map::hexToColor(T.mdHR);
-        case Style::CodeBlock:   return theme_map::hexToColor(T.mdCode);
-        case Style::TableCell:   return theme_map::hexToColor(T.text);
-        case Style::Normal:
-        default:            return theme_map::hexToColor(T.text);
+    case Style::Bold:
+        return theme_map::hexToColor(T.mdBold);
+    case Style::Italic:
+        return theme_map::hexToColor(T.mdItalic);
+    case Style::Code:
+        return theme_map::hexToColor(T.mdCode);
+    case Style::Link:
+        return theme_map::hexToColor(T.mdLink);
+    case Style::H1:
+        return theme_map::hexToColor(T.mdH1);
+    case Style::H2:
+        return theme_map::hexToColor(T.mdH2);
+    case Style::H3:
+        return theme_map::hexToColor(T.mdH3);
+    case Style::Quote:
+        return theme_map::hexToColor(T.mdQuote);
+    case Style::Bullet:
+        return theme_map::hexToColor(T.mdBullet);
+    case Style::Ordered:
+        return theme_map::hexToColor(T.mdBullet);
+    case Style::HR:
+        return theme_map::hexToColor(T.mdHR);
+    case Style::CodeBlock:
+        return theme_map::hexToColor(T.mdCode);
+    case Style::TableCell:
+        return theme_map::hexToColor(T.text);
+    case Style::Normal:
+    default:
+        return theme_map::hexToColor(T.text);
     }
 }
 
@@ -81,11 +95,22 @@ size_t displayWidth(const std::string& s) {
     size_t w = 0;
     for (size_t i = 0; i < s.size();) {
         unsigned char c = static_cast<unsigned char>(s[i]);
-        if (c < 0x80) { w += 1; i += 1; }
-        else if ((c & 0xE0) == 0xC0) { w += 1; i += 2; }
-        else if ((c & 0xF0) == 0xE0) { w += 2; i += 3; }
-        else if ((c & 0xF8) == 0xF0) { w += 2; i += 4; }
-        else { w += 1; i += 1; }
+        if (c < 0x80) {
+            w += 1;
+            i += 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            w += 1;
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            w += 2;
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            w += 2;
+            i += 4;
+        } else {
+            w += 1;
+            i += 1;
+        }
     }
     return w;
 }
@@ -115,8 +140,11 @@ std::vector<std::string> splitForWrap(const std::string& text) {
     // Attach a space to the previous token (avoids leading spaces on wrapped
     // lines) and drops leading whitespace at the start of the paragraph.
     auto appendSpace = [&]() {
-        if (!word.empty()) { word += ' '; }
-        else if (!tokens.empty()) { tokens.back() += ' '; }
+        if (!word.empty()) {
+            word += ' ';
+        } else if (!tokens.empty()) {
+            tokens.back() += ' ';
+        }
     };
 
     for (size_t i = 0; i < text.size();) {
@@ -124,7 +152,7 @@ std::vector<std::string> splitForWrap(const std::string& text) {
         unsigned char c = static_cast<unsigned char>(text[i]);
         if (c == ' ' || c == '\t') {
             appendSpace();
-        } else if (len >= 3) {  // fullwidth (CJK / fullwidth punctuation)
+        } else if (len >= 3) { // fullwidth (CJK / fullwidth punctuation)
             flushWord();
             tokens.push_back(text.substr(i, len));
         } else {
@@ -140,7 +168,8 @@ Element wrapParagraph(const std::string& text) {
     auto tokens = splitForWrap(text);
     Elements items;
     items.reserve(tokens.size());
-    for (auto& t : tokens) items.push_back(ftxui::text(std::move(t)));
+    for (auto& t : tokens)
+        items.push_back(ftxui::text(std::move(t)));
     return ftxui::flexbox(std::move(items), ftxui::FlexboxConfig());
 }
 
@@ -154,7 +183,8 @@ Element renderTable(const std::vector<std::vector<std::string>>& table,
     }
 
     size_t cols = 0;
-    for (const auto& row : table) cols = std::max(cols, row.size());
+    for (const auto& row : table)
+        cols = std::max(cols, row.size());
 
     // Build element cells so each cell wraps independently.
     std::vector<std::vector<Element>> grid;
@@ -167,9 +197,8 @@ Element renderTable(const std::vector<std::vector<std::string>>& table,
             Element e = wrapParagraph(cell);
             if (r == 0) {
                 const auto& T = ThemeManager::instance().current();
-                e = std::move(e) | ftxui::bold
-                    | ftxui::color(theme_map::hexToColor(T.text))
-                    | ftxui::bgcolor(theme_map::hexToColor(T.mdTableHdr));
+                e = std::move(e) | ftxui::bold | ftxui::color(theme_map::hexToColor(T.text)) |
+                    ftxui::bgcolor(theme_map::hexToColor(T.mdTableHdr));
             } else {
                 e = std::move(e) | ftxui::color(styleColor(Style::TableCell));
             }
@@ -188,8 +217,10 @@ Element renderTable(const std::vector<std::vector<std::string>>& table,
     // Per-column alignment (mirrors legacy markdown table alignment rules).
     for (size_t c = 0; c < align.size() && c < cols; ++c) {
         Decorator d = ftxui::nothing;
-        if (align[c] == 1) d = ftxui::hcenter;
-        else if (align[c] == 2) d = ftxui::align_right;
+        if (align[c] == 1)
+            d = ftxui::hcenter;
+        else if (align[c] == 2)
+            d = ftxui::align_right;
         ft.SelectColumn(static_cast<int>(c)).DecorateCells(d);
     }
 
@@ -214,7 +245,8 @@ Element renderLine(const Line& line) {
     // Bullet list: marker + soft-wrapped body.
     if (first.style == Style::Bullet) {
         std::string body;
-        for (const auto& seg : line.segs) body += seg.text;
+        for (const auto& seg : line.segs)
+            body += seg.text;
         return ftxui::hbox({
             ftxui::text("• ") | ftxui::color(styleColor(Style::Bullet)),
             wrapParagraph(body),
@@ -224,7 +256,8 @@ Element renderLine(const Line& line) {
     // Ordered list: soft-wrapped body (leading "N." keeps its color).
     if (first.style == Style::Ordered) {
         std::string body;
-        for (const auto& seg : line.segs) body += seg.text;
+        for (const auto& seg : line.segs)
+            body += seg.text;
         return wrapParagraph(body) | ftxui::color(styleColor(Style::Ordered));
     }
 
@@ -271,12 +304,14 @@ Element renderMarkdown(const std::string& text) {
                 if (!ln.cells.empty()) {
                     for (const auto& cell : ln.cells) {
                         std::string s;
-                        for (const auto& sg : cell) s += sg.text;
+                        for (const auto& sg : cell)
+                            s += sg.text;
                         row.push_back(std::move(s));
                     }
                 } else {
                     // Fallback for hand-built Line objects without cells.
-                    for (const auto& seg : ln.segs) row.push_back(seg.text);
+                    for (const auto& seg : ln.segs)
+                        row.push_back(seg.text);
                 }
                 return row;
             };
@@ -300,12 +335,11 @@ Element renderMarkdown(const std::string& text) {
             while (j < lines.size() && !lines[j].segs.empty() &&
                    lines[j].segs.front().style == Style::CodeBlock) {
                 codeLines.push_back(ftxui::text(lines[j].segs.front().text) |
-                    ftxui::color(styleColor(Style::CodeBlock)));
+                                    ftxui::color(styleColor(Style::CodeBlock)));
                 ++j;
             }
-            Element block = ftxui::vbox(std::move(codeLines)) |
-                ftxui::bgcolor(codeBgColor()) |
-                ftxui::borderStyled(borderColor());
+            Element block = ftxui::vbox(std::move(codeLines)) | ftxui::bgcolor(codeBgColor()) |
+                            ftxui::borderStyled(borderColor());
             els.push_back(std::move(block));
             i = j - 1;
         } else {
@@ -332,7 +366,7 @@ std::vector<std::string> splitLogicalLines(const std::string& text) {
     lines.push_back(std::move(cur));
     return lines;
 }
-}  // namespace
+} // namespace
 
 ftxui::Element renderPlainText(const std::string& text) {
     auto lines = splitLogicalLines(text);
@@ -351,8 +385,10 @@ ftxui::Element renderPlainText(const std::string& text) {
 ftxui::Element renderSoftWrappedInput(const std::string& text, int cursorByte, bool focused) {
     std::vector<std::string> lines = splitLogicalLines(text);
 
-    int cursor = cursorByte < 0 ? 0
-        : (cursorByte > static_cast<int>(text.size()) ? static_cast<int>(text.size()) : cursorByte);
+    int cursor = cursorByte < 0
+                     ? 0
+                     : (cursorByte > static_cast<int>(text.size()) ? static_cast<int>(text.size())
+                                                                   : cursorByte);
     int cursorLine = 0;
     int col = cursor;
     for (size_t i = 0; i < lines.size(); ++i) {
@@ -383,13 +419,15 @@ ftxui::Element renderSoftWrappedInput(const std::string& text, int cursorByte, b
         auto beforeTokens = splitForWrap(before);
         auto afterTokens = splitForWrap(after);
         ftxui::Elements items;
-        for (auto& t : beforeTokens) items.push_back(ftxui::text(std::move(t)));
+        for (auto& t : beforeTokens)
+            items.push_back(ftxui::text(std::move(t)));
         if (at.empty()) {
             items.push_back(ftxui::text(" ") | ftxui::focusCursorBarBlinking);
         } else {
             items.push_back(ftxui::text(at) | ftxui::focusCursorBarBlinking);
         }
-        for (auto& t : afterTokens) items.push_back(ftxui::text(std::move(t)));
+        for (auto& t : afterTokens)
+            items.push_back(ftxui::text(std::move(t)));
         rows.push_back(ftxui::flexbox(std::move(items), ftxui::FlexboxConfig()));
     }
 

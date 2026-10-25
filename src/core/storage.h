@@ -4,7 +4,9 @@
 #include <memory>
 #include "client/models.h"
 
-namespace SQLite { class Database; }
+namespace SQLite {
+class Database;
+}
 
 // --- SQLite storage layer ------------------------------------------
 // Dual-connection design: readDb_ (OPEN_READONLY) and writeDb_ (OPEN_READWRITE).
@@ -16,7 +18,7 @@ namespace SQLite { class Database; }
 //   - Read: safe from any thread (WAL multi-reader)
 //   - Write: called synchronously on the Agent thread (single writer, no queue needed)
 class Storage {
-public:
+  public:
     Storage();
     ~Storage();
 
@@ -35,8 +37,8 @@ public:
     // Close both connections.
     void closeDatabase();
 
-    bool                 isOpen() const { return readDb_ != nullptr && writeDb_ != nullptr; }
-    const std::string&   currentPath() const { return currentPath_; }
+    bool isOpen() const { return readDb_ != nullptr && writeDb_ != nullptr; }
+    const std::string& currentPath() const { return currentPath_; }
 
     // -- Message operations (core data) --------------------------
     // Insert a message and return its row id, or -1 on failure.
@@ -47,17 +49,16 @@ public:
     // Query messages with id > sinceId (0 = all), ordered by id.
     std::vector<Message> queryMessages(int64_t sinceId = 0);
 
-private:
-    std::unique_ptr<SQLite::Database> readDb_;   // OPEN_READONLY -- any thread
-    std::unique_ptr<SQLite::Database> writeDb_;  // OPEN_READWRITE -- writer thread only
-    std::string                      currentPath_;
+  private:
+    std::unique_ptr<SQLite::Database> readDb_;  // OPEN_READONLY -- any thread
+    std::unique_ptr<SQLite::Database> writeDb_; // OPEN_READWRITE -- writer thread only
+    std::string currentPath_;
 
     // Create all required tables (idempotent) -- uses writeDb_
     bool ensureTables();
 
     // Write tool_calls rows for a message; returns false on failure
-    bool insertToolCalls(int64_t messageId,
-                         const std::vector<ToolCall>& calls);
+    bool insertToolCalls(int64_t messageId, const std::vector<ToolCall>& calls);
 
     // Read tool_calls rows for a message
     std::vector<ToolCall> queryToolCalls(int64_t messageId);

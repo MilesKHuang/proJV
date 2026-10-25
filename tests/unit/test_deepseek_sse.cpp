@@ -54,7 +54,8 @@ TEST_CASE("SSE: tool_calls parsed") {
 
     std::string event =
         "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\","
-        "\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]}}]}\n\n";
+        "\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]}}]}"
+        "\n\n";
     client.parseSSEChunk(event, 0, cb);
 
     REQUIRE(sink.toolCalls.size() == 1);

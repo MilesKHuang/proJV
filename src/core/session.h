@@ -68,13 +68,13 @@ struct Session {
     enum class PressureLevel { Low, Medium, High, Critical };
 
     struct ContextBudget {
-        size_t windowTokens = 1'048'576;   // model context window (default: 1M)
-        size_t reservedOutput = 16384;      // space for model output
-        size_t headroomTokens = 1024;       // safety margin
-        size_t availableInput = 0;          // computed: window - reserved - headroom
+        size_t windowTokens = 1'048'576; // model context window (default: 1M)
+        size_t reservedOutput = 16384;   // space for model output
+        size_t headroomTokens = 1024;    // safety margin
+        size_t availableInput = 0;       // computed: window - reserved - headroom
 
-        double compactionTrigger = 0.75;    // 75% -> trigger LLM compaction
-        double criticalTrigger = 0.90;      // 90% -> emergency pruning
+        double compactionTrigger = 0.75; // 75% -> trigger LLM compaction
+        double criticalTrigger = 0.90;   // 90% -> emergency pruning
 
         PressureLevel getPressure(size_t estimatedTokens) const;
     };
@@ -88,8 +88,8 @@ struct Session {
     // =================================================================
 
     struct CompactionPlan {
-        std::vector<size_t> pinnedIndices;     // keep untouched
-        std::vector<size_t> summarizeIndices;  // send to LLM for summarization
+        std::vector<size_t> pinnedIndices;    // keep untouched
+        std::vector<size_t> summarizeIndices; // send to LLM for summarization
     };
 
     // Working set: file paths extracted from recent messages to guide pinning.
@@ -108,7 +108,7 @@ struct Session {
     // the LLM-generated summary.
     void applyCompaction(const CompactionPlan& plan, const std::string& summary);
 
-private:
+  private:
     // -- Working set helpers --
     WorkingSet deriveWorkingSet() const;
     bool shouldPinMessage(size_t msgIdx, const WorkingSet& ws) const;
@@ -116,5 +116,5 @@ private:
     // -- Tool-call pair enforcement for compaction --
     void enforceToolCallPairs(CompactionPlan& plan) const;
     std::vector<Message> messages;
-    mutable std::mutex mtx;  // protects messages
+    mutable std::mutex mtx; // protects messages
 };

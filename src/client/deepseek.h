@@ -16,19 +16,23 @@ struct RetryConfig {
 
     int delayForAttempt(int attempt) const {
         int delay = initialDelayMs;
-        for (int i = 0; i < attempt; ++i) delay *= backoffMultiplier;
+        for (int i = 0; i < attempt; ++i)
+            delay *= backoffMultiplier;
         return std::min(delay, maxDelayMs);
     }
 };
 
 class DeepSeekClient {
-public:
+  public:
     DeepSeekClient();
     ~DeepSeekClient();
 
     void setConfig(const AppConfig& cfg);
     bool isReady() const { return !config.apiKey.empty(); }
-    std::string getModel() const { std::lock_guard<std::mutex> lock(mutex); return config.model; }
+    std::string getModel() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return config.model;
+    }
 
     bool streamBlocking(const ChatRequest& request, StreamCallbacks callbacks);
     void cancel();
@@ -61,7 +65,7 @@ public:
     // Exposed for SSE write callback
     size_t parseSSEChunk(const std::string& buffer, size_t startOffset, StreamCallbacks& callbacks);
 
-private:
+  private:
     AppConfig config;
     std::atomic<bool> cancelFlag{false};
     std::atomic<bool> streaming{false};
@@ -76,10 +80,11 @@ private:
     // libcurl helpers
     void* createEasyHandle();
     void initLibcurl();
-    int postWithRetry(void* curl, const std::string& url, const std::string& body, long* outHttpStatus);
+    int postWithRetry(void* curl, const std::string& url, const std::string& body,
+                      long* outHttpStatus);
 
     // POST a JSON body to {baseUrl}{path} with Bearer auth + retry.
     // Returns a CURLcode (0 == CURLE_OK); the body and HTTP status are out params.
-    int postJson(const std::string& path, const std::string& body,
-                 std::string& outBody, long* outHttpStatus);
+    int postJson(const std::string& path, const std::string& body, std::string& outBody,
+                 long* outHttpStatus);
 };

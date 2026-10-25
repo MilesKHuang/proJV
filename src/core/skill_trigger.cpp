@@ -9,7 +9,8 @@ namespace {
 std::string toLowerAscii(const std::string& s) {
     std::string out;
     out.reserve(s.size());
-    for (char c : s) out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (char c : s)
+        out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return out;
 }
 
@@ -24,7 +25,8 @@ std::string trimCopy(const std::string& s) {
 
 bool isReservedCommand(const std::string& lowerToken) {
     static const char* kReserved[] = {"clear", "help", "workspace", "compress"};
-    for (const char* k : kReserved) if (lowerToken == k) return true;
+    for (const char* k : kReserved)
+        if (lowerToken == k) return true;
     return false;
 }
 
@@ -34,8 +36,7 @@ Result parse(const std::string& input, const std::vector<std::string>& installed
     if (text.size() < 2 || text[0] != '/') return r;
 
     const size_t sp = text.find_first_of(" \t\r\n");
-    const std::string token = (sp == std::string::npos)
-        ? text.substr(1) : text.substr(1, sp - 1);
+    const std::string token = (sp == std::string::npos) ? text.substr(1) : text.substr(1, sp - 1);
     if (token.empty()) return r;
 
     const std::string rest = (sp == std::string::npos) ? std::string() : text.substr(sp + 1);
@@ -55,7 +56,7 @@ Result parse(const std::string& input, const std::vector<std::string>& installed
             return r;
         }
     }
-    return r;   // unknown token -> ordinary message
+    return r; // unknown token -> ordinary message
 }
 
 } // namespace skill_trigger

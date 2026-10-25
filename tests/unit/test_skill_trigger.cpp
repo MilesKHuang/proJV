@@ -16,18 +16,32 @@
 namespace {
 
 void ensureSysUtil() {
-    static bool once = [] { SystemUtil::Init(CreateSystemUtil()); return true; }();
+    static bool once = [] {
+        SystemUtil::Init(CreateSystemUtil());
+        return true;
+    }();
     (void)once;
 }
 
-AppConfig testConfig() { AppConfig c; c.model = "deepseek-v4-flash"; return c; }
-
-ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
-    ToolCall tc; tc.id = "call_" + name; tc.name = name;
-    tc.arguments = args.dump(); tc.index = 0; tc.valid = true; return tc;
+AppConfig testConfig() {
+    AppConfig c;
+    c.model = "deepseek-v4-flash";
+    return c;
 }
 
-std::vector<std::string> installed() { return {"bigbang", "monica"}; }
+ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
+    ToolCall tc;
+    tc.id = "call_" + name;
+    tc.name = name;
+    tc.arguments = args.dump();
+    tc.index = 0;
+    tc.valid = true;
+    return tc;
+}
+
+std::vector<std::string> installed() {
+    return {"bigbang", "monica"};
+}
 
 // Scripted bigbang run: every role answers in one round and converges, so the
 // document tool fires and lastDoc() is set. No API, no key needed.
@@ -74,28 +88,26 @@ TEST_CASE("trigger: case-insensitive on the skill name only") {
 }
 
 TEST_CASE("trigger: /skill and /skill list list the installed skills") {
-    CHECK(skill_trigger::parse("/skill", installed()).kind ==
-          skill_trigger::Result::Kind::List);
+    CHECK(skill_trigger::parse("/skill", installed()).kind == skill_trigger::Result::Kind::List);
     CHECK(skill_trigger::parse("/skill list", installed()).kind ==
           skill_trigger::Result::Kind::List);
-    CHECK(skill_trigger::parse("/skills", installed()).kind ==
-          skill_trigger::Result::Kind::List);
+    CHECK(skill_trigger::parse("/skills", installed()).kind == skill_trigger::Result::Kind::List);
 }
 
 TEST_CASE("trigger: unknown names pass through as ordinary messages") {
     // The whole point of the "/" domain: nothing is ever intercepted with an
     // error, so natural text and paths keep working.
     const char* lines[] = {
-        "/mica hey",                 // typo / unknown skill
-        "/usr/bin/env python",       // absolute path
-        "//just a comment",          // C++ comment
-        "./relative/path.txt",       // relative path
-        "/clear",                    // reserved backend command
+        "/mica hey",           // typo / unknown skill
+        "/usr/bin/env python", // absolute path
+        "//just a comment",    // C++ comment
+        "./relative/path.txt", // relative path
+        "/clear",              // reserved backend command
         "/help",
         "/workspace",
         "/compress",
         "no slash at all",
-        "/"                          // bare slash
+        "/" // bare slash
     };
     for (const char* line : lines) {
         const auto r = skill_trigger::parse(line, installed());
@@ -105,10 +117,8 @@ TEST_CASE("trigger: unknown names pass through as ordinary messages") {
 
 TEST_CASE("trigger: reserved commands win over a shadowing skill folder") {
     const std::vector<std::string> shadowed = {"clear", "help"};
-    CHECK(skill_trigger::parse("/clear", shadowed).kind ==
-          skill_trigger::Result::Kind::None);
-    CHECK(skill_trigger::parse("/help", shadowed).kind ==
-          skill_trigger::Result::Kind::None);
+    CHECK(skill_trigger::parse("/clear", shadowed).kind == skill_trigger::Result::Kind::None);
+    CHECK(skill_trigger::parse("/help", shadowed).kind == skill_trigger::Result::Kind::None);
     CHECK(skill_trigger::isReservedCommand("compress"));
     CHECK_FALSE(skill_trigger::isReservedCommand("monica"));
 }
@@ -132,7 +142,7 @@ TEST_CASE("cancel probe: an external flag stops the run at the first boundary") 
     sr.setCancelProbe([]() { return true; });
     sr.run("bigbang", "T");
 
-    CHECK(sr.lastRounds() == 0);          // nothing ran
+    CHECK(sr.lastRounds() == 0); // nothing ran
     CHECK_FALSE(sr.converged());
     CHECK(progress == "Cancelled");
 }
@@ -147,7 +157,10 @@ TEST_CASE("cancel probe: a false probe lets the run proceed") {
     SkillRunner sr(testConfig(), nullptr, cbs, "", PROJV_EXAMPLE_SKILLS_DIR);
     scriptBigbang(sr, "# DOC");
     int probeCalls = 0;
-    sr.setCancelProbe([&probeCalls]() { ++probeCalls; return false; });
+    sr.setCancelProbe([&probeCalls]() {
+        ++probeCalls;
+        return false;
+    });
     sr.run("bigbang", "T");
 
     CHECK(probeCalls > 0);

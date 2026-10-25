@@ -17,25 +17,49 @@
 namespace {
 
 void ensureSysUtil() {
-    static bool once = [] { SystemUtil::Init(CreateSystemUtil()); return true; }();
+    static bool once = [] {
+        SystemUtil::Init(CreateSystemUtil());
+        return true;
+    }();
     (void)once;
 }
 ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
-    ToolCall tc; tc.id = "call_" + name; tc.name = name;
-    tc.arguments = args.dump(); tc.index = 0; tc.valid = true; return tc;
+    ToolCall tc;
+    tc.id = "call_" + name;
+    tc.name = name;
+    tc.arguments = args.dump();
+    tc.index = 0;
+    tc.valid = true;
+    return tc;
 }
-ToolCall noCall() { ToolCall tc; tc.valid = false; return tc; }
-AppConfig testConfig() { AppConfig c; c.model = "deepseek-v4-flash"; return c; }
+ToolCall noCall() {
+    ToolCall tc;
+    tc.valid = false;
+    return tc;
+}
+AppConfig testConfig() {
+    AppConfig c;
+    c.model = "deepseek-v4-flash";
+    return c;
+}
 
 std::string writeSkill(const std::string& name, const std::string& json) {
     std::error_code ec;
     const std::string dir = getProjvDir() + "/skills/" + name;
     std::filesystem::create_directories(dir, ec);
-    { std::ofstream f(dir + "/config.json"); f << json; }
-    { std::ofstream f(dir + "/p.md"); f << "prompt"; }
+    {
+        std::ofstream f(dir + "/config.json");
+        f << json;
+    }
+    {
+        std::ofstream f(dir + "/p.md");
+        f << "prompt";
+    }
     std::filesystem::create_directories(dir + "/tools", ec);
-    { std::ofstream f(dir + "/tools/emit.json");
-      f << R"JSON({"name":"emit","description":"Report.","parameters":[{"name":"summary","type":"string","required":true}]})JSON"; }
+    {
+        std::ofstream f(dir + "/tools/emit.json");
+        f << R"JSON({"name":"emit","description":"Report.","parameters":[{"name":"summary","type":"string","required":true}]})JSON";
+    }
     return dir;
 }
 
@@ -49,7 +73,7 @@ TEST_CASE("thinking: the request body only carries the field when it is off") {
 
     req.thinking = true;
     const std::string onBody = client.buildRequestBody(req);
-    CHECK(onBody.find("thinking") == std::string::npos);   // default: do not send
+    CHECK(onBody.find("thinking") == std::string::npos); // default: do not send
 
     req.thinking = false;
     const std::string offBody = client.buildRequestBody(req);
@@ -59,10 +83,10 @@ TEST_CASE("thinking: the request body only carries the field when it is off") {
 }
 
 TEST_CASE("thinking: role level overrides the skill level") {
-    CHECK(SkillConfig::thinkingEnabled("on", ""));       // inherit on
-    CHECK(!SkillConfig::thinkingEnabled("off", ""));     // inherit off
-    CHECK(!SkillConfig::thinkingEnabled("on", "off"));   // role wins
-    CHECK(SkillConfig::thinkingEnabled("off", "on"));    // role wins
+    CHECK(SkillConfig::thinkingEnabled("on", ""));     // inherit on
+    CHECK(!SkillConfig::thinkingEnabled("off", ""));   // inherit off
+    CHECK(!SkillConfig::thinkingEnabled("on", "off")); // role wins
+    CHECK(SkillConfig::thinkingEnabled("off", "on"));  // role wins
 }
 
 TEST_CASE("config: illegal values fail with the allowed set spelled out") {
@@ -121,7 +145,8 @@ TEST_CASE("config: unknown keys become warnings, not failures") {
     bool sawTypo = false, sawLegacy = false, sawAgent = false;
     for (const auto& w : cfg.warnings) {
         if (w.find("'toolMode'") != std::string::npos &&
-            w.find("did you mean 'tool_mode'") != std::string::npos) sawTypo = true;
+            w.find("did you mean 'tool_mode'") != std::string::npos)
+            sawTypo = true;
         if (w.find("'max_recursion'") != std::string::npos) sawLegacy = true;
         if (w.find("agents.a.display") != std::string::npos) sawAgent = true;
     }
@@ -153,7 +178,8 @@ TEST_CASE("config: warnings are emitted as system events when the skill runs") {
 
     bool sawWarning = false;
     for (const auto& e : events)
-        if (e.rfind("system|system|[skill] config: unknown key 'toolMode'", 0) == 0) sawWarning = true;
+        if (e.rfind("system|system|[skill] config: unknown key 'toolMode'", 0) == 0)
+            sawWarning = true;
     CHECK(sawWarning);
 }
 
@@ -173,20 +199,21 @@ TEST_CASE("nudge: a prose-only reply triggers one 'call the tool' retry") {
     SkillRunner::Callbacks cbs;
     SkillRunner sr(testConfig(), nullptr, cbs, "", getProjvDir() + "/skills");
     sr.setResponder("a", [&calls](const std::string&, const std::vector<Message>&) {
-        if (++calls == 1) return noCall();          // prose only
+        if (++calls == 1) return noCall(); // prose only
         return makeCall("emit", nlohmann::json{{"summary", "submitted"}});
     });
     sr.setResponderText("a", [&seen](const std::string&, const std::vector<Message>& m) {
         seen.push_back(m);
-        return std::string("I think I am done here.");   // narration, no tool call
+        return std::string("I think I am done here."); // narration, no tool call
     });
     sr.run("nudge_test", "T");
 
-    CHECK(calls == 2);                       // nudged exactly once
+    CHECK(calls == 2); // nudged exactly once
     REQUIRE(!seen.empty());
     bool sawNudge = false;
     for (const auto& msg : seen.back())
-        if (msg.role == "user" && msg.content.find("Please call the 'emit' tool") != std::string::npos)
+        if (msg.role == "user" &&
+            msg.content.find("Please call the 'emit' tool") != std::string::npos)
             sawNudge = true;
     CHECK(sawNudge);
 }
@@ -207,12 +234,12 @@ TEST_CASE("nudge: a second prose-only reply ends the turn instead of looping") {
     SkillRunner sr(testConfig(), nullptr, cbs, "", getProjvDir() + "/skills");
     sr.setResponder("a", [&calls](const std::string&, const std::vector<Message>&) {
         ++calls;
-        return noCall();                      // never calls the tool
+        return noCall(); // never calls the tool
     });
     sr.setResponderText("a", [](const std::string&, const std::vector<Message>&) {
         return std::string("still just talking");
     });
     sr.run("nudge_once", "T");
 
-    CHECK(calls == 2);   // one nudge, then the narration is returned as the result
+    CHECK(calls == 2); // one nudge, then the narration is returned as the result
 }

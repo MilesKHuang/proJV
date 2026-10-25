@@ -63,8 +63,8 @@ TEST_CASE("file tools: read_file range returns a header and numbered lines") {
     ToolRegistry reg;
     registerFileTools(reg, root.string());
 
-    const std::string out = run(reg, "read_file",
-                               {{"path", "b.txt"}, {"start_line", 2}, {"end_line", 4}});
+    const std::string out =
+        run(reg, "read_file", {{"path", "b.txt"}, {"start_line", 2}, {"end_line", 4}});
     CHECK(out.rfind("[lines 2-4 of 5]", 0) == 0);
     CHECK(has(out, "2: l2"));
     CHECK(has(out, "4: l4"));
@@ -88,8 +88,8 @@ TEST_CASE("file tools: read_file accepts one-sided ranges and numeric strings") 
     CHECK(has(to2, "2: b"));
 
     // Some models send the line numbers as JSON strings.
-    const std::string strArgs = nlohmann::json{
-        {"path", "c.txt"}, {"start_line", "2"}, {"end_line", "3"}}.dump();
+    const std::string strArgs =
+        nlohmann::json{{"path", "c.txt"}, {"start_line", "2"}, {"end_line", "3"}}.dump();
     CHECK(reg.execute("read_file", strArgs).rfind("[lines 2-3 of 4]", 0) == 0);
 }
 
@@ -99,8 +99,8 @@ TEST_CASE("file tools: read_file rejects bad ranges with a clear message") {
     ToolRegistry reg;
     registerFileTools(reg, root.string());
 
-    const std::string reversed = run(reg, "read_file",
-                                     {{"path", "d.txt"}, {"start_line", 3}, {"end_line", 2}});
+    const std::string reversed =
+        run(reg, "read_file", {{"path", "d.txt"}, {"start_line", 3}, {"end_line", 2}});
     CHECK(has(reversed, "must be >= start_line"));
 
     const std::string beyond = run(reg, "read_file", {{"path", "d.txt"}, {"start_line", 99}});
@@ -111,34 +111,35 @@ TEST_CASE("file tools: read_file rejects bad ranges with a clear message") {
 TEST_CASE("file tools: read_file truncates at 1000 lines and points at the next start") {
     const fs::path root = freshRoot("read_trunc");
     std::string body;
-    for (int i = 1; i <= 1500; ++i) body += "line" + std::to_string(i) + "\n";
+    for (int i = 1; i <= 1500; ++i)
+        body += "line" + std::to_string(i) + "\n";
     writeAt(root, "big.txt", body);
     ToolRegistry reg;
     registerFileTools(reg, root.string());
 
     // Range mode (start_line given): capped at 1000 lines per reply.
-    const std::string ranged = run(reg, "read_file",
-                                   {{"path", "big.txt"}, {"start_line", 1}});
+    const std::string ranged = run(reg, "read_file", {{"path", "big.txt"}, {"start_line", 1}});
     CHECK(ranged.rfind("[lines 1-1500 of 1500]", 0) == 0);
     CHECK(has(ranged, "[truncated, continue with start_line=1001]"));
 
     // Legacy mode (no range args) is untouched: whole file, 100KB guard only.
     const std::string whole = run(reg, "read_file", {{"path", "big.txt"}});
     CHECK(!has(whole, "continue with start_line"));
-    CHECK(whole.rfind("1: line1", 0) != 0);   // no line numbers in legacy mode
+    CHECK(whole.rfind("1: line1", 0) != 0); // no line numbers in legacy mode
 }
 
 TEST_CASE("file tools: read_file range bypasses the 100KB whole-file limit") {
     const fs::path root = freshRoot("read_bigrange");
     std::string body;
-    for (int i = 0; i < 6000; ++i) body += "0123456789abcdef0123456789\n";   // ~150KB
+    for (int i = 0; i < 6000; ++i)
+        body += "0123456789abcdef0123456789\n"; // ~150KB
     writeAt(root, "wide.txt", body);
     ToolRegistry reg;
     registerFileTools(reg, root.string());
 
     CHECK(has(run(reg, "read_file", {{"path", "wide.txt"}}), "File too large"));
-    const std::string piece = run(reg, "read_file",
-                                  {{"path", "wide.txt"}, {"start_line", 5000}, {"end_line", 5010}});
+    const std::string piece =
+        run(reg, "read_file", {{"path", "wide.txt"}, {"start_line", 5000}, {"end_line", 5010}});
     CHECK(piece.rfind("[lines 5000-5010 of 6000]", 0) == 0);
     CHECK(has(piece, "5000: 0123456789abcdef0123456789"));
 }
@@ -162,7 +163,7 @@ TEST_CASE("file tools: parseFileRequestSpec splits path and line range") {
     CHECK(s == 120);
     CHECK(e == 0);
 
-    CHECK(parseFileRequestSpec("src/a.cpp#l7-l9", p, s, e));   // lowercase
+    CHECK(parseFileRequestSpec("src/a.cpp#l7-l9", p, s, e)); // lowercase
     CHECK(p == "src/a.cpp");
     CHECK(s == 7);
     CHECK(e == 9);
@@ -174,7 +175,6 @@ TEST_CASE("file tools: parseFileRequestSpec splits path and line range") {
 
     CHECK(!parseFileRequestSpec("", p, s, e));
 }
-
 
 TEST_CASE("file tools: list_dir expands to depth and annotates unexpanded dirs") {
     const fs::path root = freshRoot("list");
@@ -191,10 +191,10 @@ TEST_CASE("file tools: list_dir expands to depth and annotates unexpanded dirs")
     CHECK(has(out, "src/"));
     CHECK(has(out, "  core/ (1 entries, not expanded)"));
     CHECK(has(out, "  b.h"));
-    CHECK(!has(out, "build/"));          // kSkipDirs
-    CHECK(!has(out, "node_modules/"));   // kSkipDirs
-    CHECK(!has(out, ".hidden/"));        // dot-directories
-    CHECK(!has(out, "a.cpp"));           // depth 2 stops above it
+    CHECK(!has(out, "build/"));        // kSkipDirs
+    CHECK(!has(out, "node_modules/")); // kSkipDirs
+    CHECK(!has(out, ".hidden/"));      // dot-directories
+    CHECK(!has(out, "a.cpp"));         // depth 2 stops above it
 
     const std::string deeper = run(reg, "list_dir", {{"path", "src"}, {"depth", 3}});
     CHECK(has(deeper, "core/"));
@@ -243,13 +243,13 @@ TEST_CASE("file tools: list_dir stops at the entry cap") {
 TEST_CASE("file tools: grep_files honours max_results and flags truncation") {
     const fs::path root = freshRoot("grep");
     std::string body;
-    for (int i = 0; i < 10; ++i) body += "needle line " + std::to_string(i) + "\n";
+    for (int i = 0; i < 10; ++i)
+        body += "needle line " + std::to_string(i) + "\n";
     writeAt(root, "src/g.txt", body);
     ToolRegistry reg;
     registerFileTools(reg, root.string());
 
-    const std::string capped = run(reg, "grep_files",
-                                  {{"pattern", "needle"}, {"max_results", 3}});
+    const std::string capped = run(reg, "grep_files", {{"pattern", "needle"}, {"max_results", 3}});
     CHECK(has(capped, "[truncated at 3 results"));
 
     // Default limit is 100: all ten hits, no truncation notice. No path arg ->
@@ -261,8 +261,8 @@ TEST_CASE("file tools: grep_files honours max_results and flags truncation") {
     // Out-of-range values are clamped, not rejected.
     CHECK(has(run(reg, "grep_files", {{"pattern", "needle"}, {"max_results", 9999}}),
               "needle line 9"));
-    CHECK(has(run(reg, "grep_files", {{"pattern", "needle"}, {"max_results", 0}}),
-              "needle line 9"));
+    CHECK(
+        has(run(reg, "grep_files", {{"pattern", "needle"}, {"max_results", 0}}), "needle line 9"));
 }
 
 TEST_CASE("format_file: whitespace mode cleans indentation and trailing spaces") {
@@ -272,14 +272,12 @@ TEST_CASE("format_file: whitespace mode cleans indentation and trailing spaces")
     registerFileTools(reg, root.string());
     registerFormatTool(reg, root.string(), nullptr, "");
 
-    const std::string out = run(reg, "format_file",
-                                {{"path", "w.cpp"}, {"mode", "whitespace"}});
+    const std::string out = run(reg, "format_file", {{"path", "w.cpp"}, {"mode", "whitespace"}});
     CHECK(has(out, "Formatted (whitespace)"));
     CHECK(readAt(root, "w.cpp") == "    if (x) {\n        return 1;\n");
 
     // Idempotent: a second pass reports no changes.
-    CHECK(has(run(reg, "format_file", {{"path", "w.cpp"}, {"mode", "whitespace"}}),
-              "No changes"));
+    CHECK(has(run(reg, "format_file", {{"path", "w.cpp"}, {"mode", "whitespace"}}), "No changes"));
 }
 
 TEST_CASE("format_file: whitespace mode preserves CRLF and does not touch code") {
@@ -312,7 +310,7 @@ TEST_CASE("format_file: clang mode reports a clear error and leaves the file alo
         // missing binary is what we exercise here.
         const std::string out = run(reg, "format_file", {{"path", "n.cpp"}, {"style", "LLVM"}});
         CHECK(has(out, "not found"));
-        CHECK(has(out, "mode=\"whitespace\""));   // points at the fallback
+        CHECK(has(out, "mode=\"whitespace\"")); // points at the fallback
         CHECK(readAt(root, "n.cpp") == original);
         runner->Cancel();
         delete runner;
@@ -325,8 +323,7 @@ TEST_CASE("format_file: unknown mode is rejected") {
     ToolRegistry reg;
     registerFileTools(reg, root.string());
     registerFormatTool(reg, root.string(), nullptr, "");
-    CHECK(has(run(reg, "format_file", {{"path", "x.cpp"}, {"mode", "prettier"}}),
-              "Unknown mode"));
+    CHECK(has(run(reg, "format_file", {{"path", "x.cpp"}, {"mode", "prettier"}}), "Unknown mode"));
 }
 
 TEST_CASE("format_file: clang mode refuses to guess a style when there is no .clang-format") {
@@ -341,15 +338,17 @@ TEST_CASE("format_file: clang mode refuses to guess a style when there is no .cl
     const std::string out = run(reg, "format_file", {{"path", "a.cpp"}});
     CHECK(has(out, "no .clang-format found"));
     CHECK(has(out, "mode=\"whitespace\""));
-    CHECK(readAt(root, "a.cpp") == "int  x = 1;\n");   // untouched
+    CHECK(readAt(root, "a.cpp") == "int  x = 1;\n"); // untouched
 }
 
 TEST_CASE("format_file: clang mode works when a style is given explicitly") {
     // Skips itself when this machine has no clang-format binary.
     std::vector<std::string> candidates = {
 #ifdef _WIN32
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
-        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
+        "C:\\Program Files (x86)\\Microsoft Visual "
+        "Studio\\2019\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
+        "C:\\Program Files\\Microsoft Visual "
+        "Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
         "C:\\Program Files\\LLVM\\bin\\clang-format.exe",
 #else
         "/usr/bin/clang-format",
@@ -359,7 +358,10 @@ TEST_CASE("format_file: clang mode works when a style is given explicitly") {
     std::string exe;
     for (const auto& c : candidates) {
         std::error_code ec;
-        if (fs::exists(c, ec)) { exe = c; break; }
+        if (fs::exists(c, ec)) {
+            exe = c;
+            break;
+        }
     }
     if (exe.empty()) {
         WARN("no clang-format on this machine -- clang branch not exercised");
@@ -380,6 +382,6 @@ TEST_CASE("format_file: clang mode works when a style is given explicitly") {
 
     CHECK(has(out, "Formatted (clang-format)"));
     const std::string after = readAt(root, "b.cpp");
-    CHECK(after != "int    main(){return 0;}   \n");   // it really rewrote the file
+    CHECK(after != "int    main(){return 0;}   \n"); // it really rewrote the file
     CHECK(has(after, "int main()"));
 }

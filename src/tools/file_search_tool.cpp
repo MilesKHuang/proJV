@@ -1,6 +1,6 @@
 #include "registry.h"
 #include "shell_tool.h"
-#include "file_tool.h"      // validateToolPath + isSkippedDirName (shared guards)
+#include "file_tool.h" // validateToolPath + isSkippedDirName (shared guards)
 #include "json_utils.h"
 #include <string>
 
@@ -9,8 +9,10 @@ static constexpr const char* TOOL_FILE_SEARCH_DESC =
     "Find files by name, recursively. Supports '*' and '?'. Stays inside the "
     "workspace and skips build / VCS / dependency directories. Returns absolute "
     "paths, at most 50.";
-static constexpr const char* TOOL_PARAM_PATTERN = "Filename pattern to search for (supports wildcards)";
-static constexpr const char* TOOL_PARAM_SEARCH_PATH = "Base directory to search (default: workspace root)";
+static constexpr const char* TOOL_PARAM_PATTERN =
+    "Filename pattern to search for (supports wildcards)";
+static constexpr const char* TOOL_PARAM_SEARCH_PATH =
+    "Base directory to search (default: workspace root)";
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -26,14 +28,29 @@ std::string wildcardToRegex(const std::string& pattern) {
     out.reserve(pattern.size() * 2);
     for (char c : pattern) {
         switch (c) {
-            case '*': out += ".*"; break;
-            case '?': out += "."; break;
-            case '.': case '+': case '(': case ')': case '[': case ']':
-            case '{': case '}': case '^': case '$': case '|': case '\\':
-                out += '\\';
-                out += c;
-                break;
-            default: out += c;
+        case '*':
+            out += ".*";
+            break;
+        case '?':
+            out += ".";
+            break;
+        case '.':
+        case '+':
+        case '(':
+        case ')':
+        case '[':
+        case ']':
+        case '{':
+        case '}':
+        case '^':
+        case '$':
+        case '|':
+        case '\\':
+            out += '\\';
+            out += c;
+            break;
+        default:
+            out += c;
         }
     }
     return out;
@@ -45,10 +62,8 @@ void registerFileSearchTool(ToolRegistry& registry, const std::string& workspace
     ToolDefinition def;
     def.name = "file_search";
     def.description = TOOL_FILE_SEARCH_DESC;
-    def.parameters = {
-        {"pattern", "string", TOOL_PARAM_PATTERN, true},
-        {"path", "string", TOOL_PARAM_SEARCH_PATH, false}
-    };
+    def.parameters = {{"pattern", "string", TOOL_PARAM_PATTERN, true},
+                      {"path", "string", TOOL_PARAM_SEARCH_PATH, false}};
 
     registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
         const std::string pattern = extractStringArg(args, "pattern");
@@ -62,11 +77,11 @@ void registerFileSearchTool(ToolRegistry& registry, const std::string& workspace
         if (!err.empty()) return err;
 
         std::error_code ec;
-        if (!fs::is_directory(resolved, ec))
-            return "Error: Not a directory: " + resolved;
+        if (!fs::is_directory(resolved, ec)) return "Error: Not a directory: " + resolved;
 
         try {
-            const std::regex re(wildcardToRegex(pattern), std::regex::ECMAScript | std::regex::icase);
+            const std::regex re(wildcardToRegex(pattern),
+                                std::regex::ECMAScript | std::regex::icase);
             std::string result;
             int count = 0;
             bool truncated = false;
@@ -74,7 +89,10 @@ void registerFileSearchTool(ToolRegistry& registry, const std::string& workspace
             for (auto it = fs::recursive_directory_iterator(
                      resolved, fs::directory_options::skip_permission_denied, ec);
                  it != fs::recursive_directory_iterator(); it.increment(ec)) {
-                if (ec) { ec.clear(); continue; }
+                if (ec) {
+                    ec.clear();
+                    continue;
+                }
                 const fs::directory_entry& entry = *it;
 
                 std::error_code ec2;
@@ -88,7 +106,10 @@ void registerFileSearchTool(ToolRegistry& registry, const std::string& workspace
 
                 if (!std::regex_match(entry.path().filename().string(), re)) continue;
                 result += entry.path().string() + "\n";
-                if (++count >= 50) { truncated = true; break; }
+                if (++count >= 50) {
+                    truncated = true;
+                    break;
+                }
             }
 
             if (count == 0) return "No files found matching: " + pattern;

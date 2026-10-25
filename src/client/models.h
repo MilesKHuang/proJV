@@ -10,7 +10,7 @@
 
 struct ToolParameter {
     std::string name;
-    std::string type;      // "string", "number", "boolean", "array"
+    std::string type; // "string", "number", "boolean", "array"
     std::string description;
     bool required = false;
 };
@@ -25,10 +25,10 @@ struct ToolDefinition {
 };
 
 struct ToolCall {
-    std::string id;       // e.g. "call_abc123"
+    std::string id; // e.g. "call_abc123"
     std::string name;
     std::string arguments; // JSON string of arguments
-    int index = 0;        // position in tool_calls array (for parallel calls)
+    int index = 0;         // position in tool_calls array (for parallel calls)
 
     bool valid = true;
     std::string parseError;
@@ -37,7 +37,7 @@ struct ToolCall {
 struct ToolResult {
     std::string toolCallId;
     std::string name;
-    std::string content;  // result text
+    std::string content; // result text
     bool isError = false;
     bool isCancelled = false;
 };
@@ -60,13 +60,13 @@ struct ImageAttachment {
 // --- Message --------------------------------------------------------
 
 struct Message {
-    int64_t id = 0;         // database row id (0 = not persisted yet)
-    std::string role;       // "system", "user", "assistant", "tool"
-    std::string content;    // text content (empty if tool_calls present)
+    int64_t id = 0;                  // database row id (0 = not persisted yet)
+    std::string role;                // "system", "user", "assistant", "tool"
+    std::string content;             // text content (empty if tool_calls present)
     std::string reasoningContent;    // DeepSeek reasoning_content (V4 thinking)
-    std::vector<ToolCall> toolCalls;   // for assistant messages
-    std::string toolCallId; // for tool result messages
-    std::string name;       // for tool result messages
+    std::vector<ToolCall> toolCalls; // for assistant messages
+    std::string toolCallId;          // for tool result messages
+    std::string name;                // for tool result messages
     // Vision attachments. Only user messages may carry images; to_json()
     // drops them for every other role (the API returns 400 otherwise).
     std::vector<ImageAttachment> images;
@@ -75,7 +75,8 @@ struct Message {
     static Message System(std::string content);
     static Message User(std::string content);
     static Message Assistant(std::string content = "");
-    static Message Tool(std::string toolCallId, std::string name, std::string content, bool isError = false);
+    static Message Tool(std::string toolCallId, std::string name, std::string content,
+                        bool isError = false);
 };
 
 // --- API types ------------------------------------------------------
@@ -135,20 +136,19 @@ struct PendingToolCall {
 
 // --- Model pricing (configurable via config.toml) -----------------
 struct ModelPriceEntry {
-    std::string prefix;         // model ID prefix to match (e.g. "deepseek-v4-pro")
-    double inputPrice = 0.5;    // $ per 1M input tokens
-    double outputPrice = 2.0;   // $ per 1M output tokens
+    std::string prefix;       // model ID prefix to match (e.g. "deepseek-v4-pro")
+    double inputPrice = 0.5;  // $ per 1M input tokens
+    double outputPrice = 2.0; // $ per 1M output tokens
 };
 
 // Look up price by matching modelId against registered prefixes.
 // Returns fallback prices if no match found.
 inline double lookupModelPrice(const std::vector<ModelPriceEntry>& prices,
-                                const std::string& modelId, bool input) {
+                               const std::string& modelId, bool input) {
     for (const auto& p : prices) {
-        if (modelId.find(p.prefix) == 0)
-            return input ? p.inputPrice : p.outputPrice;
+        if (modelId.find(p.prefix) == 0) return input ? p.inputPrice : p.outputPrice;
     }
-    return input ? 0.5 : 2.0;  // fallback: cheapest
+    return input ? 0.5 : 2.0; // fallback: cheapest
 }
 
 // Whether a model supports tool calls (model-specific knowledge)
@@ -208,10 +208,10 @@ inline size_t contextWindowForModel(const std::string& model) {
 
 // --- Model info (fetched from API + pricing) ----------------------
 struct ModelInfo {
-    std::string id;         // e.g. "deepseek-chat"
-    std::string label;      // display name (same as id when simplified)
-    double inputPricePerM = 0.0;   // $ per 1M input tokens
-    double outputPricePerM = 0.0;  // $ per 1M output tokens
+    std::string id;               // e.g. "deepseek-chat"
+    std::string label;            // display name (same as id when simplified)
+    double inputPricePerM = 0.0;  // $ per 1M input tokens
+    double outputPricePerM = 0.0; // $ per 1M output tokens
     bool supportsTools = true;
 };
 
@@ -221,8 +221,8 @@ struct ModelInfo {
 
 enum class AgentState {
     Idle,
-    Thinking,    // waiting for API response (streaming)
-    AwaitingApproval,  // waiting for user to approve a tool
+    Thinking,         // waiting for API response (streaming)
+    AwaitingApproval, // waiting for user to approve a tool
     ExecutingTool,
     Error
 };
@@ -230,15 +230,15 @@ enum class AgentState {
 struct AgentStatus {
     AgentState state = AgentState::Idle;
     std::string streamingText;
-    std::string reasoningText;  // reasoning_content from deepseek-reasoner
+    std::string reasoningText; // reasoning_content from deepseek-reasoner
     PendingToolCall pendingTool;
     std::string errorMessage;
     std::string statusMessage; // "Working...", "Thinking...", etc.
 
     // Tool execution progress (updated per-tool during ExecutingTool)
-    int toolProgressCurrent = 0;   // index of the tool currently executing (1-based)
-    int toolProgressTotal = 0;     // total tools in this round
-    std::string currentToolName;   // name of the tool being executed
+    int toolProgressCurrent = 0; // index of the tool currently executing (1-based)
+    int toolProgressTotal = 0;   // total tools in this round
+    std::string currentToolName; // name of the tool being executed
 };
 
 // --- Callbacks for streaming ----------------------------------------

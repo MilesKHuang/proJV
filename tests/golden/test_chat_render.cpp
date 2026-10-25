@@ -16,8 +16,7 @@ namespace {
 
 std::string renderToString(const std::vector<Bubble>& bubbles, bool reasoningExpanded) {
     auto doc = chat_view::renderBubbles(bubbles, reasoningExpanded);
-    auto screen = ftxui::Screen::Create(
-        ftxui::Dimension::Fixed(80), ftxui::Dimension::Fixed(24));
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(80), ftxui::Dimension::Fixed(24));
     ftxui::Render(screen, doc);
     return screen.ToString();
 }
@@ -94,8 +93,7 @@ TEST_CASE("chat_view: streaming bubble shows reasoning and content") {
     st.streamingText = "partial answer";
 
     auto doc = chat_view::renderStreamingBubble(st);
-    auto screen = ftxui::Screen::Create(
-        ftxui::Dimension::Fixed(60), ftxui::Dimension::Fixed(12));
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(60), ftxui::Dimension::Fixed(12));
     ftxui::Render(screen, doc);
     std::string out = screen.ToString();
 

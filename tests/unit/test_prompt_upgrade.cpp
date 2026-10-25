@@ -34,7 +34,10 @@ TEST_CASE("prompt upgrade: old coder tool list gains run_skill exactly once") {
 
     // Count occurrences of the suffix.
     size_t pos = 0, hits = 0;
-    while ((pos = twice.find("run_skill", pos)) != std::string::npos) { ++hits; pos += 9; }
+    while ((pos = twice.find("run_skill", pos)) != std::string::npos) {
+        ++hits;
+        pos += 9;
+    }
     CHECK(hits == 1);
 }
 
@@ -43,8 +46,7 @@ TEST_CASE("prompt upgrade: a hand-edited tool list is left alone") {
     CHECK(upgradeSeededPrompt("coder.md", custom) == custom);
 
     // Same list plus something the user added by hand.
-    const std::string extended =
-        coderWith(std::string(kOldCoderLine) + ", my_tool");
+    const std::string extended = coderWith(std::string(kOldCoderLine) + ", my_tool");
     CHECK(upgradeSeededPrompt("coder.md", extended) == extended);
 }
 

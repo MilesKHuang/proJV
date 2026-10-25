@@ -10,7 +10,8 @@ static constexpr const char* TOOL_EDIT_FILE_DESC =
     "Handles both LF and CRLF line endings automatically. "
     "Use this for targeted edits instead of rewriting the whole file.";
 static constexpr const char* TOOL_PARAM_EDIT_PATH = "Path to the file to edit";
-static constexpr const char* TOOL_PARAM_SEARCH = "Text to search for (including whitespace and newlines)";
+static constexpr const char* TOOL_PARAM_SEARCH =
+    "Text to search for (including whitespace and newlines)";
 static constexpr const char* TOOL_PARAM_REPLACE = "Text to replace the search text with";
 #include <sstream>
 #include <filesystem>
@@ -33,11 +34,9 @@ void registerEditFileTool(ToolRegistry& registry) {
     ToolDefinition def;
     def.name = "edit_file";
     def.description = TOOL_EDIT_FILE_DESC;
-    def.parameters = {
-        {"path", "string", TOOL_PARAM_EDIT_PATH, true},
-        {"search", "string", TOOL_PARAM_SEARCH, true},
-        {"replace", "string", TOOL_PARAM_REPLACE, true}
-    };
+    def.parameters = {{"path", "string", TOOL_PARAM_EDIT_PATH, true},
+                      {"search", "string", TOOL_PARAM_SEARCH, true},
+                      {"replace", "string", TOOL_PARAM_REPLACE, true}};
 
     registry.registerTool(def, [](const std::string& args) -> std::string {
         std::string rawPath = extractStringArg(args, "path");
@@ -61,7 +60,8 @@ void registerEditFileTool(ToolRegistry& registry) {
         auto stripCR = [](const std::string& s) -> std::string {
             std::string out;
             out.reserve(s.size());
-            for (char c : s) if (c != '\r') out += c;
+            for (char c : s)
+                if (c != '\r') out += c;
             return out;
         };
 
@@ -101,7 +101,7 @@ void registerEditFileTool(ToolRegistry& registry) {
         if (!ofs) return "Error: Cannot write to: " + path;
         ofs.write(content.data(), content.size());
 
-        return "Edited " + path + ": replaced " + std::to_string(actualSearchLen) +
-               " chars with " + std::to_string(replaceText.size()) + " chars.";
+        return "Edited " + path + ": replaced " + std::to_string(actualSearchLen) + " chars with " +
+               std::to_string(replaceText.size()) + " chars.";
     });
 }

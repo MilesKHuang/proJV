@@ -11,7 +11,7 @@
 #include <vector>
 
 class ThemeManager {
-public:
+  public:
     static ThemeManager& instance();
 
     void init(const std::string& themeDir, const std::string& preferredName = "");
@@ -26,10 +26,10 @@ public:
     // Called whenever the theme changes (by name string).
     std::function<void(const std::string& themeName)> onThemeChanged;
 
-    static const char* builtinName0;  // "Obsidian"
-    static const char* builtinName1;  // "Light"
+    static const char* builtinName0; // "Obsidian"
+    static const char* builtinName1; // "Light"
 
-private:
+  private:
     ThemeManager() = default;
     ThemeColors current_;
     std::string themeDir_;

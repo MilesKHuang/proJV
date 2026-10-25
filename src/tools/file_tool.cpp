@@ -49,11 +49,9 @@ namespace fs = std::filesystem;
 // Shared by findSimilarFiles and grep_files to avoid crawling huge
 // build-artifact / VCS / dependency directories that would freeze the UI.
 static const std::vector<std::string> kSkipDirs = {
-    ".git", ".vs", ".vscode", "build", "Debug", "Release",
-    "x64", "x86", "bin", "bin64", "obj", "out", "target",
-    "node_modules", "packages", "vendor", "external",
-    "__pycache__", ".pytest_cache"
-};
+    ".git",     ".vs",    ".vscode",  "build",       "Debug",        "Release", "x64",
+    "x86",      "bin",    "bin64",    "obj",         "out",          "target",  "node_modules",
+    "packages", "vendor", "external", "__pycache__", ".pytest_cache"};
 
 // -- Path resolution -----------------------------------------------
 // Resolve a path against the workspace: relative paths become absolute
@@ -88,13 +86,14 @@ static bool isPathInWorkspace(const std::string& resolvedPath, const std::string
         auto bit = base.begin();
         auto tit = target.begin();
         for (; bit != base.end(); ++bit, ++tit) {
-            if (tit == target.end()) return false;   // target is above the workspace
+            if (tit == target.end()) return false; // target is above the workspace
             std::string a = bit->string();
             std::string b = tit->string();
 #ifdef _WIN32
             // Windows paths are case-insensitive.
             auto lower = [](std::string& s) {
-                for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                for (auto& c : s)
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             };
             lower(a);
             lower(b);
@@ -110,7 +109,7 @@ static bool isPathInWorkspace(const std::string& resolvedPath, const std::string
 // Validate a file path and return the resolved absolute path via outResolved.
 // Returns empty string on success, or an error message on violation.
 static std::string validateFilePath(const std::string& rawPath, const std::string& workspace,
-                                     std::string& outResolved) {
+                                    std::string& outResolved) {
     if (rawPath.empty()) return "Error: Empty path";
     outResolved = resolveWorkspacePath(rawPath, workspace);
     if (!workspace.empty() && !isPathInWorkspace(outResolved, workspace)) {
@@ -121,7 +120,8 @@ static std::string validateFilePath(const std::string& rawPath, const std::strin
         try {
             std::error_code ec;
             fs::path canonical = fs::weakly_canonical(rawPath, ec);
-            if (!ec && canonical != fs::path(outResolved) && isPathInWorkspace(canonical.string(), workspace)) {
+            if (!ec && canonical != fs::path(outResolved) &&
+                isPathInWorkspace(canonical.string(), workspace)) {
                 // False alarm -- canonical form is within workspace; update resolved
                 outResolved = canonical.string();
                 return "";
@@ -143,8 +143,8 @@ std::string validateToolPath(const std::string& rawPath, const std::string& work
 }
 
 // -- file_requests spec: "path", "path#L120", "path#L120-L480" ----------
-bool parseFileRequestSpec(const std::string& spec, std::string& outPath,
-                          int& startLine, int& endLine) {
+bool parseFileRequestSpec(const std::string& spec, std::string& outPath, int& startLine,
+                          int& endLine) {
     outPath.clear();
     startLine = 0;
     endLine = 0;
@@ -159,7 +159,8 @@ bool parseFileRequestSpec(const std::string& spec, std::string& outPath,
         size_t i = 0;
         if (isL(tail[0])) ++i;
         size_t digitStart = i;
-        while (i < tail.size() && tail[i] >= '0' && tail[i] <= '9') ++i;
+        while (i < tail.size() && tail[i] >= '0' && tail[i] <= '9')
+            ++i;
         bool firstNum = (i > digitStart);
         int a = firstNum ? std::atoi(tail.substr(digitStart, i - digitStart).c_str()) : 0;
         int b = 0;
@@ -169,9 +170,12 @@ bool parseFileRequestSpec(const std::string& spec, std::string& outPath,
             size_t s2 = i;
             if (i < tail.size() && isL(tail[i])) ++i;
             size_t d2 = i;
-            while (i < tail.size() && tail[i] >= '0' && tail[i] <= '9') ++i;
-            if (i > d2) b = std::atoi(tail.substr(d2, i - d2).c_str());
-            else okRange = false;
+            while (i < tail.size() && tail[i] >= '0' && tail[i] <= '9')
+                ++i;
+            if (i > d2)
+                b = std::atoi(tail.substr(d2, i - d2).c_str());
+            else
+                okRange = false;
             (void)s2;
         }
         if (okRange && i == tail.size() && a > 0) {
@@ -197,8 +201,8 @@ static std::string readFileContent(const std::string& path) {
 }
 
 // -- read_file: line-range read -----------------------------------------
-static constexpr size_t kRangeMaxFileSize = 2 * 1024 * 1024;  // 2MB scanned
-static constexpr size_t kRangeMaxBytes = 100 * 1024;          // 100KB returned
+static constexpr size_t kRangeMaxFileSize = 2 * 1024 * 1024; // 2MB scanned
+static constexpr size_t kRangeMaxBytes = 100 * 1024;         // 100KB returned
 static constexpr int kRangeMaxLines = 1000;
 
 // Accepts a JSON number or a numeric string (models send both).
@@ -211,9 +215,14 @@ static int intArgOrZero(const std::string& args, const char* key) {
         if (v.is_number()) return static_cast<int>(v.get<double>());
         if (v.is_string()) {
             const std::string s = v.get<std::string>();
-            try { return std::stoi(s); } catch (...) { return 0; }
+            try {
+                return std::stoi(s);
+            } catch (...) {
+                return 0;
+            }
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return 0;
 }
 
@@ -236,18 +245,17 @@ static std::string readFileRange(const std::string& path, int startLine, int end
 
     int s = startLine > 0 ? startLine : 1;
     int e = endLine > 0 ? endLine : total;
-    if (s < 1)
-        return "Error: start_line must be >= 1 (got " + std::to_string(startLine) + ")";
+    if (s < 1) return "Error: start_line must be >= 1 (got " + std::to_string(startLine) + ")";
     if (endLine > 0 && endLine < s)
-        return "Error: end_line (" + std::to_string(endLine) +
-               ") must be >= start_line (" + std::to_string(s) + ")";
+        return "Error: end_line (" + std::to_string(endLine) + ") must be >= start_line (" +
+               std::to_string(s) + ")";
     if (s > total)
-        return "Error: start_line " + std::to_string(s) +
-               " is beyond the end of the file (" + std::to_string(total) + " lines)";
+        return "Error: start_line " + std::to_string(s) + " is beyond the end of the file (" +
+               std::to_string(total) + " lines)";
     if (e > total) e = total;
 
-    std::string out = "[lines " + std::to_string(s) + "-" + std::to_string(e) +
-                      " of " + std::to_string(total) + "]\n";
+    std::string out = "[lines " + std::to_string(s) + "-" + std::to_string(e) + " of " +
+                      std::to_string(total) + "]\n";
     int last = s - 1;
     for (int n = s; n <= e; ++n) {
         std::string body = std::to_string(n) + ": " + lines[static_cast<size_t>(n - 1)] + "\n";
@@ -278,8 +286,7 @@ static std::string readFileRange(const std::string& path, int startLine, int end
 // workspace for files with the same filename and suggests correct paths.
 // This is the "safety net" -- even without project context injection,
 // the LLM gets immediate feedback about where the file actually lives.
-static std::string findSimilarFiles(const std::string& failedPath,
-                                     const std::string& workspace) {
+static std::string findSimilarFiles(const std::string& failedPath, const std::string& workspace) {
     namespace fs = std::filesystem;
     std::error_code ec;
 
@@ -304,10 +311,14 @@ static std::string findSimilarFiles(const std::string& failedPath,
 
     // Use file-level kSkipDirs defined above
     try {
-        for (auto it = fs::recursive_directory_iterator(root,
-                fs::directory_options::skip_permission_denied, ec);
-             it != fs::recursive_directory_iterator(); ) {
-            if (ec) { ec.clear(); ++it; continue; }
+        for (auto it = fs::recursive_directory_iterator(
+                 root, fs::directory_options::skip_permission_denied, ec);
+             it != fs::recursive_directory_iterator();) {
+            if (ec) {
+                ec.clear();
+                ++it;
+                continue;
+            }
             if (found >= MAX_RESULTS) break;
 
             const auto& entry = *it;
@@ -315,7 +326,10 @@ static std::string findSimilarFiles(const std::string& failedPath,
                 if (entry.path().filename().string() == targetName) {
                     // Compute relative path from workspace root
                     std::string relPath = fs::relative(entry.path(), root, ec).string();
-                    if (ec) { ec.clear(); relPath = entry.path().string(); }
+                    if (ec) {
+                        ec.clear();
+                        relPath = entry.path().string();
+                    }
                     // Normalize backslashes to forward slashes
                     std::replace(relPath.begin(), relPath.end(), '\\', '/');
                     out << "  - " << relPath << "\n";
@@ -329,7 +343,10 @@ static std::string findSimilarFiles(const std::string& failedPath,
                 bool skip = (dirName.size() > 0 && dirName[0] == '.');
                 if (!skip) {
                     for (const auto& d : kSkipDirs) {
-                        if (dirName == d) { skip = true; break; }
+                        if (dirName == d) {
+                            skip = true;
+                            break;
+                        }
                     }
                 }
                 if (skip) {
@@ -354,8 +371,9 @@ static constexpr int kListMaxEntries = 500;
 
 bool isSkippedDirName(const std::string& name) {
     if (name.empty()) return true;
-    if (name[0] == '.') return true;                 // .git / .vs / .pytest_cache ...
-    for (const auto& d : kSkipDirs) if (name == d) return true;
+    if (name[0] == '.') return true; // .git / .vs / .pytest_cache ...
+    for (const auto& d : kSkipDirs)
+        if (name == d) return true;
     return false;
 }
 
@@ -364,7 +382,10 @@ static size_t countChildEntries(const fs::path& dir) {
     size_t n = 0;
     for (auto it = fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
          it != fs::directory_iterator(); it.increment(ec)) {
-        if (ec) { ec.clear(); break; }
+        if (ec) {
+            ec.clear();
+            break;
+        }
         ++n;
     }
     return n;
@@ -381,16 +402,22 @@ static std::string listDirTree(const fs::path& root, int depth, const std::regex
         if (truncated) return;
         std::error_code ec;
         std::vector<fs::directory_entry> dirs, files;
-        for (auto it = fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+        for (auto it =
+                 fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
              it != fs::directory_iterator(); it.increment(ec)) {
-            if (ec) { ec.clear(); break; }
+            if (ec) {
+                ec.clear();
+                break;
+            }
             const fs::directory_entry& e = *it;
             const std::string name = e.path().filename().string();
             std::error_code ec2;
             const bool isDir = e.is_directory(ec2);
             if (!isDir && !e.is_regular_file(ec2)) continue;
-            if (isDir) { if (isSkippedDirName(name)) continue; }
-            else if (name.empty()) continue;
+            if (isDir) {
+                if (isSkippedDirName(name)) continue;
+            } else if (name.empty())
+                continue;
             if (exclude && std::regex_search(name, *exclude)) continue;
             (isDir ? dirs : files).push_back(e);
         }
@@ -402,7 +429,10 @@ static std::string listDirTree(const fs::path& root, int depth, const std::regex
 
         const std::string pad(static_cast<size_t>(level) * 2, ' ');
         for (const auto& e : dirs) {
-            if (emitted >= kListMaxEntries) { truncated = true; return; }
+            if (emitted >= kListMaxEntries) {
+                truncated = true;
+                return;
+            }
             ++emitted;
             out << pad << e.path().filename().string() << "/";
             if (level + 1 >= depth) {
@@ -413,7 +443,10 @@ static std::string listDirTree(const fs::path& root, int depth, const std::regex
             }
         }
         for (const auto& e : files) {
-            if (emitted >= kListMaxEntries) { truncated = true; return; }
+            if (emitted >= kListMaxEntries) {
+                truncated = true;
+                return;
+            }
             ++emitted;
             out << pad << e.path().filename().string() << "\n";
         }
@@ -437,27 +470,30 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
         def.parameters = {
             {"path", "string", "Path to the file to read", true},
             {"start_line", "number",
-             "Optional, 1-based first line of the slice (inclusive). Omit to start at line 1.", false},
+             "Optional, 1-based first line of the slice (inclusive). Omit to start at line 1.",
+             false},
             {"end_line", "number",
-             "Optional, 1-based last line of the slice (inclusive). Omit to read to the end.", false}
-        };
+             "Optional, 1-based last line of the slice (inclusive). Omit to read to the end.",
+             false}};
         registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
-            if (path.empty()) return "Error: Missing required 'path' argument for read_file. Provide the file path as a JSON string.";
+            if (path.empty())
+                return "Error: Missing required 'path' argument for read_file. Provide the file "
+                       "path as a JSON string.";
             std::string resolved;
             std::string err = validateFilePath(path, workspacePath, resolved);
             if (!err.empty()) return err;
             const int startLine = intArgOrZero(args, "start_line");
             const int endLine = intArgOrZero(args, "end_line");
             std::string content = (startLine <= 0 && endLine <= 0)
-                ? readFileContent(resolved)                 // legacy whole-file read
-                : readFileRange(resolved, startLine, endLine);
+                                      ? readFileContent(resolved) // legacy whole-file read
+                                      : readFileRange(resolved, startLine, endLine);
             // -- Friendly error: if file not found, suggest correct paths --
             if (content.find("Error: Cannot open file:") == 0) {
                 std::string suggestions = findSimilarFiles(resolved, workspacePath);
                 if (!suggestions.empty()) {
-                    content += "\n\nDid you mean one of these?\n" + suggestions
-                             + "\nPlease use the correct path above to read the file.";
+                    content += "\n\nDid you mean one of these?\n" + suggestions +
+                               "\nPlease use the correct path above to read the file.";
                 }
             }
             return content;
@@ -472,8 +508,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
         def.parameters = {
             {"path", "string", "Directory to list (optional; default = workspace root)", false},
             {"depth", "number", "Levels to expand, 1..6 (default 2)", false},
-            {"exclude", "string", "Optional regex; entries whose name matches are hidden", false}
-        };
+            {"exclude", "string", "Optional regex; entries whose name matches are hidden", false}};
         registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
             if (path.empty()) path = workspacePath.empty() ? std::string(".") : workspacePath;
@@ -482,13 +517,15 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
             if (!err.empty()) return err;
 
             std::error_code ec;
-            if (!fs::is_directory(resolved, ec))
-                return "Error: Not a directory: " + resolved;
+            if (!fs::is_directory(resolved, ec)) return "Error: Not a directory: " + resolved;
 
             int depth = intArgOrZero(args, "depth");
             bool depthCapped = false;
             if (depth <= 0) depth = kListDefaultDepth;
-            if (depth > kListMaxDepth) { depth = kListMaxDepth; depthCapped = true; }
+            if (depth > kListMaxDepth) {
+                depth = kListMaxDepth;
+                depthCapped = true;
+            }
 
             const std::string exclude = extractStringArg(args, "exclude");
             std::regex excludeRe;
@@ -502,11 +539,10 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 }
             }
 
-            std::string header = "[list_dir] " + resolved +
-                                 " (depth=" + std::to_string(depth) +
+            std::string header = "[list_dir] " + resolved + " (depth=" + std::to_string(depth) +
                                  (depthCapped ? ", capped at 6" : "") + ")\n";
-            return header + listDirTree(fs::path(resolved), depth,
-                                        hasExclude ? &excludeRe : nullptr);
+            return header +
+                   listDirTree(fs::path(resolved), depth, hasExclude ? &excludeRe : nullptr);
         });
     }
 
@@ -515,11 +551,11 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
         ToolDefinition def;
         def.name = "write_file";
         def.description = TOOL_WRITE_FILE_DESC;
-        def.parameters = {
-            {"path", "string", "Path to the file", true},
-            {"content", "string", "Content to write or append", true},
-            {"mode", "string", "Write mode: 'write' (overwrite, default) or 'append' (add to existing)", false}
-        };
+        def.parameters = {{"path", "string", "Path to the file", true},
+                          {"content", "string", "Content to write or append", true},
+                          {"mode", "string",
+                           "Write mode: 'write' (overwrite, default) or 'append' (add to existing)",
+                           false}};
         registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
             std::string content = extractStringArg(args, "content");
@@ -540,7 +576,8 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 try {
                     auto j = nlohmann::json::parse(args);
                     keyExists = j.contains("content");
-                } catch (...) {}
+                } catch (...) {
+                }
                 if (!keyExists) {
                     return "Error: Missing required 'content' argument.\n"
                            "write_file requires both 'path' and 'content' arguments.\n"
@@ -553,22 +590,29 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 size_t chunkSize = MAX_WRITE_CONTENT_SIZE;
                 size_t totalSize = content.size();
                 size_t numChunks = (totalSize + chunkSize - 1) / chunkSize;
-                std::string suggestion =
-                    "Error: Content too large (" + std::to_string(totalSize) + " bytes). "
-                    "write_file limit is " + std::to_string(MAX_WRITE_CONTENT_SIZE) + " bytes.\n"
-                    "\n"
-                    "MANDATORY: Split into " + std::to_string(numChunks)
-                    + " write_file calls with mode=\"append\".\n"
-                    "Each chunk must be under " + std::to_string(MAX_WRITE_CONTENT_SIZE) + " bytes.\n"
-                    "Do not try any other method for writing files over "
-                    + std::to_string(MAX_WRITE_CONTENT_SIZE) + " bytes.\n"
-                    "\n"
-                    "Template (chunk 1 overwrites, chunks 2..N append):\n"
-                    "  1. write_file(path=\"" + path + "\", content=\"<chunk1>\", mode=\"write\")\n";
+                std::string suggestion = "Error: Content too large (" + std::to_string(totalSize) +
+                                         " bytes). "
+                                         "write_file limit is " +
+                                         std::to_string(MAX_WRITE_CONTENT_SIZE) +
+                                         " bytes.\n"
+                                         "\n"
+                                         "MANDATORY: Split into " +
+                                         std::to_string(numChunks) +
+                                         " write_file calls with mode=\"append\".\n"
+                                         "Each chunk must be under " +
+                                         std::to_string(MAX_WRITE_CONTENT_SIZE) +
+                                         " bytes.\n"
+                                         "Do not try any other method for writing files over " +
+                                         std::to_string(MAX_WRITE_CONTENT_SIZE) +
+                                         " bytes.\n"
+                                         "\n"
+                                         "Template (chunk 1 overwrites, chunks 2..N append):\n"
+                                         "  1. write_file(path=\"" +
+                                         path + "\", content=\"<chunk1>\", mode=\"write\")\n";
                 for (size_t i = 1; i < numChunks && i < 5; ++i) {
-                    suggestion += "  " + std::to_string(i + 1)
-                        + ". write_file(path=\"" + path + "\", content=\"<chunk"
-                        + std::to_string(i + 1) + ">\", mode=\"append\")\n";
+                    suggestion += "  " + std::to_string(i + 1) + ". write_file(path=\"" + path +
+                                  "\", content=\"<chunk" + std::to_string(i + 1) +
+                                  ">\", mode=\"append\")\n";
                 }
                 if (numChunks > 5) {
                     suggestion += "  ... (" + std::to_string(numChunks - 5) + " more chunks)\n";
@@ -586,8 +630,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 bool appendMode = (mode == "append");
 
                 auto parent = fs::path(resolved).parent_path();
-                if (!parent.empty())
-                    fs::create_directories(parent);
+                if (!parent.empty()) fs::create_directories(parent);
 
                 std::ios::openmode openFlags = std::ios::out;
                 if (appendMode) openFlags |= std::ios::app;
@@ -614,8 +657,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
         def.parameters = {
             {"pattern", "string", "Regular expression pattern to search for", true},
             {"path", "string", "Directory to search (optional)", false},
-            {"max_results", "number", "Stop after this many hits: default 100, max 500", false}
-        };
+            {"max_results", "number", "Stop after this many hits: default 100, max 500", false}};
         registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
             std::string pattern = extractStringArg(args, "pattern");
             std::string path = extractStringArg(args, "path");
@@ -633,7 +675,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 int count = 0;
                 int fileCount = 0;
                 bool hitLimit = false;
-                static constexpr int kMaxFilesToScan = 5000;  // hard cap to prevent UI freeze
+                static constexpr int kMaxFilesToScan = 5000; // hard cap to prevent UI freeze
                 std::error_code ec;
 
                 // A plain file path means "search this one file". Passing it to
@@ -647,7 +689,10 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                         ++lineNum;
                         if (!std::regex_search(line, re)) continue;
                         result << resolved << ":" << lineNum << ": " << line << "\n";
-                        if (++count >= maxResults) { hitLimit = true; break; }
+                        if (++count >= maxResults) {
+                            hitLimit = true;
+                            break;
+                        }
                     }
                     if (count == 0) return "No matches found for pattern: " + pattern;
                     std::string out = result.str();
@@ -657,10 +702,14 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                     return out;
                 }
 
-                for (auto it = fs::recursive_directory_iterator(resolved,
-                        fs::directory_options::skip_permission_denied, ec);
-                     it != fs::recursive_directory_iterator(); ) {
-                    if (ec) { ec.clear(); ++it; continue; }
+                for (auto it = fs::recursive_directory_iterator(
+                         resolved, fs::directory_options::skip_permission_denied, ec);
+                     it != fs::recursive_directory_iterator();) {
+                    if (ec) {
+                        ec.clear();
+                        ++it;
+                        continue;
+                    }
 
                     const auto& entry = *it;
 
@@ -670,23 +719,42 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                         bool skip = (dirName.size() > 0 && dirName[0] == '.');
                         if (!skip) {
                             for (const auto& d : kSkipDirs) {
-                                if (dirName == d) { skip = true; break; }
+                                if (dirName == d) {
+                                    skip = true;
+                                    break;
+                                }
                             }
                         }
-                        if (skip) { it.disable_recursion_pending(); ++it; continue; }
+                        if (skip) {
+                            it.disable_recursion_pending();
+                            ++it;
+                            continue;
+                        }
                     }
-                    if (!entry.is_regular_file()) { ++it; continue; }
+                    if (!entry.is_regular_file()) {
+                        ++it;
+                        continue;
+                    }
                     auto ext = entry.path().extension().string();
-                    if (ext == ".exe" || ext == ".dll" || ext == ".obj" || ext == ".pdb") { ++it; continue; }
+                    if (ext == ".exe" || ext == ".dll" || ext == ".obj" || ext == ".pdb") {
+                        ++it;
+                        continue;
+                    }
 
                     std::error_code ec2;
                     auto fsize = entry.file_size(ec2);
-                    if (ec2 || fsize > 512 * 1024) { ++it; continue; }
+                    if (ec2 || fsize > 512 * 1024) {
+                        ++it;
+                        continue;
+                    }
 
                     std::string fpath = entry.path().string();
                     std::string ignored;
                     std::string ferr = validateFilePath(fpath, workspacePath, ignored);
-                    if (!ferr.empty()) { ++it; continue; }
+                    if (!ferr.empty()) {
+                        ++it;
+                        continue;
+                    }
 
                     std::ifstream ifs(entry.path());
                     std::string line;
@@ -695,14 +763,19 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                     while (std::getline(ifs, line)) {
                         ++lineNum;
                         if (std::regex_search(line, re)) {
-                            result << entry.path().string() << ":" << lineNum << ": " << line << "\n";
+                            result << entry.path().string() << ":" << lineNum << ": " << line
+                                   << "\n";
                             ++count;
                             if (count >= maxResults) break;
                         }
                     }
-                    if (count >= maxResults) { hitLimit = true; break; }
+                    if (count >= maxResults) {
+                        hitLimit = true;
+                        break;
+                    }
                     if (fileCount >= kMaxFilesToScan) {
-                        result << "\n[grep_files: reached file scan limit (" << kMaxFilesToScan << "). Results may be incomplete.]\n";
+                        result << "\n[grep_files: reached file scan limit (" << kMaxFilesToScan
+                               << "). Results may be incomplete.]\n";
                         break;
                     }
                     ++it;

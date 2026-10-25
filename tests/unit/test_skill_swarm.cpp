@@ -16,19 +16,31 @@
 namespace {
 
 void ensureSysUtil() {
-    static bool once = [] { SystemUtil::Init(CreateSystemUtil()); return true; }();
+    static bool once = [] {
+        SystemUtil::Init(CreateSystemUtil());
+        return true;
+    }();
     (void)once;
 }
 ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
-    ToolCall tc; tc.id = "call_" + name; tc.name = name;
-    tc.arguments = args.dump(); tc.index = 0; tc.valid = true; return tc;
+    ToolCall tc;
+    tc.id = "call_" + name;
+    tc.name = name;
+    tc.arguments = args.dump();
+    tc.index = 0;
+    tc.valid = true;
+    return tc;
 }
 std::string lastUser(const std::vector<Message>& msgs) {
     for (auto it = msgs.rbegin(); it != msgs.rend(); ++it)
         if (it->role == "user") return it->content;
     return "";
 }
-AppConfig testConfig() { AppConfig c; c.model = "deepseek-v4-flash"; return c; }
+AppConfig testConfig() {
+    AppConfig c;
+    c.model = "deepseek-v4-flash";
+    return c;
+}
 
 const char* SWARM_JSON = R"JSON({
   "name": "swarm_test",
@@ -61,7 +73,10 @@ TEST_CASE("swarm: manager dispatches to workers via request_agent") {
     std::error_code ec;
     std::string sdir = getProjvDir() + "/skills/swarm_test";
     std::filesystem::create_directories(sdir, ec);
-    { std::ofstream f(sdir + "/config.json"); f << SWARM_JSON; }
+    {
+        std::ofstream f(sdir + "/config.json");
+        f << SWARM_JSON;
+    }
     std::filesystem::create_directories(sdir + "/tools", ec);
     {
         std::ofstream f(sdir + "/tools/speak.json");
@@ -72,8 +87,12 @@ TEST_CASE("swarm: manager dispatches to workers via request_agent") {
     int mc = 0;
     auto mgr = [&mc](const std::string&, const std::vector<Message>&) {
         int n = ++mc;
-        if (n == 1) return makeCall("request_agent", nlohmann::json{{"agent_id", "w1"}, {"message", "clean f1"}});
-        if (n == 2) return makeCall("request_agent", nlohmann::json{{"agent_id", "w2"}, {"message", "clean f2"}});
+        if (n == 1)
+            return makeCall("request_agent",
+                            nlohmann::json{{"agent_id", "w1"}, {"message", "clean f1"}});
+        if (n == 2)
+            return makeCall("request_agent",
+                            nlohmann::json{{"agent_id", "w2"}, {"message", "clean f2"}});
         return makeCall("speak", nlohmann::json{{"text", "all done"}});
     };
     auto wk = [](std::vector<std::string>* sink, const char* tag) {

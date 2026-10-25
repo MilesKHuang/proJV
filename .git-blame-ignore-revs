@@ -1,0 +1,4 @@
+# Revisions that only reformat code. Listing them here keeps `git blame` and
+# `git log -p` useful: git(1) and GitHub can skip them with
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# Add one line per formatting-only commit (see FORMAT_NOTES below).

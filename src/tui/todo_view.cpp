@@ -48,9 +48,12 @@ Element renderTodoPanel(const TodoData& todo) {
         std::string line;
         while (std::getline(stream, line)) {
             Color c = P.pending;
-            if (line.find("[x]") != std::string::npos) c = P.done;
-            else if (line.find("[*]") != std::string::npos) c = P.inProgress;
-            else if (line.find("[ ]") != std::string::npos) c = P.open;
+            if (line.find("[x]") != std::string::npos)
+                c = P.done;
+            else if (line.find("[*]") != std::string::npos)
+                c = P.inProgress;
+            else if (line.find("[ ]") != std::string::npos)
+                c = P.open;
             // Soft-wrap so long tasks stay fully visible in the right dock.
             els.push_back(markdown_view::renderPlainText(line) | ftxui::color(c));
         }

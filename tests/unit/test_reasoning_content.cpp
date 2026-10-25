@@ -26,7 +26,7 @@ TEST_CASE("reasoning_content: assistant with a chain of thought sends it") {
 }
 
 TEST_CASE("reasoning_content: assistant without one still sends an empty field") {
-    Message m = Message::Assistant("**[Sheldon]** proposal");   // skill narration
+    Message m = Message::Assistant("**[Sheldon]** proposal"); // skill narration
     nlohmann::json j;
     to_json(j, m);
     REQUIRE(j.contains("reasoning_content"));
@@ -44,7 +44,7 @@ TEST_CASE("reasoning_content: assistant with tool_calls and no reasoning") {
 
     nlohmann::json j;
     to_json(j, m);
-    CHECK(j["content"].is_null());          // unchanged: null = no text
+    CHECK(j["content"].is_null()); // unchanged: null = no text
     REQUIRE(j.contains("reasoning_content"));
     CHECK(j["reasoning_content"] == "");
     REQUIRE(j["tool_calls"].is_array());

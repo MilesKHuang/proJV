@@ -12,10 +12,10 @@
 #include <format>
 #include <cstring>
 
-static constexpr int kPollMs    = 100;
+static constexpr int kPollMs = 100;
 
 class ProcessRunnerWin : public IProcessRunner {
-public:
+  public:
     ProcessResult Run(const ProcessConfig& cfg) override {
         ProcessResult result;
         // Serialize the whole process lifetime on purpose: there is one runner
@@ -26,12 +26,11 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
 
         // Build command with git-env blockers and cd
-        std::string gitEnv =
-            "set GIT_TERMINAL_PROMPT=0 && "
-            "set GCM_INTERACTIVE=Never && "
-            "set GIT_ASKPASS= && "
-            "set SSH_ASKPASS= && "
-            "set CORE_ASKPASS= && ";
+        std::string gitEnv = "set GIT_TERMINAL_PROMPT=0 && "
+                             "set GCM_INTERACTIVE=Never && "
+                             "set GIT_ASKPASS= && "
+                             "set SSH_ASKPASS= && "
+                             "set CORE_ASKPASS= && ";
         // Extra environment (pytool passes its own vars here). The Linux runner
         // prefixes `export K=V;`, this one must do the same with `set`, or the
         // variable is silently dropped -- which is how it behaved until now.
@@ -41,17 +40,14 @@ public:
         for (const auto& [key, value] : cfg.extraEnv)
             if (!key.empty()) gitEnv += "set \"" + key + "=" + value + "\" && ";
         std::string fullCmd = gitEnv + cfg.command;
-        if (!cfg.workDir.empty())
-            fullCmd = "cd /d \"" + cfg.workDir + "\" && " + fullCmd;
+        if (!cfg.workDir.empty()) fullCmd = "cd /d \"" + cfg.workDir + "\" && " + fullCmd;
 
         // Job Object (KILL_ON_JOB_CLOSE)
         HANDLE hJob = CreateJobObjectW(nullptr, nullptr);
         if (hJob) {
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {};
-            jeli.BasicLimitInformation.LimitFlags =
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(hJob, JobObjectExtendedLimitInformation,
-                                    &jeli, sizeof(jeli));
+            jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
         }
 
         // Pipes
@@ -68,7 +64,8 @@ public:
 
         if (!cfg.stdinContent.empty()) {
             if (!CreatePipe(&hInRd, &hInWr, &sa, 0)) {
-                CloseHandle(hOutRd); CloseHandle(hOutWr);
+                CloseHandle(hOutRd);
+                CloseHandle(hOutWr);
                 if (hJob) CloseHandle(hJob);
                 result.stdout_ = "Error: Failed to create stdin pipe";
                 return result;
@@ -80,24 +77,21 @@ public:
         STARTUPINFOW si = {sizeof(si)};
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdOutput = hOutWr;
-        si.hStdError  = hOutWr;
-        si.hStdInput  = cfg.stdinContent.empty() ? nullptr : hInRd;
+        si.hStdError = hOutWr;
+        si.hStdInput = cfg.stdinContent.empty() ? nullptr : hInRd;
 
         // Wide-char conversion
-        int wlen = MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(),
-                                       (int)fullCmd.size(), nullptr, 0);
+        int wlen =
+            MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), (int)fullCmd.size(), nullptr, 0);
         std::wstring wcmd(wlen, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(),
-                            (int)fullCmd.size(), &wcmd[0], wlen);
+        MultiByteToWideChar(CP_UTF8, 0, fullCmd.c_str(), (int)fullCmd.size(), &wcmd[0], wlen);
         wcmd = L"cmd.exe /c " + wcmd;
         std::vector<wchar_t> cmdBuf(wcmd.begin(), wcmd.end());
         cmdBuf.push_back(L'\0');
 
         PROCESS_INFORMATION pi = {};
-        BOOL ok = CreateProcessW(nullptr, cmdBuf.data(),
-            nullptr, nullptr, TRUE,
-            CREATE_SUSPENDED | CREATE_NO_WINDOW,
-            nullptr, nullptr, &si, &pi);
+        BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
+                                 CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
         CloseHandle(hOutWr);
         if (!cfg.stdinContent.empty()) CloseHandle(hInRd);
 
@@ -106,8 +100,7 @@ public:
             if (!cfg.stdinContent.empty()) CloseHandle(hInWr);
             if (hJob) CloseHandle(hJob);
             char buf[64];
-            snprintf(buf, sizeof(buf),
-                "Error: CreateProcess failed (%lu)", GetLastError());
+            snprintf(buf, sizeof(buf), "Error: CreateProcess failed (%lu)", GetLastError());
             result.stdout_ = buf;
             return result;
         }
@@ -118,8 +111,8 @@ public:
         // Write stdin
         if (!cfg.stdinContent.empty()) {
             DWORD written;
-            WriteFile(hInWr, cfg.stdinContent.data(),
-                      (DWORD)cfg.stdinContent.size(), &written, nullptr);
+            WriteFile(hInWr, cfg.stdinContent.data(), (DWORD)cfg.stdinContent.size(), &written,
+                      nullptr);
             CloseHandle(hInWr);
         }
 
@@ -133,8 +126,7 @@ public:
         std::thread reader([&]() {
             char buf[4096];
             DWORD n;
-            while (ReadFile(hOutRd, buf, sizeof(buf) - 1, &n, nullptr)
-                   && n > 0) {
+            while (ReadFile(hOutRd, buf, sizeof(buf) - 1, &n, nullptr) && n > 0) {
                 buf[n] = '\0';
                 std::lock_guard<std::mutex> lk(outMtx);
                 out += buf;
@@ -146,18 +138,19 @@ public:
         bool killed = false;
         size_t lastSize = 0;
         auto lastOut = std::chrono::steady_clock::now();
-        auto deadline = cfg.timeoutMs > 0
-            ? std::chrono::steady_clock::now()
-                  + std::chrono::milliseconds(cfg.timeoutMs)
-            : std::chrono::steady_clock::time_point::max();
+        auto deadline = cfg.timeoutMs > 0 ? std::chrono::steady_clock::now() +
+                                                std::chrono::milliseconds(cfg.timeoutMs)
+                                          : std::chrono::steady_clock::time_point::max();
 
         while (true) {
             DWORD wr = WaitForSingleObject(pi.hProcess, kPollMs);
             if (wr == WAIT_OBJECT_0) break;
 
             if (cancelled_) {
-                if (hJob) TerminateJobObject(hJob, 1);
-                else TerminateProcess(pi.hProcess, 1);
+                if (hJob)
+                    TerminateJobObject(hJob, 1);
+                else
+                    TerminateProcess(pi.hProcess, 1);
                 killed = true;
                 result.cancelled = true;
                 break;
@@ -173,17 +166,21 @@ public:
 
             auto now = std::chrono::steady_clock::now();
             if (now > deadline) {
-                if (hJob) TerminateJobObject(hJob, 1);
-                else TerminateProcess(pi.hProcess, 1);
+                if (hJob)
+                    TerminateJobObject(hJob, 1);
+                else
+                    TerminateProcess(pi.hProcess, 1);
                 killed = true;
                 result.timedOut = true;
                 break;
             }
             if (cfg.idleTimeoutMs > 0 &&
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - lastOut).count() > cfg.idleTimeoutMs) {
-                if (hJob) TerminateJobObject(hJob, 1);
-                else TerminateProcess(pi.hProcess, 1);
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - lastOut).count() >
+                    cfg.idleTimeoutMs) {
+                if (hJob)
+                    TerminateJobObject(hJob, 1);
+                else
+                    TerminateProcess(pi.hProcess, 1);
                 killed = true;
                 result.timedOut = true;
                 break;
@@ -191,8 +188,10 @@ public:
             if (readerDone.load()) {
                 DWORD w2 = WaitForSingleObject(pi.hProcess, 2000);
                 if (w2 == WAIT_OBJECT_0) break;
-                if (hJob) TerminateJobObject(hJob, 1);
-                else TerminateProcess(pi.hProcess, 1);
+                if (hJob)
+                    TerminateJobObject(hJob, 1);
+                else
+                    TerminateProcess(pi.hProcess, 1);
                 killed = true;
                 break;
             }
@@ -212,23 +211,19 @@ public:
         result.stdout_ = std::move(out);
         result.exitCode = (int)code;
 
-        while (!result.stdout_.empty()
-               && (result.stdout_.back() == '\n' || result.stdout_.back() == '\r'))
+        while (!result.stdout_.empty() &&
+               (result.stdout_.back() == '\n' || result.stdout_.back() == '\r'))
             result.stdout_.pop_back();
         if (result.stdout_.size() > 32000)
             result.stdout_ = result.stdout_.substr(0, 32000) + "\n... (truncated)";
         return result;
     }
 
-    void Cancel() override {
-        cancelled_ = true;
-    }
+    void Cancel() override { cancelled_ = true; }
 
-    bool IsRunning() const override {
-        return hProc_ != nullptr;
-    }
+    bool IsRunning() const override { return hProc_ != nullptr; }
 
-private:
+  private:
     std::mutex mutex_;
     std::atomic<bool> cancelled_{false};
     HANDLE hProc_ = nullptr;
@@ -238,5 +233,7 @@ IProcessRunner* CreateProcessRunner() {
     return new ProcessRunnerWin();
 }
 #else
-IProcessRunner* CreateProcessRunner() { return nullptr; }
+IProcessRunner* CreateProcessRunner() {
+    return nullptr;
+}
 #endif

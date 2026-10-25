@@ -12,13 +12,13 @@ TEST_CASE("speaker_colors: palette is non-trivial") {
 
 TEST_CASE("speaker_colors: slot is deterministic per name") {
     CHECK(speaker_colors::paletteSlot("Sheldon") == speaker_colors::paletteSlot("Sheldon"));
-    CHECK(speaker_colors::paletteSlot("DeadCode Auditor")
-          == speaker_colors::paletteSlot("DeadCode Auditor"));
+    CHECK(speaker_colors::paletteSlot("DeadCode Auditor") ==
+          speaker_colors::paletteSlot("DeadCode Auditor"));
 }
 
 TEST_CASE("speaker_colors: slot is always in range") {
-    for (const std::string& n : {"", "Supervisor", "Formatter", "Translator",
-                                 "DeadCode Auditor", "Sheldon", "Penny", "Leonard"}) {
+    for (const std::string& n : {"", "Supervisor", "Formatter", "Translator", "DeadCode Auditor",
+                                 "Sheldon", "Penny", "Leonard"}) {
         CHECK(speaker_colors::paletteSlot(n) < speaker_colors::paletteCount());
     }
 }

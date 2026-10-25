@@ -4,6 +4,10 @@
 static ISystemUtil* g_sysUtil = nullptr;
 
 namespace SystemUtil {
-    ISystemUtil& Instance() { return *g_sysUtil; }
-    void Init(ISystemUtil* inst) { g_sysUtil = inst; }
+ISystemUtil& Instance() {
+    return *g_sysUtil;
+}
+void Init(ISystemUtil* inst) {
+    g_sysUtil = inst;
+}
 }

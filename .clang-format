@@ -20,3 +20,5 @@ AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AlignAfterOpenBracket: Align
 ContinuationIndentWidth: 4
+# Do not invent comments the author never wrote (LLVM would add `} // namespace x`).
+FixNamespaceComments: false

@@ -43,8 +43,10 @@ std::string resolvePath(const std::string& raw, const std::string& workspacePath
         joined = raw;
     } else {
         std::string ws = workspacePath;
-        if (!ws.empty() && (ws.back() == '/' || ws.back() == '\\')) joined = ws + raw;
-        else joined = ws + "/" + raw;
+        if (!ws.empty() && (ws.back() == '/' || ws.back() == '\\'))
+            joined = ws + raw;
+        else
+            joined = ws + "/" + raw;
     }
     try {
         return toUtf8(fs::u8path(joined).lexically_normal());
@@ -80,11 +82,10 @@ bool readHead(const std::string& path, std::string& head) {
 }
 
 // Append one validated image. Enforces the per-file and total size budgets.
-bool addImage(const std::string& fullPath, std::vector<ImageAttachment>& images,
-              std::string& err) {
+bool addImage(const std::string& fullPath, std::vector<ImageAttachment>& images, std::string& err) {
     if (images.size() >= kMaxImagesPerMessage) {
-        err = "[image] too many images: at most " +
-              std::to_string(kMaxImagesPerMessage) + " per message";
+        err = "[image] too many images: at most " + std::to_string(kMaxImagesPerMessage) +
+              " per message";
         return false;
     }
 
@@ -121,7 +122,8 @@ bool addImage(const std::string& fullPath, std::vector<ImageAttachment>& images,
     }
 
     size_t total = img.dataUrl.size();
-    for (const auto& existing : images) total += existing.dataUrl.size();
+    for (const auto& existing : images)
+        total += existing.dataUrl.size();
     if (total > kMaxTotalEncodedBytes) {
         err = "[image] total image payload exceeds 44 MiB; remove some images";
         return false;
@@ -185,7 +187,10 @@ ParseResult parseMarkers(const std::string& text, const std::string& workspacePa
     size_t copiedUpTo = 0;
 
     while (i < text.size()) {
-        if (text[i] != '@') { ++i; continue; }
+        if (text[i] != '@') {
+            ++i;
+            continue;
+        }
 
         size_t pathStart = 0, pathEnd = 0, markerEnd = 0;
         bool found = false;
@@ -204,14 +209,15 @@ ParseResult parseMarkers(const std::string& text, const std::string& workspacePa
             const size_t p = i + 1;
             if (p >= text.size()) break;
             const unsigned char c0 = static_cast<unsigned char>(text[p]);
-            const bool drive    = std::isalpha(c0) && p + 1 < text.size() && text[p + 1] == ':';
-            const bool root     = (c0 == '/');
+            const bool drive = std::isalpha(c0) && p + 1 < text.size() && text[p + 1] == ':';
+            const bool root = (c0 == '/');
             const bool dotSlash = (c0 == '.' && p + 1 < text.size() && text[p + 1] == '/');
-            const bool dotDot   = (c0 == '.' && p + 2 < text.size() && text[p + 1] == '.' &&
-                                   (text[p + 2] == '/' || text[p + 2] == '\\'));
+            const bool dotDot = (c0 == '.' && p + 2 < text.size() && text[p + 1] == '.' &&
+                                 (text[p + 2] == '/' || text[p + 2] == '\\'));
             if (drive || root || dotSlash || dotDot) {
                 size_t e = p;
-                while (e < text.size() && !std::isspace(static_cast<unsigned char>(text[e]))) ++e;
+                while (e < text.size() && !std::isspace(static_cast<unsigned char>(text[e])))
+                    ++e;
                 if (e > p) {
                     pathStart = p;
                     pathEnd = e;
@@ -221,14 +227,17 @@ ParseResult parseMarkers(const std::string& text, const std::string& workspacePa
             }
         }
 
-        if (!found) { ++i; continue; }
+        if (!found) {
+            ++i;
+            continue;
+        }
 
         out.hadMarkers = true;
         const std::string rawPath = text.substr(pathStart, pathEnd - pathStart);
 
         if (!expandMarker(rawPath, workspacePath, out.images, out.error)) {
             debugLogf("[Image] marker rejected: %s", out.error.c_str());
-            return out;   // stop at the first problem, send nothing
+            return out; // stop at the first problem, send nothing
         }
 
         // Strip the marker itself from the text.

@@ -17,16 +17,14 @@
 namespace fs = std::filesystem;
 
 class SystemUtilWin : public ISystemUtil {
-public:
+  public:
     std::string GetExeDir() override {
         char buf[MAX_PATH];
         GetModuleFileNameA(nullptr, buf, MAX_PATH);
         return fs::path(buf).parent_path().string();
     }
 
-    std::string GetUserConfigDir() override {
-        return GetExeDir() + "\\projv_files";
-    }
+    std::string GetUserConfigDir() override { return GetExeDir() + "\\projv_files"; }
 
     std::string GetSystemFontPath(const std::string& fontName) override {
         // 1. Try bundled font
@@ -52,19 +50,16 @@ public:
         SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
     }
 
-    std::string GetPathSeparator() override {
-        return "\\";
-    }
+    std::string GetPathSeparator() override { return "\\"; }
 
     void OpenUrl(const std::string& url) override {
-        ShellExecuteA(nullptr, "open", url.c_str(),
-                      nullptr, nullptr, SW_SHOWNORMAL);
+        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
 
-private:
+  private:
     static SystemUtilWin* prevHandler_;
-    static char           crashExePath_[MAX_PATH];
-    static std::mutex     crashMutex_;
+    static char crashExePath_[MAX_PATH];
+    static std::mutex crashMutex_;
     std::function<void()> exitCallback_;
 
     static BOOL WINAPI ConsoleCtrlHandler(DWORD ctrl) {
@@ -87,31 +82,30 @@ private:
         std::ofstream log(logPath, std::ios::app);
         if (log.is_open()) {
             auto t = std::time(nullptr);
-            char tb[64]; struct tm local;
+            char tb[64];
+            struct tm local;
             localtime_s(&local, &t);
             strftime(tb, sizeof(tb), "%Y-%m-%d %H:%M:%S", &local);
 
             DWORD code = pExp->ExceptionRecord->ExceptionCode;
             PVOID addr = pExp->ExceptionRecord->ExceptionAddress;
             log << "=== proJV CRASH " << tb << " ===" << std::endl;
-            log << "Code: 0x" << std::hex << code << std::dec
-                << "  Addr: 0x" << std::hex << (uintptr_t)addr << std::dec
-                << std::endl;
+            log << "Code: 0x" << std::hex << code << std::dec << "  Addr: 0x" << std::hex
+                << (uintptr_t)addr << std::dec << std::endl;
             log.close();
         }
 
         // Minidump
         auto dumpPath = exeDir / "proJV_crash.dmp";
-        HANDLE hDump = CreateFileW(dumpPath.wstring().c_str(),
-            GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-            FILE_ATTRIBUTE_NORMAL, nullptr);
+        HANDLE hDump = CreateFileW(dumpPath.wstring().c_str(), GENERIC_WRITE, 0, nullptr,
+                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (hDump != INVALID_HANDLE_VALUE) {
             MINIDUMP_EXCEPTION_INFORMATION mei;
             mei.ThreadId = GetCurrentThreadId();
             mei.ExceptionPointers = pExp;
             mei.ClientPointers = FALSE;
-            MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
-                hDump, MiniDumpNormal, &mei, nullptr, nullptr);
+            MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hDump, MiniDumpNormal,
+                              &mei, nullptr, nullptr);
             CloseHandle(hDump);
         }
 
@@ -120,11 +114,15 @@ private:
 };
 
 SystemUtilWin* SystemUtilWin::prevHandler_ = nullptr;
-char           SystemUtilWin::crashExePath_[MAX_PATH] = {};
-std::mutex     SystemUtilWin::crashMutex_;
+char SystemUtilWin::crashExePath_[MAX_PATH] = {};
+std::mutex SystemUtilWin::crashMutex_;
 
-ISystemUtil* CreateSystemUtil() { return new SystemUtilWin(); }
+ISystemUtil* CreateSystemUtil() {
+    return new SystemUtilWin();
+}
 
 #else
-ISystemUtil* CreateSystemUtil() { return nullptr; }
+ISystemUtil* CreateSystemUtil() {
+    return nullptr;
+}
 #endif

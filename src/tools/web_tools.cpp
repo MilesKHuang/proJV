@@ -22,8 +22,7 @@ static constexpr const char* TOOL_FETCH_URL_DESC =
 
 static constexpr const char* TOOL_PARAM_QUERY =
     "The search query (1-128 characters). Query operators are forwarded verbatim.";
-static constexpr const char* TOOL_PARAM_COUNT =
-    "Number of results to return, 1-50. Default 10.";
+static constexpr const char* TOOL_PARAM_COUNT = "Number of results to return, 1-50. Default 10.";
 static constexpr const char* TOOL_PARAM_NEED_CONTENT =
     "Set true to also return each page's extracted content (costs more context). "
     "Default false -- summary/snippet is enough for most questions.";
@@ -37,11 +36,9 @@ void registerSearchTool(ToolRegistry& registry, DeepSeekClient& client) {
     ToolDefinition def;
     def.name = "web_search";
     def.description = TOOL_WEB_SEARCH_DESC;
-    def.parameters = {
-        {"query", "string", TOOL_PARAM_QUERY, true},
-        {"count", "number", TOOL_PARAM_COUNT, false},
-        {"need_content", "boolean", TOOL_PARAM_NEED_CONTENT, false}
-    };
+    def.parameters = {{"query", "string", TOOL_PARAM_QUERY, true},
+                      {"count", "number", TOOL_PARAM_COUNT, false},
+                      {"need_content", "boolean", TOOL_PARAM_NEED_CONTENT, false}};
     registry.registerTool(def, [&client](const std::string& args) -> std::string {
         std::string query = extractStringArg(args, "query");
         if (query.empty()) return "Error: Missing 'query' argument";
@@ -51,8 +48,8 @@ void registerSearchTool(ToolRegistry& registry, DeepSeekClient& client) {
         if (count > 50) count = 50;
         bool needContent = extractBoolArg(args, "need_content", false);
 
-        debugLogf("[Web] Search: %s (count=%d need_content=%d)",
-                  query.c_str(), count, needContent ? 1 : 0);
+        debugLogf("[Web] Search: %s (count=%d need_content=%d)", query.c_str(), count,
+                  needContent ? 1 : 0);
         std::string error;
         std::string result = client.searchWeb(query, count, needContent, &error);
         debugLogf("[Web] Search done: %zu bytes", result.size());
@@ -65,9 +62,7 @@ void registerFetchTool(ToolRegistry& registry, DeepSeekClient& client) {
     ToolDefinition def;
     def.name = "fetch_url";
     def.description = TOOL_FETCH_URL_DESC;
-    def.parameters = {
-        {"url", "string", TOOL_PARAM_URL, true}
-    };
+    def.parameters = {{"url", "string", TOOL_PARAM_URL, true}};
     registry.registerTool(def, [&client](const std::string& args) -> std::string {
         std::string url = extractStringArg(args, "url");
         if (url.empty()) return "Error: Missing 'url' argument";

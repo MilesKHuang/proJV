@@ -85,20 +85,19 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
             debugLogf("[Config] Loaded %zu model price entries", cfg.modelPrices.size());
         }
 
-        debugLogf("[Config] Loaded: apiKey=%s model=%s baseUrl=%s maxTokens=%d temperature=%.1f workspace=%s cpp=%s python=%s",
-            cfg.apiKey.empty() ? "(empty)" : "***",
-            cfg.model.c_str(), cfg.baseUrl.c_str(),
-            cfg.maxTokens, cfg.temperature,
-            cfg.workspacePath.empty() ? "(default=exe dir)" : cfg.workspacePath.c_str(),
-            cfg.cppCompilerPath.empty() ? "(not set)" : cfg.cppCompilerPath.c_str(),
-            cfg.pythonPath.empty() ? "(not set)" : cfg.pythonPath.c_str());
-    }
-    catch (const toml::parse_error& e) {
+        debugLogf("[Config] Loaded: apiKey=%s model=%s baseUrl=%s maxTokens=%d temperature=%.1f "
+                  "workspace=%s cpp=%s python=%s",
+                  cfg.apiKey.empty() ? "(empty)" : "***", cfg.model.c_str(), cfg.baseUrl.c_str(),
+                  cfg.maxTokens, cfg.temperature,
+                  cfg.workspacePath.empty() ? "(default=exe dir)" : cfg.workspacePath.c_str(),
+                  cfg.cppCompilerPath.empty() ? "(not set)" : cfg.cppCompilerPath.c_str(),
+                  cfg.pythonPath.empty() ? "(not set)" : cfg.pythonPath.c_str());
+    } catch (const toml::parse_error& e) {
         debugLogf("[Config] parse_error: %s", e.what());
-        cfg.loadError = "No config file found at " + configPath + ". Set API key in the Settings dialog.";
+        cfg.loadError =
+            "No config file found at " + configPath + ". Set API key in the Settings dialog.";
         return false;
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         debugLogf("[Config] Unexpected exception loading config: %s", e.what());
         cfg.loadError = std::string("Error loading config: ") + e.what();
         return false;
@@ -151,22 +150,14 @@ bool saveApiKey(const std::string& key) {
     // Update values -- default to blanks so existing keys aren't wiped on pure API-key saves
     try {
         tbl.insert_or_assign("api_key", key);
-        if (!tbl.contains("model"))
-            tbl.insert_or_assign("model", "deepseek-v4-flash");
-        if (!tbl.contains("base_url"))
-            tbl.insert_or_assign("base_url", "https://api.deepseek.com");
-        if (!tbl.contains("max_tokens"))
-            tbl.insert_or_assign("max_tokens", 65536);
-        if (!tbl.contains("temperature"))
-            tbl.insert_or_assign("temperature", 0.0);
-        if (!tbl.contains("workspace_path"))
-            tbl.insert_or_assign("workspace_path", "");
-        if (!tbl.contains("cpp_compiler_path"))
-            tbl.insert_or_assign("cpp_compiler_path", "");
-        if (!tbl.contains("python_path"))
-            tbl.insert_or_assign("python_path", "");
-        if (!tbl.contains("clang_format_path"))
-            tbl.insert_or_assign("clang_format_path", "");
+        if (!tbl.contains("model")) tbl.insert_or_assign("model", "deepseek-v4-flash");
+        if (!tbl.contains("base_url")) tbl.insert_or_assign("base_url", "https://api.deepseek.com");
+        if (!tbl.contains("max_tokens")) tbl.insert_or_assign("max_tokens", 65536);
+        if (!tbl.contains("temperature")) tbl.insert_or_assign("temperature", 0.0);
+        if (!tbl.contains("workspace_path")) tbl.insert_or_assign("workspace_path", "");
+        if (!tbl.contains("cpp_compiler_path")) tbl.insert_or_assign("cpp_compiler_path", "");
+        if (!tbl.contains("python_path")) tbl.insert_or_assign("python_path", "");
+        if (!tbl.contains("clang_format_path")) tbl.insert_or_assign("clang_format_path", "");
         if (!tbl.contains("context_window")) tbl.insert_or_assign("context_window", 0);
     } catch (const std::exception& e) {
         debugLogf("[Config] Error updating config table: %s", e.what());
@@ -198,7 +189,8 @@ bool saveConfig(const AppConfig& cfg) {
     toml::table tbl;
     try {
         tbl = toml::parse_file(configPath);
-    } catch (...) {}
+    } catch (...) {
+    }
 
     // * Always overwrite with current AppConfig values.
     //   Previously used if(!tbl.contains()) -- that silently discarded UI edits.
@@ -212,8 +204,7 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("python_path", cfg.pythonPath);
     tbl.insert_or_assign("clang_format_path", cfg.clangFormatPath);
     tbl.insert_or_assign("context_window", static_cast<int64_t>(cfg.contextWindow));
-    if (!cfg.themeName.empty())
-        tbl.insert_or_assign("theme", cfg.themeName);
+    if (!cfg.themeName.empty()) tbl.insert_or_assign("theme", cfg.themeName);
 
     std::ofstream ofs(configPath);
     if (!ofs) return false;

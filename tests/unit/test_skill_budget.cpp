@@ -16,37 +16,65 @@
 namespace {
 
 void ensureSysUtil() {
-    static bool once = [] { SystemUtil::Init(CreateSystemUtil()); return true; }();
+    static bool once = [] {
+        SystemUtil::Init(CreateSystemUtil());
+        return true;
+    }();
     (void)once;
 }
 ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
-    ToolCall tc; tc.name = name; tc.arguments = args.dump(); tc.index = 0; tc.valid = true;
+    ToolCall tc;
+    tc.name = name;
+    tc.arguments = args.dump();
+    tc.index = 0;
+    tc.valid = true;
     return tc;
 }
-ToolCall noCall() { ToolCall tc; tc.valid = false; return tc; }
-AppConfig testConfig() { AppConfig c; c.model = "deepseek-v4-flash"; return c; }
+ToolCall noCall() {
+    ToolCall tc;
+    tc.valid = false;
+    return tc;
+}
+AppConfig testConfig() {
+    AppConfig c;
+    c.model = "deepseek-v4-flash";
+    return c;
+}
 
 std::string writeSkill(const std::string& name, const std::string& json) {
     std::error_code ec;
     const std::string dir = getProjvDir() + "/skills/" + name;
     std::filesystem::create_directories(dir + "/tools", ec);
-    { std::ofstream f(dir + "/config.json"); f << json; }
-    { std::ofstream f(dir + "/p.md"); f << "prompt"; }
-    { std::ofstream f(dir + "/tools/emit.json");
-      f << R"JSON({"name":"emit","description":"Report.","parameters":[{"name":"summary","type":"string","required":true}]})JSON"; }
-    { std::ofstream f(dir + "/tools/speak.json");
-      f << R"JSON({"name":"speak","description":"Say.","parameters":[{"name":"text","type":"string","required":true}]})JSON"; }
+    {
+        std::ofstream f(dir + "/config.json");
+        f << json;
+    }
+    {
+        std::ofstream f(dir + "/p.md");
+        f << "prompt";
+    }
+    {
+        std::ofstream f(dir + "/tools/emit.json");
+        f << R"JSON({"name":"emit","description":"Report.","parameters":[{"name":"summary","type":"string","required":true}]})JSON";
+    }
+    {
+        std::ofstream f(dir + "/tools/speak.json");
+        f << R"JSON({"name":"speak","description":"Say.","parameters":[{"name":"text","type":"string","required":true}]})JSON";
+    }
     return dir;
 }
 
 // One agent, one action, verb = emit unless the caller overrides it.
 std::string skillJson(const std::string& name, int maxIters, int reserve,
                       const std::string& verb = "emit") {
-    return R"({"name":")" + name + R"(","tools":[],"agents":[{"id":"a","prompt":"p.md"}],)"
-           R"("tool_mode":"auto","max_tool_iters":)" + std::to_string(maxIters) +
-           R"(,"submit_reserve":)" + std::to_string(reserve) +
+    return R"({"name":")" + name +
+           R"(","tools":[],"agents":[{"id":"a","prompt":"p.md"}],)"
+           R"("tool_mode":"auto","max_tool_iters":)" +
+           std::to_string(maxIters) + R"(,"submit_reserve":)" + std::to_string(reserve) +
            R"(,"max_rounds":1,"converge":"none","round_steps":[{"actions":[)"
-           R"({"agent":"a","tool":")" + verb + R"(","capture":"summary","into":"out",)"
+           R"({"agent":"a","tool":")" +
+           verb +
+           R"(","capture":"summary","into":"out",)"
            R"("emit":"message","message":"go"}]}],"on_converge":[]})";
 }
 
@@ -74,9 +102,9 @@ TEST_CASE("contract: a turn whose budget runs out returns a labelled marker") {
     sr.run("budget_out", "T");
 
     CHECK(has(slot, "[no report]"));
-    CHECK(has(slot, "'a'"));         // names the role
-    CHECK(has(slot, "budget"));      // says why
-    CHECK(has(slot, "'emit'"));      // and which tool it wanted
+    CHECK(has(slot, "'a'"));    // names the role
+    CHECK(has(slot, "budget")); // says why
+    CHECK(has(slot, "'emit'")); // and which tool it wanted
 }
 
 TEST_CASE("contract: a response with no text and no tool call is labelled too") {
@@ -109,12 +137,12 @@ TEST_CASE("contract: a non-monica skill gets the same marker, with its own verb"
     };
     SkillRunner sr(testConfig(), nullptr, cbs, "", getProjvDir() + "/skills");
     sr.setResponder("a", [](const std::string&, const std::vector<Message>&) {
-        return makeCall("emit", {{"summary", "wrong tool"}});   // never calls "speak"
+        return makeCall("emit", {{"summary", "wrong tool"}}); // never calls "speak"
     });
     sr.run("budget_bb", "T");
 
     CHECK(has(slot, "[no report]"));
-    CHECK(has(slot, "'speak'"));     // the marker follows the skill's verb, not monica's
+    CHECK(has(slot, "'speak'")); // the marker follows the skill's verb, not monica's
 }
 
 TEST_CASE("submit_reserve: 0 is the default and injects nothing") {
@@ -135,7 +163,7 @@ TEST_CASE("submit_reserve: 0 is the default and injects nothing") {
     });
     sr.run("budget_off", "T");
 
-    CHECK(calls == 5);                 // the whole budget, exactly as before
+    CHECK(calls == 5); // the whole budget, exactly as before
     bool sawHint = false;
     for (const auto& req : seen)
         for (const auto& msg : req)
@@ -176,9 +204,12 @@ TEST_CASE("submit_reserve: 2 tells the agent to submit once, near the end") {
         bool hit = false;
         for (const auto& msg : seen[i])
             if (has(msg.content, "Tool budget nearly exhausted")) hit = true;
-        if (hit) { firstSeen = i; break; }
+        if (hit) {
+            firstSeen = i;
+            break;
+        }
     }
-    CHECK(firstSeen == 3);           // 5 iterations, reserve 2 -> 4th request (index 3)
+    CHECK(firstSeen == 3); // 5 iterations, reserve 2 -> 4th request (index 3)
 }
 
 TEST_CASE("submit_reserve: must be smaller than max_tool_iters") {

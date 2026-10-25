@@ -9,19 +9,15 @@
 
 namespace {
 
-const char* kOldYou =
-    "- Answer like a human: conclusion first, then what it means for you; "
-    "then expose the core underlying logic.";
-const char* kOldUser =
-    "- Answer like a human: conclusion first, then what it means for the user; "
-    "then expose the core logic.";
-const char* kOldBare =
-    "- Answer like a human: conclusion first, then what it means; "
-    "then expose the core logic.";
+const char* kOldYou = "- Answer like a human: conclusion first, then what it means for you; "
+                      "then expose the core underlying logic.";
+const char* kOldUser = "- Answer like a human: conclusion first, then what it means for the user; "
+                       "then expose the core logic.";
+const char* kOldBare = "- Answer like a human: conclusion first, then what it means; "
+                       "then expose the core logic.";
 
-const char* kNewFirst =
-    "- Answer like a human: conclusion first, then what it means for the user, "
-    "then the core underlying logic.";
+const char* kNewFirst = "- Answer like a human: conclusion first, then what it means for the user, "
+                        "then the core underlying logic.";
 const char* kNewSecond = "- Put it in plain language";
 
 std::string promptWith(const std::string& styleLine) {
@@ -31,7 +27,10 @@ std::string promptWith(const std::string& styleLine) {
 
 size_t countSubstr(const std::string& hay, const std::string& needle) {
     size_t pos = 0, n = 0;
-    while ((pos = hay.find(needle, pos)) != std::string::npos) { ++n; pos += needle.size(); }
+    while ((pos = hay.find(needle, pos)) != std::string::npos) {
+        ++n;
+        pos += needle.size();
+    }
     return n;
 }
 
@@ -81,12 +80,13 @@ TEST_CASE("style upgrade: a hand-written style rule is left alone") {
 TEST_CASE("style upgrade: unknown prompt files are never touched") {
     const std::string text = promptWith(kOldYou);
     CHECK(upgradeSeededPrompt("my_role.md", text) == text);
-    CHECK(upgradeSeededPrompt("compactor.md", text) == text);   // different upgrade only
+    CHECK(upgradeSeededPrompt("compactor.md", text) == text); // different upgrade only
 }
 
 TEST_CASE("style upgrade: coder keeps its run_skill upgrade alongside the style one") {
     const std::string oldCoder =
-        "# coder\n\n## Hard Rules\n" + std::string(kOldYou) + "\n"
+        "# coder\n\n## Hard Rules\n" + std::string(kOldYou) +
+        "\n"
         "tools available: read_file, write_file, exec_shell, grep_files, edit_file, "
         "file_search, web_search, fetch_url, md_file, update_todo, diagram_tool\n";
     const std::string upgraded = upgradeSeededPrompt("coder.md", oldCoder);
@@ -99,8 +99,7 @@ TEST_CASE("style upgrade: coder keeps its run_skill upgrade alongside the style 
 
 TEST_CASE("style upgrade: an already-upgraded prompt is byte-identical") {
     // Exactly what the loader seeds today: both lines present.
-    std::string text = "# role\n\n## Hard Rules\n" + std::string(kNewFirst) + "\n" +
-                       kNewSecond +
+    std::string text = "# role\n\n## Hard Rules\n" + std::string(kNewFirst) + "\n" + kNewSecond +
                        " -- make it as simple and easy to understand as possible, and "
                        "reduce the user's cognitive cost while retaining the necessary "
                        "professional details.\n\n## Workflow\n1. read\n";

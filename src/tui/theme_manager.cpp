@@ -81,7 +81,11 @@ bool ThemeManager::loadFromFile(const std::string& filepath) {
     current_ = tc;
 
     bool found = false;
-    for (const auto& n : installedNames_) if (n == tc.name) { found = true; break; }
+    for (const auto& n : installedNames_)
+        if (n == tc.name) {
+            found = true;
+            break;
+        }
     if (!found) {
         installedNames_.push_back(tc.name);
         installedThemes_.push_back(tc);
@@ -105,7 +109,10 @@ void ThemeManager::scanThemeDir() {
     installedThemes_.clear();
     std::error_code ec;
     for (const auto& entry : fs::directory_iterator(themeDir_, ec)) {
-        if (ec) { ec.clear(); continue; }
+        if (ec) {
+            ec.clear();
+            continue;
+        }
         if (entry.path().extension() != ".json") continue;
         std::ifstream f(entry.path());
         if (!f) continue;

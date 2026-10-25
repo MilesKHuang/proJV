@@ -33,8 +33,8 @@ TEST_CASE("markdown render: table draws box-drawing border") {
     CHECK(out.find("2") != std::string::npos);
 
     // ftxui::Table renders box-drawing borders (DOUBLE: ═ and ║).
-    CHECK(out.find("\u2550") != std::string::npos);  // ═
-    CHECK(out.find("\u2551") != std::string::npos);  // ║
+    CHECK(out.find("\u2550") != std::string::npos); // ═
+    CHECK(out.find("\u2551") != std::string::npos); // ║
 }
 
 TEST_CASE("markdown render: wraps inside yframe viewport") {
@@ -43,7 +43,7 @@ TEST_CASE("markdown render: wraps inside yframe viewport") {
     // viewport width and long lines were clipped. yframe() (vertical-only)
     // passes the viewport width through, so the paragraph re-wraps on resize.
     std::string text = "这是一段很长的中文内容用来测试换行表现以及是否被截断处理正确";
-    auto content = ftxui::vbox({ markdown_view::renderMarkdown(text) });
+    auto content = ftxui::vbox({markdown_view::renderMarkdown(text)});
 
     auto doc = ftxui::yframe(content);
     auto screen = Screen::Create(Dimension::Fixed(24), Dimension::Fixed(8));
@@ -63,7 +63,10 @@ TEST_CASE("markdown render: table columns have separators") {
 
     size_t bars = 0;
     size_t pos = 0;
-    while ((pos = out.find("\u2551", pos)) != std::string::npos) { ++bars; pos += 3; }
+    while ((pos = out.find("\u2551", pos)) != std::string::npos) {
+        ++bars;
+        pos += 3;
+    }
     // Left border + column separator + right border = at least 3 vertical bars.
     CHECK(bars >= 3);
 }
@@ -88,7 +91,7 @@ TEST_CASE("markdown render: code block renders as one block") {
 }
 
 TEST_CASE("markdown render: CJK text soft-wraps without truncation") {
-    std::string text = "一二三四五六七八九十甲乙丙丁戊己庚辛";  // 20 CJK chars
+    std::string text = "一二三四五六七八九十甲乙丙丁戊己庚辛"; // 20 CJK chars
     auto doc = markdown_view::renderMarkdown(text);
     auto screen = Screen::Create(Dimension::Fixed(12), Dimension::Fixed(10));
     Render(screen, doc);
@@ -102,8 +105,11 @@ TEST_CASE("markdown render: CJK text soft-wraps without truncation") {
     std::vector<std::string> rows;
     std::string cur;
     for (char c : out) {
-        if (c == '\n') { rows.push_back(cur); cur.clear(); }
-        else cur += c;
+        if (c == '\n') {
+            rows.push_back(cur);
+            cur.clear();
+        } else
+            cur += c;
     }
     rows.push_back(cur);
     int firstRow = -1, lastRow = -1;
@@ -117,7 +123,7 @@ TEST_CASE("markdown render: CJK text soft-wraps without truncation") {
 }
 
 TEST_CASE("markdown render: long unbroken word wraps character-by-character") {
-    std::string text = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN";  // 40 chars, no spaces
+    std::string text = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"; // 40 chars, no spaces
     auto doc = markdown_view::renderMarkdown(text);
     auto screen = Screen::Create(Dimension::Fixed(20), Dimension::Fixed(6));
     Render(screen, doc);
@@ -142,8 +148,11 @@ TEST_CASE("markdown render: long paragraph soft-wraps without truncation") {
     std::vector<std::string> rows;
     std::string cur;
     for (char c : out) {
-        if (c == '\n') { rows.push_back(cur); cur.clear(); }
-        else cur += c;
+        if (c == '\n') {
+            rows.push_back(cur);
+            cur.clear();
+        } else
+            cur += c;
     }
     rows.push_back(cur);
 

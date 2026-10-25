@@ -21,7 +21,10 @@
 namespace {
 
 void ensureSysUtil() {
-    static bool once = [] { SystemUtil::Init(CreateSystemUtil()); return true; }();
+    static bool once = [] {
+        SystemUtil::Init(CreateSystemUtil());
+        return true;
+    }();
     (void)once;
 }
 ToolCall makeCall(const std::string& name, const nlohmann::json& args) {
@@ -37,9 +40,15 @@ std::string lastUser(const std::vector<Message>& msgs) {
         if (it->role == "user") return it->content;
     return "";
 }
-AppConfig testConfig() { AppConfig c; c.model = "deepseek-v4-flash"; return c; }
+AppConfig testConfig() {
+    AppConfig c;
+    c.model = "deepseek-v4-flash";
+    return c;
+}
 
-std::string skillsRoot() { return getProjvDir() + "/skills"; }
+std::string skillsRoot() {
+    return getProjvDir() + "/skills";
+}
 
 std::string writeSwarm(const std::string& name, int workers, int maxParallel) {
     std::error_code ec;
@@ -53,35 +62,44 @@ std::string writeSwarm(const std::string& name, int workers, int maxParallel) {
     const std::string json =
         R"({"name":")" + name + R"(","tools":[],"agents":[)" + agents +
         R"(],"max_rounds":1,"converge":"none","dynamic_dispatch":true,)"
-        R"("dispatch_tool":"speak","max_parallel":)" + std::to_string(maxParallel) +
+        R"("dispatch_tool":"speak","max_parallel":)" +
+        std::to_string(maxParallel) +
         R"(,"round_steps":[{"actions":[{"agent":"boss","tool":"speak","capture":"text",)"
         R"("into":"boss","emit":"message","message":"Dispatch."}]}],"on_converge":[]})";
-    { std::ofstream f(dir + "/config.json"); f << json; }
-    { std::ofstream f(dir + "/p.md"); f << "prompt"; }
-    { std::ofstream f(dir + "/tools/speak.json");
-      f << R"JSON({"name":"speak","description":"Say.","parameters":[{"name":"text","type":"string","required":true}]})JSON"; }
+    {
+        std::ofstream f(dir + "/config.json");
+        f << json;
+    }
+    {
+        std::ofstream f(dir + "/p.md");
+        f << "prompt";
+    }
+    {
+        std::ofstream f(dir + "/tools/speak.json");
+        f << R"JSON({"name":"speak","description":"Say.","parameters":[{"name":"text","type":"string","required":true}]})JSON";
+    }
     return dir;
 }
 
 // Fans one reply out to `workers` targets, then finishes on the next call.
 void setFanOut(SkillRunner& sr, int workers, std::function<void()> beforeDone = {}) {
     auto calls = std::make_shared<int>(0);
-    sr.setResponderMulti("boss", [workers, beforeDone, calls](const std::string&,
-                                                             const std::vector<Message>&) {
-        std::vector<ToolCall> out;
-        if (++*calls > 1) {   // afterwards the driver submits and the turn ends
-            out.push_back(makeCall("speak", {{"text", "done"}}));
+    sr.setResponderMulti(
+        "boss", [workers, beforeDone, calls](const std::string&, const std::vector<Message>&) {
+            std::vector<ToolCall> out;
+            if (++*calls > 1) { // afterwards the driver submits and the turn ends
+                out.push_back(makeCall("speak", {{"text", "done"}}));
+                return out;
+            }
+            for (int i = 1; i <= workers; ++i) {
+                ToolCall tc = makeCall("request_agent", {{"agent_id", "w" + std::to_string(i)},
+                                                         {"message", "task" + std::to_string(i)}});
+                tc.id = "ra" + std::to_string(i);
+                out.push_back(tc);
+            }
+            if (beforeDone) beforeDone();
             return out;
-        }
-        for (int i = 1; i <= workers; ++i) {
-            ToolCall tc = makeCall("request_agent", {{"agent_id", "w" + std::to_string(i)},
-                                                     {"message", "task" + std::to_string(i)}});
-            tc.id = "ra" + std::to_string(i);
-            out.push_back(tc);
-        }
-        if (beforeDone) beforeDone();
-        return out;
-    });
+        });
 }
 
 } // namespace
@@ -95,7 +113,8 @@ TEST_CASE("swarm: one reply fans out to four workers, all in flight together") {
         return [&, tag](const std::string&, const std::vector<Message>& m) {
             const int now = ++inFlight;
             int prev = peak.load();
-            while (now > prev && !peak.compare_exchange_weak(prev, now)) {}
+            while (now > prev && !peak.compare_exchange_weak(prev, now)) {
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(120));
             --inFlight;
             ++completed;
@@ -125,7 +144,8 @@ TEST_CASE("swarm: max_parallel caps how many groups run at once") {
         return [&, tag](const std::string&, const std::vector<Message>&) {
             const int now = ++inFlight;
             int prev = peak.load();
-            while (now > prev && !peak.compare_exchange_weak(prev, now)) {}
+            while (now > prev && !peak.compare_exchange_weak(prev, now)) {
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(60));
             --inFlight;
             ++completed;
@@ -136,7 +156,8 @@ TEST_CASE("swarm: max_parallel caps how many groups run at once") {
     SkillRunner::Callbacks cbs;
     SkillRunner sr(testConfig(), nullptr, cbs, "", skillsRoot());
     setFanOut(sr, 4);
-    for (int i = 1; i <= 4; ++i) sr.setResponder("w" + std::to_string(i), worker("w"));
+    for (int i = 1; i <= 4; ++i)
+        sr.setResponder("w" + std::to_string(i), worker("w"));
     sr.run("swarm_cap", "T");
 
     CHECK(completed.load() == 4);
@@ -161,8 +182,8 @@ TEST_CASE("swarm: repeated dispatches to one worker stay serial and ordered") {
             return out;
         }
         for (int i = 1; i <= 3; ++i) {
-            ToolCall tc = makeCall("request_agent", {{"agent_id", "w1"},
-                                                     {"message", "job" + std::to_string(i)}});
+            ToolCall tc = makeCall("request_agent",
+                                   {{"agent_id", "w1"}, {"message", "job" + std::to_string(i)}});
             tc.id = "ra" + std::to_string(i);
             out.push_back(tc);
         }
@@ -171,7 +192,8 @@ TEST_CASE("swarm: repeated dispatches to one worker stay serial and ordered") {
     sr.setResponder("w1", [&](const std::string&, const std::vector<Message>& m) {
         const int now = ++inFlight;
         int prev = peak.load();
-        while (now > prev && !peak.compare_exchange_weak(prev, now)) {}
+        while (now > prev && !peak.compare_exchange_weak(prev, now)) {
+        }
         {
             std::lock_guard<std::mutex> lk(orderMutex);
             order.push_back(lastUser(m));
@@ -182,9 +204,9 @@ TEST_CASE("swarm: repeated dispatches to one worker stay serial and ordered") {
     });
     sr.run("swarm_serial", "T");
 
-    CHECK(peak.load() == 1);          // same target never overlaps
+    CHECK(peak.load() == 1); // same target never overlaps
     REQUIRE(order.size() == 3);
-    CHECK(order[0] == "job1");        // and keeps the request order
+    CHECK(order[0] == "job1"); // and keeps the request order
     CHECK(order[1] == "job2");
     CHECK(order[2] == "job3");
 }
@@ -221,11 +243,11 @@ TEST_CASE("swarm: tool results come back in the original call order") {
     // Later workers answer faster: completion order != call order on purpose.
     for (int i = 1; i <= 4; ++i) {
         const int delay = (5 - i) * 40;
-        sr.setResponder("w" + std::to_string(i),
-                        [i, delay](const std::string&, const std::vector<Message>&) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-            return makeCall("speak", {{"text", "w" + std::to_string(i) + "-reply"}});
-        });
+        sr.setResponder(
+            "w" + std::to_string(i), [i, delay](const std::string&, const std::vector<Message>&) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                return makeCall("speak", {{"text", "w" + std::to_string(i) + "-reply"}});
+            });
     }
     sr.run("swarm_order", "T");
 
@@ -325,9 +347,9 @@ TEST_CASE("swarm: cancel before the run keeps every worker idle") {
     for (int i = 1; i <= 4; ++i)
         sr.setResponder("w" + std::to_string(i),
                         [&completed](const std::string&, const std::vector<Message>&) {
-            ++completed;
-            return makeCall("speak", {{"text", "ok"}});
-        });
+                            ++completed;
+                            return makeCall("speak", {{"text", "ok"}});
+                        });
 
     sr.cancel();
     sr.run("swarm_cancel", "T");

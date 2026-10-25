@@ -5,7 +5,7 @@
 #include <string>
 
 class ISystemUtil {
-public:
+  public:
     virtual ~ISystemUtil() = default;
 
     // Absolute path of the directory containing the executable.
@@ -30,7 +30,6 @@ public:
 
     // Open URL in default browser.
     virtual void OpenUrl(const std::string& url) = 0;
-
 };
 
 // Factory: platform-specific implementation
@@ -38,6 +37,6 @@ ISystemUtil* CreateSystemUtil();
 
 // Global singleton (created once at startup)
 namespace SystemUtil {
-    ISystemUtil& Instance();
-    void Init(ISystemUtil* inst);
+ISystemUtil& Instance();
+void Init(ISystemUtil* inst);
 }

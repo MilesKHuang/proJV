@@ -17,11 +17,11 @@ namespace fs = std::filesystem;
 namespace {
 
 // Minimal byte sequences whose magic numbers identify the four formats.
-const std::string kPng  = std::string("\x89PNG\r\n\x1a\n", 8) + std::string(32, 'P');
-const std::string kJpg  = std::string("\xFF\xD8\xFF\xE0", 4) + std::string(32, 'J');
-const std::string kGif  = std::string("GIF89a", 6) + std::string(32, 'G');
-const std::string kWebp = std::string("RIFF", 4) + std::string(4, '\0') +
-                          std::string("WEBP", 4) + std::string(32, 'W');
+const std::string kPng = std::string("\x89PNG\r\n\x1a\n", 8) + std::string(32, 'P');
+const std::string kJpg = std::string("\xFF\xD8\xFF\xE0", 4) + std::string(32, 'J');
+const std::string kGif = std::string("GIF89a", 6) + std::string(32, 'G');
+const std::string kWebp =
+    std::string("RIFF", 4) + std::string(4, '\0') + std::string("WEBP", 4) + std::string(32, 'W');
 
 void writeFake(const fs::path& p, const std::string& bytes) {
     std::ofstream ofs(p, std::ios::binary);
@@ -114,7 +114,7 @@ TEST_CASE("markers: directory expands top-level images in name order") {
     writeFake(tmp.path / "a.gif", kGif);
     writeFake(tmp.path / "notes.txt", "not an image");
     fs::create_directories(tmp.path / "sub");
-    writeFake(tmp.path / "sub" / "c.png", kPng);   // recursion is not allowed
+    writeFake(tmp.path / "sub" / "c.png", kPng); // recursion is not allowed
 
     const auto r = image_input::parseMarkers("@\"" + tmp.str() + "\"", "");
     REQUIRE(r.ok());
@@ -129,9 +129,10 @@ TEST_CASE("markers: two markers merge in written order") {
     writeFake(tmp.path / "one.png", kPng);
     writeFake(tmp.path / "two.webp", kWebp);
 
-    const auto r = image_input::parseMarkers(
-        "@\"" + (tmp.path / "one.png").string() + "\" and @\"" +
-        (tmp.path / "two.webp").string() + "\" please", "");
+    const auto r =
+        image_input::parseMarkers("@\"" + (tmp.path / "one.png").string() + "\" and @\"" +
+                                      (tmp.path / "two.webp").string() + "\" please",
+                                  "");
     REQUIRE(r.ok());
     REQUIRE(r.images.size() == 2);
     CHECK(r.images[0].mime == "image/png");
@@ -146,15 +147,15 @@ TEST_CASE("markers: rejections stop the send with a readable reason") {
         writeFake(tmp.path / ("img" + std::to_string(i) + ".png"), kPng);
 
     SUBCASE("unsupported format") {
-        const auto r = image_input::parseMarkers(
-            "@\"" + (tmp.path / "notes.txt").string() + "\"", "");
+        const auto r =
+            image_input::parseMarkers("@\"" + (tmp.path / "notes.txt").string() + "\"", "");
         CHECK_FALSE(r.ok());
         CHECK(r.error.find("unsupported format") != std::string::npos);
     }
 
     SUBCASE("missing file") {
-        const auto r = image_input::parseMarkers(
-            "@\"" + (tmp.path / "nope.png").string() + "\"", "");
+        const auto r =
+            image_input::parseMarkers("@\"" + (tmp.path / "nope.png").string() + "\"", "");
         CHECK_FALSE(r.ok());
         CHECK(r.error.find("not found") != std::string::npos);
     }
@@ -216,7 +217,7 @@ TEST_CASE("serialization: non-user roles drop images (API returns 400)") {
 TEST_CASE("serialization: an unreadable path degrades to a text note") {
     Message msg = Message::User("x");
     ImageAttachment img;
-    img.path = "C:/definitely/missing.png";   // no dataUrl cache
+    img.path = "C:/definitely/missing.png"; // no dataUrl cache
     msg.images.push_back(img);
 
     nlohmann::json j;
@@ -231,12 +232,11 @@ TEST_CASE("serialization: an unreadable path degrades to a text note") {
 TEST_CASE("serialization: from_json restores text and image parts") {
     nlohmann::json j = {
         {"role", "user"},
-        {"content", nlohmann::json::array({
-            {{"type", "text"}, {"text", "hi"}},
-            {{"type", "image_url"}, {"image_url", {{"url", "data:image/png;base64,AAAA"},
-                                                   {"detail", "low"}}}}
-        })}
-    };
+        {"content",
+         nlohmann::json::array(
+             {{{"type", "text"}, {"text", "hi"}},
+              {{"type", "image_url"},
+               {"image_url", {{"url", "data:image/png;base64,AAAA"}, {"detail", "low"}}}}})}};
     Message msg = j.get<Message>();
     CHECK(msg.content == "hi");
     REQUIRE(msg.images.size() == 1);

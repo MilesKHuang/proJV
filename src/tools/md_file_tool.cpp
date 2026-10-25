@@ -1,5 +1,5 @@
 #include "md_file_tool.h"
-#include "file_tool.h"          // validateToolPath -- the one shared workspace guard
+#include "file_tool.h" // validateToolPath -- the one shared workspace guard
 #include "registry.h"
 #include "json_utils.h"
 #include <fstream>
@@ -12,7 +12,8 @@ namespace fs = std::filesystem;
 // -- Tool description strings --------------------------------------------
 static constexpr const char* TOOL_MD_FILE_DESC =
     "Write or edit markdown (.md) design documents. "
-    "Actions: write (overwrite/create, max 8KB, supports mode='append' for chunking), edit (SEARCH/REPLACE). "
+    "Actions: write (overwrite/create, max 8KB, supports mode='append' for chunking), edit "
+    "(SEARCH/REPLACE). "
     "Only .md files are allowed. Use read_file / grep_files to read project code.";
 
 static constexpr size_t MAX_MD_CONTENT_SIZE = 8 * 1024;
@@ -33,19 +34,21 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
     def.name = "md_file";
     def.description = TOOL_MD_FILE_DESC;
     def.parameters = {
-        {"action", "string", "Action: 'write' (overwrite/create, max 8KB) or 'edit' (SEARCH/REPLACE)", true},
+        {"action", "string",
+         "Action: 'write' (overwrite/create, max 8KB) or 'edit' (SEARCH/REPLACE)", true},
         {"path", "string", "Path to the .md file (must end with .md)", true},
         {"content", "string", "Content to write (required for 'write' action)", false},
-        {"mode", "string", "Write mode: 'write' (overwrite, default) or 'append' (add to existing)", false},
+        {"mode", "string", "Write mode: 'write' (overwrite, default) or 'append' (add to existing)",
+         false},
         {"search", "string", "Text to search for (required for 'edit' action)", false},
-        {"replace", "string", "Replacement text (required for 'edit' action)", false}
-    };
+        {"replace", "string", "Replacement text (required for 'edit' action)", false}};
 
     registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
         std::string action = extractStringArg(args, "action");
         std::string path = extractStringArg(args, "path");
 
-        if (action.empty()) return "Error: Missing required 'action' argument. Must be 'write' or 'edit'.";
+        if (action.empty())
+            return "Error: Missing required 'action' argument. Must be 'write' or 'edit'.";
         if (path.empty()) return "Error: Missing required 'path' argument.";
 
         // Validate .md suffix
@@ -64,7 +67,8 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 try {
                     auto j = nlohmann::json::parse(args);
                     keyExists = j.contains("content");
-                } catch (...) {}
+                } catch (...) {
+                }
                 if (!keyExists) {
                     return "Error: Missing required 'content' argument for 'write' action.";
                 }
@@ -75,20 +79,27 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 size_t chunkSize = MAX_MD_CONTENT_SIZE;
                 size_t totalSize = content.size();
                 size_t numChunks = (totalSize + chunkSize - 1) / chunkSize;
-                std::string suggestion =
-                    "Error: Content too large (" + std::to_string(totalSize) + " bytes). "
-                    "md_file write limit is " + std::to_string(MAX_MD_CONTENT_SIZE) + " bytes.\n"
-                    "\n"
-                    "MANDATORY: Split into " + std::to_string(numChunks)
-                    + " md_file calls with mode=\"append\".\n"
-                    "Each chunk must be under " + std::to_string(MAX_MD_CONTENT_SIZE) + " bytes.\n"
-                    "\n"
-                    "Template (chunk 1 overwrites, chunks 2..N append):\n"
-                    "  1. md_file(action=\"write\", path=\"" + path + "\", content=\"<chunk1>\", mode=\"write\")\n";
+                std::string suggestion = "Error: Content too large (" + std::to_string(totalSize) +
+                                         " bytes). "
+                                         "md_file write limit is " +
+                                         std::to_string(MAX_MD_CONTENT_SIZE) +
+                                         " bytes.\n"
+                                         "\n"
+                                         "MANDATORY: Split into " +
+                                         std::to_string(numChunks) +
+                                         " md_file calls with mode=\"append\".\n"
+                                         "Each chunk must be under " +
+                                         std::to_string(MAX_MD_CONTENT_SIZE) +
+                                         " bytes.\n"
+                                         "\n"
+                                         "Template (chunk 1 overwrites, chunks 2..N append):\n"
+                                         "  1. md_file(action=\"write\", path=\"" +
+                                         path + "\", content=\"<chunk1>\", mode=\"write\")\n";
                 for (size_t i = 1; i < numChunks && i < 5; ++i) {
-                    suggestion += "  " + std::to_string(i + 1)
-                        + ". md_file(action=\"write\", path=\"" + path + "\", content=\"<chunk"
-                        + std::to_string(i + 1) + ">\", mode=\"append\")\n";
+                    suggestion += "  " + std::to_string(i + 1) +
+                                  ". md_file(action=\"write\", path=\"" + path +
+                                  "\", content=\"<chunk" + std::to_string(i + 1) +
+                                  ">\", mode=\"append\")\n";
                 }
                 if (numChunks > 5) {
                     suggestion += "  ... (" + std::to_string(numChunks - 5) + " more chunks)\n";
@@ -98,8 +109,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
 
             try {
                 auto parent = fs::path(resolved).parent_path();
-                if (!parent.empty())
-                    fs::create_directories(parent);
+                if (!parent.empty()) fs::create_directories(parent);
 
                 // Determine write mode (mirrors file_tool.cpp)
                 std::string mode = extractStringArg(args, "mode", "write");
@@ -119,13 +129,14 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
             } catch (const std::exception& e) {
                 return "Error: " + std::string(e.what());
             }
-        }
-        else if (action == "edit") {
+        } else if (action == "edit") {
             std::string search = extractStringArg(args, "search");
             std::string replace = extractStringArg(args, "replace");
 
-            if (search.empty()) return "Error: Missing required 'search' argument for 'edit' action.";
-            if (replace.empty()) return "Error: Missing required 'replace' argument for 'edit' action.";
+            if (search.empty())
+                return "Error: Missing required 'search' argument for 'edit' action.";
+            if (replace.empty())
+                return "Error: Missing required 'replace' argument for 'edit' action.";
 
             // Read existing file
             std::ifstream ifs(resolved, std::ios::binary | std::ios::ate);
@@ -159,7 +170,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                     size_t origPos = 0;
                     for (size_t i = 0; i < pos; ++i) {
                         if (origPos < content.size() && content[origPos] == '\r')
-                            origPos += 2;  // \r\n
+                            origPos += 2; // \r\n
                         else
                             origPos += 1;
                     }
@@ -177,8 +188,8 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                     ofs << content;
                     return "Edited " + resolved + " (match found after LF normalization)";
                 }
-                return "Error: Search text not found in file: " + resolved
-                     + "\nSearch text: " + (search.size() > 80 ? search.substr(0, 80) + "..." : search);
+                return "Error: Search text not found in file: " + resolved + "\nSearch text: " +
+                       (search.size() > 80 ? search.substr(0, 80) + "..." : search);
             }
 
             // Count occurrences
@@ -189,8 +200,9 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 tmp = content.find(search, tmp + 1);
             }
             if (count > 1) {
-                return "Error: Search text found " + std::to_string(count) + " times. "
-                     "Make the search text more specific to target a single occurrence.";
+                return "Error: Search text found " + std::to_string(count) +
+                       " times. "
+                       "Make the search text more specific to target a single occurrence.";
             }
 
             content.replace(pos, search.size(), replace);
@@ -198,8 +210,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
             if (!ofs) return "Error: Cannot write to: " + resolved;
             ofs << content;
             return "Edited " + resolved;
-        }
-        else {
+        } else {
             return "Error: Unknown action '" + action + "'. Must be 'write' or 'edit'.";
         }
     });

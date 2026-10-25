@@ -11,17 +11,21 @@ static constexpr const char* TOOL_UPDATE_TODO_DESC =
     "  2. update -- after EACH sub-task finished (brief describes what was done).\n"
     "  3. done  -- when ALL sub-tasks are complete (archives to overview, clears TODO).\n"
     "IMPORTANT: Without action='done', the TODO stays 'active' in the UI and "
-     "the overview is never saved. Call done at the very end of the task.\n"
-     "OVERVIEW: Max 6 entries. When a 7th is added the oldest 2 auto-merge "
-     "into a '[Combined: ...]' entry. Keep each brief around 50 chars.";
+    "the overview is never saved. Call done at the very end of the task.\n"
+    "OVERVIEW: Max 6 entries. When a 7th is added the oldest 2 auto-merge "
+    "into a '[Combined: ...]' entry. Keep each brief around 50 chars.";
 static constexpr const char* TOOL_PARAM_TODO_ACTION =
-    "init | update | done. init starts a new TODO, update records progress, done finalizes and archives.";
+    "init | update | done. init starts a new TODO, update records progress, done finalizes and "
+    "archives.";
 static constexpr const char* TOOL_PARAM_TODO_TASKS =
     "Markdown task list. Required for init. Example:\n"
     "1. Fix Particle.h\n2. Fix Source.h\n3. Compile verification";
-static constexpr const char* TOOL_PARAM_TODO_FILE_STRUCTURE = "Key file list for context. Optional, for init.";
-static constexpr const char* TOOL_PARAM_TODO_TASK = "Task name or identifier to update (for action=update).";
-static constexpr const char* TOOL_PARAM_TODO_STATUS = "done | in_progress | pending (for action=update).";
+static constexpr const char* TOOL_PARAM_TODO_FILE_STRUCTURE =
+    "Key file list for context. Optional, for init.";
+static constexpr const char* TOOL_PARAM_TODO_TASK =
+    "Task name or identifier to update (for action=update).";
+static constexpr const char* TOOL_PARAM_TODO_STATUS =
+    "done | in_progress | pending (for action=update).";
 static constexpr const char* TOOL_PARAM_TODO_BRIEF =
     "Structured completion summary. FORMAT: '<file path>: <change> [L<line>] - <result>' "
     "Example: 'Source.h: added #include <vector> [L10], fixed copy ctor [L42] - compile OK'\n"
@@ -30,9 +34,11 @@ static constexpr const char* TOOL_PARAM_TODO_BRIEF =
 
 // Todo system message prefixes (used by buildTodoSystemMessage etc.)
 static constexpr const char* TODO_SYSTEM_PREFIX = "[TODO] Remaining tasks -- work through these:\n";
-static constexpr const char* OVERVIEW_SYSTEM_PREFIX = "[OVERVIEW] Completed work for your reference:\n";
+static constexpr const char* OVERVIEW_SYSTEM_PREFIX =
+    "[OVERVIEW] Completed work for your reference:\n";
 static constexpr const char* USER_REQUEST_SYSTEM_PREFIX =
-    "[USER REQUEST ON-GOING] This is the original request you are still working on -- stay focused on it:\n";
+    "[USER REQUEST ON-GOING] This is the original request you are still working on -- stay focused "
+    "on it:\n";
 #include <regex>
 #include <set>
 #include <sstream>
@@ -41,8 +47,8 @@ static constexpr const char* USER_REQUEST_SYSTEM_PREFIX =
 // --- Constants ------------------------------------------------------
 static constexpr size_t MAX_BRIEF_LEN = 200;
 // No content truncation -- LLM controls brief length via tool description.
-static constexpr size_t OVERVIEW_PRUNE_THRESHOLD = 7;   // when 7th entry arrives, prune to 6
-static constexpr size_t OVERVIEW_MERGE_COUNT = 2;        // merge oldest 2 entries into 1
+static constexpr size_t OVERVIEW_PRUNE_THRESHOLD = 7; // when 7th entry arrives, prune to 6
+static constexpr size_t OVERVIEW_MERGE_COUNT = 2;     // merge oldest 2 entries into 1
 
 // --- Helpers --------------------------------------------------------
 
@@ -56,7 +62,8 @@ static std::string truncateStr(const std::string& s, size_t maxLen) {
 // Returns a formatted suffix like " Files: Source.h, test.cpp." or empty string.
 static std::string extractFilePaths(const std::vector<std::string>& texts) {
     std::set<std::string> files;
-    std::regex pathRe(R"(([A-Za-z0-9._\-\\/]+\.(?:h|cpp|rs|toml|md|json|txt|py|c|cc|cxx|hpp|java|ts|js|css|html|cmake)))");
+    std::regex pathRe(
+        R"(([A-Za-z0-9._\-\\/]+\.(?:h|cpp|rs|toml|md|json|txt|py|c|cc|cxx|hpp|java|ts|js|css|html|cmake)))");
     for (const auto& t : texts) {
         auto begin = std::sregex_iterator(t.begin(), t.end(), pathRe);
         for (auto it = begin; it != std::sregex_iterator(); ++it) {
@@ -68,7 +75,10 @@ static std::string extractFilePaths(const std::vector<std::string>& texts) {
     size_t count = 0;
     for (const auto& f : files) {
         if (count > 0) result += ", ";
-        if (count >= 8) { result += "..."; break; }
+        if (count >= 8) {
+            result += "...";
+            break;
+        }
         result += f;
         ++count;
     }
@@ -83,7 +93,7 @@ static void pruneOverview(std::vector<std::string>& overviews) {
 
     // Collect titles and extract file paths from the entries being merged
     std::vector<std::string> titles;
-    std::vector<std::string> entryTexts;  // full text for file path extraction
+    std::vector<std::string> entryTexts; // full text for file path extraction
     for (size_t i = 0; i < OVERVIEW_MERGE_COUNT && i < overviews.size(); ++i) {
         entryTexts.push_back(overviews[i]);
         auto closeBracket = overviews[i].find(']');
@@ -119,14 +129,12 @@ void registerTodoTool(ToolRegistry& registry, TodoData* data, std::mutex* mtx) {
     ToolDefinition def;
     def.name = "update_todo";
     def.description = TOOL_UPDATE_TODO_DESC;
-    def.parameters = {
-        {"action", "string", TOOL_PARAM_TODO_ACTION, true},
-        {"tasks", "string", TOOL_PARAM_TODO_TASKS, false},
-        {"file_structure", "string", TOOL_PARAM_TODO_FILE_STRUCTURE, false},
-        {"task", "string", TOOL_PARAM_TODO_TASK, false},
-        {"status", "string", TOOL_PARAM_TODO_STATUS, false},
-        {"brief", "string", TOOL_PARAM_TODO_BRIEF, false}
-    };
+    def.parameters = {{"action", "string", TOOL_PARAM_TODO_ACTION, true},
+                      {"tasks", "string", TOOL_PARAM_TODO_TASKS, false},
+                      {"file_structure", "string", TOOL_PARAM_TODO_FILE_STRUCTURE, false},
+                      {"task", "string", TOOL_PARAM_TODO_TASK, false},
+                      {"status", "string", TOOL_PARAM_TODO_STATUS, false},
+                      {"brief", "string", TOOL_PARAM_TODO_BRIEF, false}};
 
     registry.registerTool(def, [data, mtx](const std::string& args) -> std::string {
         std::string action = extractStringArg(args, "action");
@@ -173,9 +181,12 @@ void registerTodoTool(ToolRegistry& registry, TodoData* data, std::mutex* mtx) {
                 // Try to find the task line and mark it
                 // Using ASCII-only markers to avoid font rendering issues
                 std::string targetPrefix;
-                if (status == "done") targetPrefix = "[x] ";
-                else if (status == "in_progress") targetPrefix = "[*] ";
-                else targetPrefix = "[ ] ";
+                if (status == "done")
+                    targetPrefix = "[x] ";
+                else if (status == "in_progress")
+                    targetPrefix = "[*] ";
+                else
+                    targetPrefix = "[ ] ";
 
                 // Look for the task string in each line
                 std::string result;
@@ -197,8 +208,7 @@ void registerTodoTool(ToolRegistry& registry, TodoData* data, std::mutex* mtx) {
                 // Only keep the updated version if we actually modified something
                 if (updated) {
                     // Remove trailing newline
-                    if (!result.empty() && result.back() == '\n')
-                        result.pop_back();
+                    if (!result.empty() && result.back() == '\n') result.pop_back();
                     data->pendingTodo = result;
                 }
             }
@@ -215,8 +225,8 @@ void registerTodoTool(ToolRegistry& registry, TodoData* data, std::mutex* mtx) {
             if (!data->pendingTodo.empty()) {
                 size_t firstNewline = data->pendingTodo.find('\n');
                 std::string firstLine = (firstNewline == std::string::npos)
-                    ? data->pendingTodo
-                    : data->pendingTodo.substr(0, firstNewline);
+                                            ? data->pendingTodo
+                                            : data->pendingTodo.substr(0, firstNewline);
                 // Strip "Tasks:" prefix
                 if (firstLine.find("Tasks:") == 0) {
                     title = firstLine.substr(6);
@@ -254,8 +264,11 @@ void registerTodoTool(ToolRegistry& registry, TodoData* data, std::mutex* mtx) {
         }
 
         return "Error: update_todo requires an 'action' parameter ('init'/'update'/'done'). "
-               "You passed action='" + action + "'. "
-               "Example: update_todo(action=\"update\", task=\"Fix Source.h\", status=\"done\", brief=\"Fixed copy constructor\")";
+               "You passed action='" +
+               action +
+               "'. "
+               "Example: update_todo(action=\"update\", task=\"Fix Source.h\", status=\"done\", "
+               "brief=\"Fixed copy constructor\")";
     });
 }
 

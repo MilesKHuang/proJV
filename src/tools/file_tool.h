@@ -14,7 +14,8 @@ std::string validateToolPath(const std::string& rawPath, const std::string& work
 // must skip. One list, shared by list_dir, grep_files and file_search.
 bool isSkippedDirName(const std::string& dirName);
 
-// Split a skill `file_requests` entry into path + optional line range.// Accepts "a.cpp", "a.cpp#L120", "a.cpp#L120-L480" (case-insensitive 'L').
-// `startLine` / `endLine` are 0 when absent. Returns false for an empty spec.
-bool parseFileRequestSpec(const std::string& spec, std::string& outPath,
-                          int& startLine, int& endLine);
+// Split a skill `file_requests` entry into path + optional line range.// Accepts "a.cpp",
+// "a.cpp#L120", "a.cpp#L120-L480" (case-insensitive 'L'). `startLine` / `endLine` are 0 when
+// absent. Returns false for an empty spec.
+bool parseFileRequestSpec(const std::string& spec, std::string& outPath, int& startLine,
+                          int& endLine);

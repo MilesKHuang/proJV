@@ -20,8 +20,10 @@ size_t Session::estimateTokens(const std::string& text) {
     if (text.empty()) return 0;
     size_t t = 0;
     for (char c : text) {
-        if ((unsigned char)c >= 0x80) t += 2;
-        else t += 1;
+        if ((unsigned char)c >= 0x80)
+            t += 2;
+        else
+            t += 1;
     }
     return std::max<size_t>(1, t / 4);
 }
@@ -70,8 +72,7 @@ void Session::pruneForContext(size_t maxTokens) {
     {
         int totalToolMsgs = 0;
         for (const auto& msg : messages) {
-            if (msg.role == "tool" || !msg.toolCalls.empty())
-                ++totalToolMsgs;
+            if (msg.role == "tool" || !msg.toolCalls.empty()) ++totalToolMsgs;
         }
 
         int toTruncate = totalToolMsgs - 10;
@@ -82,8 +83,7 @@ void Session::pruneForContext(size_t maxTokens) {
             for (size_t i = 0; i < messages.size() && seen < toTruncate; ++i) {
                 if (messages[i].role == "tool" || !messages[i].toolCalls.empty()) {
                     ++seen;
-                    if (seen == toTruncate)
-                        cutoffIdx = i + 1;
+                    if (seen == toTruncate) cutoffIdx = i + 1;
                 }
             }
         }
@@ -96,7 +96,8 @@ void Session::pruneForContext(size_t maxTokens) {
                                   messages[i].name) == truncatedToolNames.end())
                         truncatedToolNames.push_back(messages[i].name);
                 }
-                messages[i].content = "[truncated " + std::to_string(messages[i].content.size()) + " bytes]";
+                messages[i].content =
+                    "[truncated " + std::to_string(messages[i].content.size()) + " bytes]";
                 size_t after = estimateTokens(messages[i].content);
                 total = total > (before - after) ? total - (before - after) : 1;
             }
@@ -122,14 +123,15 @@ void Session::pruneForContext(size_t maxTokens) {
             size_t cutoffIdx = 0;
             int seen = 0;
             for (size_t i = systemCount; i < messages.size() && seen < toTruncate; ++i) {
-                if (messages[i].role != "tool" && messages[i].toolCalls.empty() && messages[i].role != "system") {
+                if (messages[i].role != "tool" && messages[i].toolCalls.empty() &&
+                    messages[i].role != "system") {
                     ++seen;
-                    if (seen == toTruncate)
-                        cutoffIdx = i;
+                    if (seen == toTruncate) cutoffIdx = i;
                 }
             }
             for (size_t i = systemCount; i < cutoffIdx && i < messages.size(); ++i) {
-                if (messages[i].role != "tool" && messages[i].toolCalls.empty() && messages[i].role != "system") {
+                if (messages[i].role != "tool" && messages[i].toolCalls.empty() &&
+                    messages[i].role != "system") {
                     size_t before = estimateTokens(messages[i].content);
                     if (before > 20) {
                         ++truncatedUserTextCount;
@@ -197,9 +199,8 @@ void Session::pruneForContext(size_t maxTokens) {
         debugLogf("[Session] prune detail: %s", summary.c_str());
     }
 
-    debugLogf("[Session] Pruned: %zu -> %zu msgs (%zuK -> %zuK tokens)",
-        beforeMsgCount, messages.size(),
-        beforeTokenCount / 1000, total / 1000);
+    debugLogf("[Session] Pruned: %zu -> %zu msgs (%zuK -> %zuK tokens)", beforeMsgCount,
+              messages.size(), beforeTokenCount / 1000, total / 1000);
 }
 
 void Session::stripLastToolCallsAndResults() {
@@ -224,8 +225,7 @@ void Session::stripLastToolCallsAndResults() {
     }
 
     size_t count = (size_t)(removeEnd - lastToolCallIdx + 1);
-    messages.erase(messages.begin() + lastToolCallIdx,
-                   messages.begin() + removeEnd + 1);
+    messages.erase(messages.begin() + lastToolCallIdx, messages.begin() + removeEnd + 1);
     debugLogf("[Session] stripLastToolCallsAndResults: removed %zu msgs", count);
 }
 
@@ -263,7 +263,8 @@ void Session::softStripLastToolCalls() {
     }
 
     size_t removedCount = resultIndices.size();
-    debugLogf("[Session] softStripLastToolCalls: merged %zu tool results into assistant msg (index %d)",
+    debugLogf(
+        "[Session] softStripLastToolCalls: merged %zu tool results into assistant msg (index %d)",
         removedCount, lastIdx);
 }
 
@@ -288,7 +289,7 @@ void Session::loadMessages(std::vector<Message>&& msgs) {
     {
         std::lock_guard<std::mutex> lock(mtx);
         messages = std::move(msgs);
-    }  // release lock: repairOrphanedToolCalls() acquires mtx itself
+    } // release lock: repairOrphanedToolCalls() acquires mtx itself
     // Auto-repair: fix orphaned tool pairs after loading (prevents HTTP 400
     // from stale stored sessions where tool_call/tool_result pairs got
     // misaligned during a crash or interrupted write).
@@ -303,8 +304,7 @@ void Session::clear() {
 
 void Session::popLastAssistant() {
     std::lock_guard<std::mutex> lock(mtx);
-    if (!messages.empty() &&
-        messages.back().role == "assistant" &&
+    if (!messages.empty() && messages.back().role == "assistant" &&
         messages.back().toolCalls.empty()) {
         messages.pop_back();
         debugLog("[Session] popLastAssistant: removed orphaned assistant message");
@@ -323,8 +323,10 @@ void Session::clearLastToolCalls(const std::string& prefix) {
         rejection += last.toolCalls[i].name;
     }
     rejection += "]";
-    if (!last.content.empty()) last.content += "\n" + rejection;
-    else last.content = rejection;
+    if (!last.content.empty())
+        last.content += "\n" + rejection;
+    else
+        last.content = rejection;
     last.toolCalls.clear();
     debugLogf("[Session] clearLastToolCalls: cleared %zu tool calls", last.toolCalls.size());
 }
@@ -340,8 +342,9 @@ void Session::stripOrphanedToolCalls() {
                 if (!tcNames.empty()) tcNames += ", ";
                 tcNames += tc.name + "(" + tc.id + ")";
             }
-            debugLogf("[Session] stripOrphanedToolCalls: msg[%zu/%zu] role=assistant content=%zu bytes, stripping %zu tool_calls: [%s]",
-                msgIdx, total, it->content.size(), it->toolCalls.size(), tcNames.c_str());
+            debugLogf("[Session] stripOrphanedToolCalls: msg[%zu/%zu] role=assistant content=%zu "
+                      "bytes, stripping %zu tool_calls: [%s]",
+                      msgIdx, total, it->content.size(), it->toolCalls.size(), tcNames.c_str());
 
             if (it->content.empty()) {
                 it->content = "[Tool calls stripped due to consecutive errors]";
@@ -351,11 +354,14 @@ void Session::stripOrphanedToolCalls() {
             // Count trailing tool messages that will become orphans
             size_t orphanCount = 0;
             for (size_t j = msgIdx + 1; j < messages.size(); ++j) {
-                if (messages[j].role == "tool") ++orphanCount;
-                else if (messages[j].role != "system") break;
+                if (messages[j].role == "tool")
+                    ++orphanCount;
+                else if (messages[j].role != "system")
+                    break;
             }
-            debugLogf("[Session] stripOrphanedToolCalls: %zu trailing tool msg(s) now orphaned (msg[%zu]..)",
-                orphanCount, msgIdx + 1);
+            debugLogf("[Session] stripOrphanedToolCalls: %zu trailing tool msg(s) now orphaned "
+                      "(msg[%zu]..)",
+                      orphanCount, msgIdx + 1);
             break;
         }
     }
@@ -385,8 +391,9 @@ void Session::repairOrphanedToolCalls() {
             }
 
             if (!neededIds.empty()) {
-                debugLogf("[Session] repair Pass1: stripping %zu orphaned tool_calls from msg[%zu] (missing %zu tool results)",
-                    messages[i].toolCalls.size(), i, neededIds.size());
+                debugLogf("[Session] repair Pass1: stripping %zu orphaned tool_calls from msg[%zu] "
+                          "(missing %zu tool results)",
+                          messages[i].toolCalls.size(), i, neededIds.size());
                 if (messages[i].content.empty()) {
                     messages[i].content = "[Tool calls repaired - results were missing]";
                 }
@@ -399,7 +406,7 @@ void Session::repairOrphanedToolCalls() {
 
     // Pass 2: remove orphan tool results (tool messages with no preceding tool_calls)
     size_t pass2Removed = 0;
-    for (auto it = messages.begin(); it != messages.end(); ) {
+    for (auto it = messages.begin(); it != messages.end();) {
         if (it->role == "tool") {
             bool hasPrecedingToolCall = false;
             for (auto prev = messages.begin(); prev != it; ++prev) {
@@ -418,8 +425,9 @@ void Session::repairOrphanedToolCalls() {
                         for (const auto& tc : prev->toolCalls) {
                             if (tc.name == it->name) {
                                 hasPrecedingToolCall = true;
-                                debugLogf("[Session] repair Pass2: matched orphan tool by name='%s' to assistant with same tool",
-                                    it->name.c_str());
+                                debugLogf("[Session] repair Pass2: matched orphan tool by "
+                                          "name='%s' to assistant with same tool",
+                                          it->name.c_str());
                                 break;
                             }
                         }
@@ -428,11 +436,12 @@ void Session::repairOrphanedToolCalls() {
                 if (hasPrecedingToolCall) break;
             }
             if (!hasPrecedingToolCall) {
-                std::string contentPreview = it->content.size() > 80
-                    ? it->content.substr(0, 80) + "..." : it->content;
-                debugLogf("[Session] repair Pass2: removing orphan tool msg toolCallId='%s' name='%s' content=%zu bytes: \"%s\"",
-                    it->toolCallId.c_str(), it->name.c_str(), it->content.size(),
-                    safeForLog(contentPreview).c_str());
+                std::string contentPreview =
+                    it->content.size() > 80 ? it->content.substr(0, 80) + "..." : it->content;
+                debugLogf("[Session] repair Pass2: removing orphan tool msg toolCallId='%s' "
+                          "name='%s' content=%zu bytes: \"%s\"",
+                          it->toolCallId.c_str(), it->name.c_str(), it->content.size(),
+                          safeForLog(contentPreview).c_str());
                 it = messages.erase(it);
                 ++pass2Removed;
             } else {
@@ -446,15 +455,18 @@ void Session::repairOrphanedToolCalls() {
 
     // Final tally: count tool messages remaining
     size_t toolCount = 0;
-    for (const auto& m : messages) if (m.role == "tool") ++toolCount;
-    debugLogf("[Session] repairOrphanedToolCalls: DONE %zu->%zu msgs (%zu removed), %zu tool msgs remain",
+    for (const auto& m : messages)
+        if (m.role == "tool") ++toolCount;
+    debugLogf(
+        "[Session] repairOrphanedToolCalls: DONE %zu->%zu msgs (%zu removed), %zu tool msgs remain",
         beforeCount, messages.size(), beforeCount - messages.size(), toolCount);
 }
 
 void Session::validateToolCallPairs() const {
     std::lock_guard<std::mutex> lock(mtx);
 
-    debugLogf("[Session] validateToolCallPairs: scanning %zu messages for tool-call-pair violations",
+    debugLogf(
+        "[Session] validateToolCallPairs: scanning %zu messages for tool-call-pair violations",
         messages.size());
 
     size_t violations = 0;
@@ -466,13 +478,13 @@ void Session::validateToolCallPairs() const {
 
         // Find the nearest preceding assistant, then check for matching tool_calls
         bool found = false;
-        for (size_t j = i; j > 0; ) {
+        for (size_t j = i; j > 0;) {
             --j;
             if (messages[j].role == "assistant") {
                 if (!messages[j].toolCalls.empty()) {
                     for (const auto& tc : messages[j].toolCalls) {
-                        if (!tc.id.empty() && !messages[i].toolCallId.empty()
-                            && tc.id == messages[i].toolCallId) {
+                        if (!tc.id.empty() && !messages[i].toolCallId.empty() &&
+                            tc.id == messages[i].toolCallId) {
                             found = true;
                             break;
                         }
@@ -497,22 +509,25 @@ void Session::validateToolCallPairs() const {
         if (!found) {
             ++violations;
             std::string contentPreview = messages[i].content.size() > 100
-                ? messages[i].content.substr(0, 100) + "..." : messages[i].content;
-            LOG_F(WARNING, "[Session] VIOLATION #%zu: msg[%zu] role=tool toolCallId='%s' name='%s' content=%zu bytes: \"%s\"",
-                violations, i,
-                messages[i].toolCallId.c_str(),
-                messages[i].name.c_str(),
-                messages[i].content.size(),
-                safeForLog(contentPreview).c_str());
+                                             ? messages[i].content.substr(0, 100) + "..."
+                                             : messages[i].content;
+            LOG_F(WARNING,
+                  "[Session] VIOLATION #%zu: msg[%zu] role=tool toolCallId='%s' name='%s' "
+                  "content=%zu bytes: \"%s\"",
+                  violations, i, messages[i].toolCallId.c_str(), messages[i].name.c_str(),
+                  messages[i].content.size(), safeForLog(contentPreview).c_str());
         }
     }
 
     if (violations > 0) {
-        LOG_F(ERROR, "[Session] validateToolCallPairs: *** %zu VIOLATION(S) *** in %zu messages (%zu tool msgs) -> HTTP 400 WILL OCCUR!",
-            violations, messages.size(), toolCount);
+        LOG_F(ERROR,
+              "[Session] validateToolCallPairs: *** %zu VIOLATION(S) *** in %zu messages (%zu tool "
+              "msgs) -> HTTP 400 WILL OCCUR!",
+              violations, messages.size(), toolCount);
     } else {
-        debugLogf("[Session] validateToolCallPairs: ALL CLEAR - 0 violations in %zu messages (%zu tool msgs)",
-            messages.size(), toolCount);
+        debugLogf("[Session] validateToolCallPairs: ALL CLEAR - 0 violations in %zu messages (%zu "
+                  "tool msgs)",
+                  messages.size(), toolCount);
     }
 }
 
@@ -528,8 +543,7 @@ void Session::validateToolCallPairs() const {
 static bool looksLikeFilePath(const std::string& s) {
     if (s.empty() || s.size() > 256) return false;
     // Must contain a dot extension or be a known root file
-    if (s.find('.') == std::string::npos && s != "Makefile" && s != "CMakeLists.txt")
-        return false;
+    if (s.find('.') == std::string::npos && s != "Makefile" && s != "CMakeLists.txt") return false;
     // No spaces, no control chars
     for (char c : s) {
         if (c <= 32 || c == '"' || c == '\'') return false;
@@ -542,9 +556,8 @@ Session::WorkingSet Session::deriveWorkingSet() const {
     // Scan from most recent to oldest, collecting up to maxPaths
     auto msgs = getContextMessages();
     // Known tool argument keys that hold file paths
-    static const std::vector<std::string> pathKeys = {
-        "path", "file", "old_path", "new_path", "target", "cwd", "paths", "files"
-    };
+    static const std::vector<std::string> pathKeys = {"path",   "file", "old_path", "new_path",
+                                                      "target", "cwd",  "paths",    "files"};
 
     for (auto it = msgs.rbegin(); it != msgs.rend(); ++it) {
         if (ws.filePaths.size() >= (size_t)ws.maxPaths) break;
@@ -569,7 +582,8 @@ Session::WorkingSet Session::deriveWorkingSet() const {
                         }
                     }
                 }
-            } catch (...) {}
+            } catch (...) {
+            }
         }
 
         // 2) Extract from content text (simple regex for path patterns)
@@ -602,17 +616,15 @@ bool Session::shouldPinMessage(size_t msgIdx, const WorkingSet& ws) const {
 
     // 2) Contains error markers
     static const std::vector<std::string> errMarkers = {
-        "error:", "error ", "failed", "panic", "traceback",
-        "stack trace", "assertion failed", "test failed"
-    };
+        "error:",    "error ",      "failed",           "panic",
+        "traceback", "stack trace", "assertion failed", "test failed"};
     for (const auto& m : errMarkers) {
         if (lower.find(m) != std::string::npos) return true;
     }
 
     // 3) Contains patch/diff markers
-    static const std::vector<std::string> patchMarkers = {
-        "diff --git", "+++ b/", "--- a/", "```diff", "apply_patch"
-    };
+    static const std::vector<std::string> patchMarkers = {"diff --git", "+++ b/", "--- a/",
+                                                          "```diff", "apply_patch"};
     for (const auto& m : patchMarkers) {
         if (lower.find(m) != std::string::npos) return true;
     }
@@ -620,9 +632,9 @@ bool Session::shouldPinMessage(size_t msgIdx, const WorkingSet& ws) const {
     // 4) Mentions explicit TODO/checklist markers. A bare "todo" substring is
     // deliberately avoided: agent sessions use update_todo so often that the
     // bare match pins nearly every message and leaves nothing to summarize.
-    if (lower.find("[todo") != std::string::npos ||
-        lower.find("todo:") != std::string::npos ||
-        lower.find("checklist") != std::string::npos) return true;
+    if (lower.find("[todo") != std::string::npos || lower.find("todo:") != std::string::npos ||
+        lower.find("checklist") != std::string::npos)
+        return true;
 
     return false;
 }
@@ -651,8 +663,7 @@ void Session::enforceToolCallPairs(CompactionPlan& plan) const {
             // Is this a tool result?
             if (!msgs[idx].toolCallId.empty()) {
                 auto it = callIdToIdx.find(msgs[idx].toolCallId);
-                if (it != callIdToIdx.end() && pinned.insert(it->second).second)
-                    changed = true;
+                if (it != callIdToIdx.end() && pinned.insert(it->second).second) changed = true;
             }
             // Is this a call?
             for (const auto& tc : msgs[idx].toolCalls) {
@@ -673,24 +684,26 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     size_t n = msgs.size();
     if (n <= keepRecent) {
         // Not enough messages -- pin everything
-        for (size_t i = 0; i < n; ++i) plan.pinnedIndices.push_back(i);
+        for (size_t i = 0; i < n; ++i)
+            plan.pinnedIndices.push_back(i);
         return plan;
     }
 
     std::set<size_t> pinned;
 
     // 1) Pin the tail (most recent messages)
-    for (size_t i = n - keepRecent; i < n; ++i) pinned.insert(i);
+    for (size_t i = n - keepRecent; i < n; ++i)
+        pinned.insert(i);
 
     // 1b) Pin the leading system block (system prompt / project context), but
     // deliberately do NOT pin a previous compaction summary: it must be fed
     // back into the summarizer so its content is merged into the new summary
     // instead of being silently dropped.
     size_t sysCount = 0;
-    while (sysCount < n && msgs[sysCount].role == "system") ++sysCount;
+    while (sysCount < n && msgs[sysCount].role == "system")
+        ++sysCount;
     for (size_t i = 0; i < sysCount; ++i) {
-        if (msgs[i].content.rfind(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX, 0) == 0)
-            continue;
+        if (msgs[i].content.rfind(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX, 0) == 0) continue;
         pinned.insert(i);
     }
 
@@ -708,11 +721,17 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     // 4) Ensure at least one user message is in pinned set (API requirement)
     bool hasUser = false;
     for (size_t idx : pinned) {
-        if (idx < n && msgs[idx].role == "user") { hasUser = true; break; }
+        if (idx < n && msgs[idx].role == "user") {
+            hasUser = true;
+            break;
+        }
     }
     if (!hasUser) {
         for (size_t i = n; i > 0; --i) {
-            if (msgs[i-1].role == "user") { pinned.insert(i-1); break; }
+            if (msgs[i - 1].role == "user") {
+                pinned.insert(i - 1);
+                break;
+            }
         }
     }
 
@@ -721,7 +740,7 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     // can still re-pin them because summaries usually contain file paths,
     // error markers, and TODO text. Drop them here so they are fed back into
     // the summarizer and merged, keeping exactly one summary message.
-    for (auto it = pinned.begin(); it != pinned.end(); ) {
+    for (auto it = pinned.begin(); it != pinned.end();) {
         if (*it < n && msgs[*it].role == "system" &&
             msgs[*it].content.rfind(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX, 0) == 0)
             it = pinned.erase(it);
@@ -732,12 +751,11 @@ Session::CompactionPlan Session::planCompaction(size_t keepRecent) const {
     // 5) Build summarize list from non-pinned indices
     plan.pinnedIndices.assign(pinned.begin(), pinned.end());
     for (size_t i = 0; i < n; ++i) {
-        if (pinned.find(i) == pinned.end())
-            plan.summarizeIndices.push_back(i);
+        if (pinned.find(i) == pinned.end()) plan.summarizeIndices.push_back(i);
     }
 
-    debugLogf("[Session] planCompaction: %zu msgs total -> %zu pinned, %zu to summarize",
-        n, plan.pinnedIndices.size(), plan.summarizeIndices.size());
+    debugLogf("[Session] planCompaction: %zu msgs total -> %zu pinned, %zu to summarize", n,
+              plan.pinnedIndices.size(), plan.summarizeIndices.size());
     return plan;
 }
 
@@ -753,8 +771,7 @@ std::string Session::buildCompactionInput(const CompactionPlan& plan) const {
         // Vision: the image bytes are not part of the text summary, but the
         // FACT that the message carried images must survive compaction (the
         // DB keeps the paths, so the next request can still replay them).
-        if (!msg.images.empty())
-            out << " [+" << msg.images.size() << " images]";
+        if (!msg.images.empty()) out << " [+" << msg.images.size() << " images]";
         out << ":\n";
 
         // Truncate long content
@@ -794,8 +811,7 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
 
     // Remove all target messages
     for (size_t idx : targets) {
-        if (idx < messages.size())
-            messages.erase(messages.begin() + idx);
+        if (idx < messages.size()) messages.erase(messages.begin() + idx);
     }
 
     // Insert summary at a fixed position: right after all system messages.
@@ -811,7 +827,7 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
 
     // Insert summary as system message
     std::string fullMsg = std::string(CONTEXT_COMPACT_SUMMARY_FULL_PREFIX) +
-        std::to_string(targets.size()) + " messages summarized]\n\n" + summary;
+                          std::to_string(targets.size()) + " messages summarized]\n\n" + summary;
     messages.insert(messages.begin() + insertAt, Message::System(fullMsg));
 
     // Repair orphaned tool calls inline (no lock -- mtx is already held).
@@ -828,7 +844,8 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
                     if (messages[j].role == "tool") {
                         for (const auto& tc : m.toolCalls) {
                             if (!tc.id.empty() && messages[j].toolCallId == tc.id) {
-                                hasResult = true; break;
+                                hasResult = true;
+                                break;
                             }
                         }
                         if (hasResult) break;
@@ -841,25 +858,32 @@ void Session::applyCompaction(const CompactionPlan& plan, const std::string& sum
             }
         }
         // Pass 2: remove orphan tool results (no preceding tool_calls)
-        for (auto it = messages.begin(); it != messages.end(); ) {
+        for (auto it = messages.begin(); it != messages.end();) {
             if (it->role == "tool" && !it->toolCallId.empty()) {
                 bool found = false;
                 for (auto prev = messages.begin(); prev != it; ++prev) {
                     if (prev->role == "assistant") {
                         for (const auto& tc : prev->toolCalls) {
-                            if (!tc.id.empty() && tc.id == it->toolCallId) { found = true; break; }
+                            if (!tc.id.empty() && tc.id == it->toolCallId) {
+                                found = true;
+                                break;
+                            }
                         }
                         if (found) break;
                     }
                 }
-                if (!found) it = messages.erase(it);
-                else ++it;
-            } else { ++it; }
+                if (!found)
+                    it = messages.erase(it);
+                else
+                    ++it;
+            } else {
+                ++it;
+            }
         }
     }
 
-    debugLogf("[Session] Compaction applied: %zu msgs -> summary at index %zu",
-        targets.size(), insertAt);
+    debugLogf("[Session] Compaction applied: %zu msgs -> summary at index %zu", targets.size(),
+              insertAt);
 }
 
 // ============================================================================
@@ -873,19 +897,23 @@ bool Session::hasOrphanedTools() const {
     for (size_t i = 0; i < messages.size(); ++i) {
         if (messages[i].role == "tool") {
             bool found = false;
-            for (size_t j = i; j > 0; ) {
+            for (size_t j = i; j > 0;) {
                 --j;
                 if (messages[j].role == "assistant") {
                     if (!messages[j].toolCalls.empty()) {
                         for (const auto& tc : messages[j].toolCalls) {
-                            if (!tc.id.empty() && !messages[i].toolCallId.empty()
-                                && tc.id == messages[i].toolCallId) {
-                                found = true; break;
+                            if (!tc.id.empty() && !messages[i].toolCallId.empty() &&
+                                tc.id == messages[i].toolCallId) {
+                                found = true;
+                                break;
                             }
                         }
                         if (!found && !messages[i].name.empty() && messages[i].toolCallId.empty()) {
                             for (const auto& tc : messages[j].toolCalls) {
-                                if (tc.name == messages[i].name) { found = true; break; }
+                                if (tc.name == messages[i].name) {
+                                    found = true;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -897,8 +925,9 @@ bool Session::hasOrphanedTools() const {
                 }
             }
             if (!found) {
-                debugLogf("[Session] hasOrphanedTools: found orphan tool msg[%zu] toolCallId='%s' name='%s'",
-                    i, messages[i].toolCallId.c_str(), messages[i].name.c_str());
+                debugLogf("[Session] hasOrphanedTools: found orphan tool msg[%zu] toolCallId='%s' "
+                          "name='%s'",
+                          i, messages[i].toolCallId.c_str(), messages[i].name.c_str());
                 return true;
             }
         }
@@ -909,13 +938,15 @@ bool Session::hasOrphanedTools() const {
                 bool hasResult = false;
                 for (size_t k = i + 1; k < messages.size(); ++k) {
                     if (messages[k].role == "tool" && messages[k].toolCallId == tc.id) {
-                        hasResult = true; break;
+                        hasResult = true;
+                        break;
                     }
                     if (messages[k].role == "assistant") break;
                 }
                 if (!hasResult) {
-                    debugLogf("[Session] hasOrphanedTools: msg[%zu] has tool_call '%s' with no result",
-                        i, tc.name.c_str());
+                    debugLogf(
+                        "[Session] hasOrphanedTools: msg[%zu] has tool_call '%s' with no result", i,
+                        tc.name.c_str());
                     return true;
                 }
             }

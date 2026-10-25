@@ -17,10 +17,8 @@ ftxui::Color hexToColor(const std::string& hex) {
     } catch (...) {
         return ftxui::Color::RGB(255, 255, 255);
     }
-    return ftxui::Color::RGB(
-        static_cast<uint8_t>(r),
-        static_cast<uint8_t>(g),
-        static_cast<uint8_t>(b));
+    return ftxui::Color::RGB(static_cast<uint8_t>(r), static_cast<uint8_t>(g),
+                             static_cast<uint8_t>(b));
 }
 
 } // namespace theme_map

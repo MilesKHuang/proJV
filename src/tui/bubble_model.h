@@ -17,12 +17,12 @@ namespace bubble_model {
 
 // One rendered chat bubble (equivalent to the legacy ChatBubble).
 struct Bubble {
-    std::string role;          // "user" | "assistant" | "system" | "tool_call" | "tool_result"
+    std::string role; // "user" | "assistant" | "system" | "tool_call" | "tool_result"
     std::string content;
     std::string reasoningText; // reasoning_content from deepseek-reasoner
     bool hasReasoning = false;
-    std::string speaker;       // skill role: "Sheldon" | "Penny" | "Leonard" (else empty)
-    bool isVote = false;       // true for a "**[Role vote]**" line
+    std::string speaker; // skill role: "Sheldon" | "Penny" | "Leonard" (else empty)
+    bool isVote = false; // true for a "**[Role vote]**" line
 };
 
 // Format a tool message into (bubbleRole, displayText). Pure function.
@@ -36,7 +36,6 @@ std::pair<std::string, std::string> formatToolMsg(const Message& msg);
 // as a speaker ONLY when <name> is registered, so ordinary bold markdown
 // ("**[Note]** ...") is never misread as a role. Empty registry => no speaker
 // detection (plain messages pass through untouched).
-std::vector<Bubble> deriveBubbles(const Message& msg,
-                                  const std::set<std::string>& knownRoles = {});
+std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string>& knownRoles = {});
 
 } // namespace bubble_model

@@ -20,11 +20,10 @@ bool Storage::createDatabase(const std::string& path) {
     closeDatabase();
     try {
         // Step 1: Open writeDb_ with create flag, enable WAL, create tables
-        writeDb_ = std::make_unique<SQLite::Database>(
-            path,
-            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE,
-            3000  // busy timeout 3s
-        );
+        writeDb_ =
+            std::make_unique<SQLite::Database>(path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE,
+                                               3000 // busy timeout 3s
+            );
         currentPath_ = path;
 
         // Enable WAL mode + foreign keys (concurrent read performance)
@@ -61,18 +60,15 @@ bool Storage::openDatabase(const std::string& path) {
     closeDatabase();
     try {
         // Open write connection
-        writeDb_ = std::make_unique<SQLite::Database>(
-            path,
-            SQLite::OPEN_READWRITE,
-            3000
-        );
+        writeDb_ = std::make_unique<SQLite::Database>(path, SQLite::OPEN_READWRITE, 3000);
         currentPath_ = path;
 
         // Enable WAL mode for existing databases
         writeDb_->exec("PRAGMA journal_mode = WAL;");
         writeDb_->exec("PRAGMA foreign_keys = ON;");
 
-        // Ensure the schema is complete (tolerate older versions missing columns such as reasoning_content).
+        // Ensure the schema is complete (tolerate older versions missing columns such as
+        // reasoning_content).
         if (!ensureTables()) {
             debugLog("[Storage] openDatabase: ensureTables failed");
             writeDb_.reset();
@@ -101,11 +97,7 @@ bool Storage::openDatabase(const std::string& path) {
 
 bool Storage::openReadDb() {
     try {
-        readDb_ = std::make_unique<SQLite::Database>(
-            currentPath_,
-            SQLite::OPEN_READONLY,
-            500
-        );
+        readDb_ = std::make_unique<SQLite::Database>(currentPath_, SQLite::OPEN_READONLY, 500);
         return true;
     } catch (const SQLite::Exception& e) {
         debugLogf("[Storage] openReadDb exception: %s", e.what());
@@ -122,7 +114,10 @@ void Storage::closeDatabase() {
 
     if (writeDb_) {
         // Merge the WAL back into the main DB before closing.
-        try { writeDb_->exec("PRAGMA wal_checkpoint(TRUNCATE);"); } catch (...) {}
+        try {
+            writeDb_->exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        } catch (...) {
+        }
         debugLogf("[Storage] Closed write connection: %s", currentPath_.c_str());
     }
     writeDb_.reset();
@@ -182,7 +177,8 @@ bool Storage::ensureTables() {
 static std::string imagePathsToJson(const std::vector<ImageAttachment>& images) {
     if (images.empty()) return std::string();
     nlohmann::json arr = nlohmann::json::array();
-    for (const auto& img : images) arr.push_back(img.path);
+    for (const auto& img : images)
+        arr.push_back(img.path);
     return arr.dump();
 }
 
@@ -208,8 +204,10 @@ static std::vector<ImageAttachment> imagePathsFromJson(const std::string& json) 
 static size_t estimateTokens(const std::string& text) {
     size_t t = 0;
     for (char c : text) {
-        if ((unsigned char)c >= 0x80) t += 2;
-        else t += 1;
+        if ((unsigned char)c >= 0x80)
+            t += 2;
+        else
+            t += 1;
     }
     return std::max<size_t>(1, t / 4);
 }
@@ -221,9 +219,9 @@ int64_t Storage::insertMessage(const Message& msg) {
 
         size_t tokens = estimateTokens(msg.content);
 
-        SQLite::Statement stmt(*writeDb_,
-            "INSERT INTO messages (role, content, reasoning_content, tool_call_id, name, token_count, image_paths) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)");
+        SQLite::Statement stmt(*writeDb_, "INSERT INTO messages (role, content, reasoning_content, "
+                                          "tool_call_id, name, token_count, image_paths) "
+                                          "VALUES (?, ?, ?, ?, ?, ?, ?)");
         stmt.bind(1, msg.role);
         stmt.bind(2, msg.content);
         stmt.bind(3, msg.reasoningContent);
@@ -233,8 +231,7 @@ int64_t Storage::insertMessage(const Message& msg) {
         stmt.bind(7, imagePathsToJson(msg.images));
         stmt.exec();
 
-        int64_t messageId =
-            writeDb_->execAndGet("SELECT last_insert_rowid()").getInt64();
+        int64_t messageId = writeDb_->execAndGet("SELECT last_insert_rowid()").getInt64();
 
         // Insert tool_calls for assistant messages
         if (!msg.toolCalls.empty()) {
@@ -245,8 +242,8 @@ int64_t Storage::insertMessage(const Message& msg) {
 
         transaction.commit();
 
-        debugLogf("[Storage] insertMessage: id=%lld role=%s (%zu chars)",
-                  (long long)messageId, msg.role.c_str(), msg.content.size());
+        debugLogf("[Storage] insertMessage: id=%lld role=%s (%zu chars)", (long long)messageId,
+                  msg.role.c_str(), msg.content.size());
         return messageId;
     } catch (const SQLite::Exception& e) {
         debugLogf("[Storage] insertMessage exception: %s", e.what());
@@ -259,21 +256,21 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
     if (!readDb_) return result;
     try {
         SQLite::Statement stmt(*readDb_,
-            "SELECT id, role, content, reasoning_content, tool_call_id, name, "
-            "COALESCE(image_paths, '') "
-            "FROM messages WHERE id > ? ORDER BY id");
+                               "SELECT id, role, content, reasoning_content, tool_call_id, name, "
+                               "COALESCE(image_paths, '') "
+                               "FROM messages WHERE id > ? ORDER BY id");
         stmt.bind(1, sinceId);
 
         while (stmt.executeStep()) {
             Message msg;
             int64_t msgId = stmt.getColumn(0).getInt64();
-            msg.id              = msgId;
-            msg.role            = stmt.getColumn(1).getString();
-            msg.content         = stmt.getColumn(2).getString();
+            msg.id = msgId;
+            msg.role = stmt.getColumn(1).getString();
+            msg.content = stmt.getColumn(2).getString();
             msg.reasoningContent = stmt.getColumn(3).getString();
-            msg.toolCallId      = stmt.getColumn(4).getString();
-            msg.name            = stmt.getColumn(5).getString();
-            msg.images          = imagePathsFromJson(stmt.getColumn(6).getString());
+            msg.toolCallId = stmt.getColumn(4).getString();
+            msg.name = stmt.getColumn(5).getString();
+            msg.images = imagePathsFromJson(stmt.getColumn(6).getString());
 
             // Load tool calls for assistant messages
             if (msg.role == "assistant") {
@@ -292,12 +289,12 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
 
 // -- Tool calls operations -----------------------------------------
 
-bool Storage::insertToolCalls(int64_t messageId,
-                               const std::vector<ToolCall>& calls) {
+bool Storage::insertToolCalls(int64_t messageId, const std::vector<ToolCall>& calls) {
     if (!writeDb_) return false;
     try {
         for (size_t i = 0; i < calls.size(); ++i) {
-            SQLite::Statement stmt(*writeDb_,
+            SQLite::Statement stmt(
+                *writeDb_,
                 "INSERT INTO tool_calls (message_id, call_index, tool_call_id, name, arguments) "
                 "VALUES (?, ?, ?, ?, ?)");
             stmt.bind(1, messageId);
@@ -319,16 +316,16 @@ std::vector<ToolCall> Storage::queryToolCalls(int64_t messageId) {
     if (!readDb_) return result;
     try {
         SQLite::Statement stmt(*readDb_,
-            "SELECT tool_call_id, name, arguments, call_index "
-            "FROM tool_calls WHERE message_id = ? ORDER BY call_index");
+                               "SELECT tool_call_id, name, arguments, call_index "
+                               "FROM tool_calls WHERE message_id = ? ORDER BY call_index");
         stmt.bind(1, messageId);
 
         while (stmt.executeStep()) {
             ToolCall tc;
-            tc.id        = stmt.getColumn(0).getString();
-            tc.name      = stmt.getColumn(1).getString();
+            tc.id = stmt.getColumn(0).getString();
+            tc.name = stmt.getColumn(1).getString();
             tc.arguments = stmt.getColumn(2).getString();
-            tc.index     = stmt.getColumn(3).getInt();
+            tc.index = stmt.getColumn(3).getInt();
             result.push_back(std::move(tc));
         }
     } catch (const SQLite::Exception& e) {

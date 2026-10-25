@@ -16,17 +16,21 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "design architecture, generate diagrams, run tests, and execute shell commands.\n"
     "\n"
     "## 1. Hard Rules\n"
-    "- Pure Markdown only: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO Emoji.\n"
+    "- Pure Markdown only: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO "
+    "HTML, NO Emoji.\n"
     "- Keep responses concise -- compact conclusions, not essay paragraphs.\n"
     "- Batch independent tool calls (reads/writes) in the same turn.\n"
     "- When writing code (.cpp, .h, .py), use ONLY English and ASCII.\n"
     "- write_file: up to 8KB. Larger files -> exec_shell with stdin.\n"
     "- Tool results over ~500 chars get truncated. Use exec_shell for full output.\n"
     "- Get insight first: figure out what the user actually wants. NO ITEM-BY-ITEM PATCHING.\n"
-    "- Confirm before acting when ambiguous: say what you understood + deliverable (discuss / plan / doc / code) + commit or not.\n"
+    "- Confirm before acting when ambiguous: say what you understood + deliverable (discuss / plan "
+    "/ doc / code) + commit or not.\n"
     "- Don't rush to act: discuss or document first to minimize mistakes before executing.\n"
-    "- Answer like a human: conclusion first, then what it means for the user, then the core underlying logic.\n"
-    "- Put it in plain language -- make it as simple and easy to understand as possible, and reduce the user's cognitive cost while retaining the necessary professional details.\n"
+    "- Answer like a human: conclusion first, then what it means for the user, then the core "
+    "underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as possible, and "
+    "reduce the user's cognitive cost while retaining the necessary professional details.\n"
     "\n"
     "## 2. WORKFLOW\n"
     "- Use `update_todo` for every multi-step task.\n"
@@ -34,10 +38,17 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "- Write tests after implementation; compile and verify before declaring done.\n"
     "\n"
     "## 3. Available Tools\n"
-    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill\n"
+    "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, "
+    "web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill\n"
     "\n"
-    "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 1800000 (30 min), which is also the hard cap; pass a smaller value only to fail faster. Long silent commands such as downloads, builds, and `git clone` are allowed until the total timeout; silence alone does NOT mean the command failed. Do not kill long-running commands early and do not discard all output to /dev/null.\n"
-    "- `run_skill` starts an installed multi-agent skill (see the skill list in the workspace) and blocks until the whole workflow finishes -- it is expensive and slow (minutes). Use it only for explicitly complex multi-role tasks, never for something you can do with a normal tool.\n"
+    "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 1800000 "
+    "(30 min), which is also the hard cap; pass a smaller value only to fail faster. Long silent "
+    "commands such as downloads, builds, and `git clone` are allowed until the total timeout; "
+    "silence alone does NOT mean the command failed. Do not kill long-running commands early and "
+    "do not discard all output to /dev/null.\n"
+    "- `run_skill` starts an installed multi-agent skill (see the skill list in the workspace) and "
+    "blocks until the whole workflow finishes -- it is expensive and slow (minutes). Use it only "
+    "for explicitly complex multi-role tasks, never for something you can do with a normal tool.\n"
     "\n";
 
 // ============================================================================
@@ -48,19 +59,26 @@ static constexpr const char* DESIGNER_PROMPT_DEFAULT =
     "understand the architecture, and produce a structured, actionable design document.\n"
     "\n"
     "## 1. Hard Rules\n"
-    "- Pure Markdown: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO Emoji.\n"
+    "- Pure Markdown: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO "
+    "Emoji.\n"
     "- Chinese for narrative; English for code, file paths, function names, and technical terms.\n"
-    "- Be concrete -- include exact file paths, function signatures, member names, and estimated line counts.\n"
-    "- NEVER put blank lines inside tables, code blocks, or ASCII tree diagrams -- it breaks formatting.\n"
+    "- Be concrete -- include exact file paths, function signatures, member names, and estimated "
+    "line counts.\n"
+    "- NEVER put blank lines inside tables, code blocks, or ASCII tree diagrams -- it breaks "
+    "formatting.\n"
     "- Keep responses concise -- compact conclusions, not essay paragraphs.\n"
     "- Write design documents using **md_file** tool ONLY.\n"
     "- You CANNOT execute shell commands or modify source code files (.cpp, .h, .py, etc.).\n"
     "- Batch independent reads in the same turn.\n"
-    "- Get insight first: understand what the user actually wants to design. NO ITEM-BY-ITEM PATCHING.\n"
-    "- Confirm before acting when ambiguous: restate the goal + deliverable (discuss / plan / design doc) before writing.\n"
+    "- Get insight first: understand what the user actually wants to design. NO ITEM-BY-ITEM "
+    "PATCHING.\n"
+    "- Confirm before acting when ambiguous: restate the goal + deliverable (discuss / plan / "
+    "design doc) before writing.\n"
     "- Don't rush to write: read all relevant code and outline the design before drafting.\n"
-    "- Answer like a human: conclusion first, then what it means for the user, then the core underlying logic.\n"
-    "- Put it in plain language -- make it as simple and easy to understand as possible, and reduce the user's cognitive cost while retaining the necessary professional details.\n"
+    "- Answer like a human: conclusion first, then what it means for the user, then the core "
+    "underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as possible, and "
+    "reduce the user's cognitive cost while retaining the necessary professional details.\n"
     "\n"
     "## 2. Available Tools\n"
     "tools available: md_file, read_file, grep_files\n"
@@ -95,7 +113,8 @@ static constexpr const char* DESIGNER_PROMPT_DEFAULT =
     "## 4. Workflow\n"
     "1. Read ALL relevant source files with `read_file` -- do not guess file contents.\n"
     "2. Use `grep_files` to trace callers/callees of key functions and understand data flow.\n"
-    "3. Pay special attention to: thread safety (mutex, atomic), resource lifecycle (new/delete, RAII), render paths, callback chains, and pointer ownership.\n"
+    "3. Pay special attention to: thread safety (mutex, atomic), resource lifecycle (new/delete, "
+    "RAII), render paths, callback chains, and pointer ownership.\n"
     "4. Draft the design document with `md_file(action=\"write\", ...)`.\n"
     "5. If the document exceeds 8KB, split into multiple `md_file` calls using `edit` to append.\n"
     "6. Stop and wait for user review. Do NOT proceed to implementation.\n"
@@ -113,7 +132,9 @@ static constexpr const char* COMPACTOR_PROMPT_DEFAULT =
     "- Keep the summary under 500 words.\n"
     "- Preserve exact file paths, error messages, and line numbers.\n"
     "- Do NOT fabricate information not present in the input.\n"
-    "- A message header may carry a \"[+N images]\" marker. That means the user attached N images; keep the fact that those images were part of the conversation in your summary (never invent what they showed).\n"
+    "- A message header may carry a \"[+N images]\" marker. That means the user attached N images; "
+    "keep the fact that those images were part of the conversation in your summary (never invent "
+    "what they showed).\n"
     "\n"
     "### Goal\n[What the user is trying to accomplish]\n\n"
     "### Constraints\n[User's explicit restrictions or requirements]\n\n"
@@ -132,16 +153,21 @@ static constexpr const char* PROMPT_DEFAULT_ANALYZER =
     "and produce analysis documents with supporting diagrams.\n"
     "\n"
     "## 1. Hard Rules\n"
-    "- Pure Markdown: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO Emoji.\n"
+    "- Pure Markdown: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO "
+    "Emoji.\n"
     "- Chinese for narrative; English for code, file paths, function names.\n"
     "- Be concrete: exact file paths, function signatures, line counts.\n"
     "- You CANNOT modify source files -- analysis ONLY.\n"
     "- Batch independent reads in the same turn.\n"
-    "- Get insight first: understand what the user actually wants to analyze. NO ITEM-BY-ITEM PATCHING.\n"
-    "- Confirm before acting when ambiguous: restate the goal + deliverable (discuss / plan / analysis doc + diagram) before writing.\n"
+    "- Get insight first: understand what the user actually wants to analyze. NO ITEM-BY-ITEM "
+    "PATCHING.\n"
+    "- Confirm before acting when ambiguous: restate the goal + deliverable (discuss / plan / "
+    "analysis doc + diagram) before writing.\n"
     "- Don't rush to write: scan and trace the data flow before drafting.\n"
-    "- Answer like a human: conclusion first, then what it means for the user, then the core underlying logic.\n"
-    "- Put it in plain language -- make it as simple and easy to understand as possible, and reduce the user's cognitive cost while retaining the necessary professional details.\n"
+    "- Answer like a human: conclusion first, then what it means for the user, then the core "
+    "underlying logic.\n"
+    "- Put it in plain language -- make it as simple and easy to understand as possible, and "
+    "reduce the user's cognitive cost while retaining the necessary professional details.\n"
     "\n"
     "## 2. Workflow\n"
     "1. **Scan:** `file_search` to discover files and directories.\n"
@@ -197,17 +223,16 @@ static std::string upgradeCoderText(std::string content) {
 }
 
 static std::string upgradeCompactorText(std::string content) {
-    static const std::string kAnchor =
-        "- Do NOT fabricate information not present in the input.";
+    static const std::string kAnchor = "- Do NOT fabricate information not present in the input.";
     static const std::string kMarker = "[+N images]";
     static const std::string kLine =
         "\n- A message header may carry a \"[+N images]\" marker: the user attached N "
         "images to that message. Keep the fact that those images were part of the "
         "conversation in your summary, and never invent what they showed.";
 
-    if (content.find(kMarker) != std::string::npos) return content;   // already done
+    if (content.find(kMarker) != std::string::npos) return content; // already done
     const size_t pos = content.find(kAnchor);
-    if (pos == std::string::npos) return content;                     // rewritten
+    if (pos == std::string::npos) return content; // rewritten
     content.insert(pos + kAnchor.size(), kLine);
     return content;
 }
@@ -221,9 +246,8 @@ static const char* kStyleOldYou =
 static const char* kStyleOldUser =
     "- Answer like a human: conclusion first, then what it means for the user; "
     "then expose the core logic.";
-static const char* kStyleOldBare =
-    "- Answer like a human: conclusion first, then what it means; "
-    "then expose the core logic.";
+static const char* kStyleOldBare = "- Answer like a human: conclusion first, then what it means; "
+                                   "then expose the core logic.";
 static const char* kStyleNew =
     "- Answer like a human: conclusion first, then what it means for the user, "
     "then the core underlying logic.\n"
@@ -233,8 +257,7 @@ static const char* kStyleNew =
 
 static std::string upgradeStyleText(std::string content) {
     // Idempotent: the second line only exists after the upgrade.
-    if (content.find("Put it in plain language") != std::string::npos)
-        return content;
+    if (content.find("Put it in plain language") != std::string::npos) return content;
 
     static const std::string olds[] = {kStyleOldYou, kStyleOldUser, kStyleOldBare};
     for (const auto& oldLine : olds) {
@@ -286,10 +309,10 @@ std::vector<std::string> ensureDefaultPrompts() {
         const char* content;
     };
     const Preset presets[] = {
-        {"coder.md",      PROMPT_DEFAULT_CODER},
-        {"designer.md",   DESIGNER_PROMPT_DEFAULT},
-        {"compactor.md",  COMPACTOR_PROMPT_DEFAULT},
-        {"analyzer.md",   PROMPT_DEFAULT_ANALYZER},
+        {"coder.md", PROMPT_DEFAULT_CODER},
+        {"designer.md", DESIGNER_PROMPT_DEFAULT},
+        {"compactor.md", COMPACTOR_PROMPT_DEFAULT},
+        {"analyzer.md", PROMPT_DEFAULT_ANALYZER},
     };
 
     for (auto& p : presets) {
@@ -298,8 +321,8 @@ std::vector<std::string> ensureDefaultPrompts() {
             std::ofstream ofs(path);
             if (ofs) {
                 ofs << p.content;
-                debugLogf("[Prompts] Created %s from built-in default (%zu chars)",
-                    p.filename, strlen(p.content));
+                debugLogf("[Prompts] Created %s from built-in default (%zu chars)", p.filename,
+                          strlen(p.content));
             }
         }
     }
@@ -320,8 +343,7 @@ std::vector<std::string> ensureDefaultPrompts() {
             if (name.size() >= 3) {
                 std::string ext = name.substr(name.size() - 3);
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-                if (ext == ".md")
-                    files.push_back(name);
+                if (ext == ".md") files.push_back(name);
             }
         }
     }

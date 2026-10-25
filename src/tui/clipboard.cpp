@@ -22,8 +22,7 @@ void setText(const std::string& text) {
         if (h) {
             void* p = GlobalLock(h);
             if (p) {
-                MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1,
-                                    static_cast<wchar_t*>(p), wlen);
+                MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, static_cast<wchar_t*>(p), wlen);
                 GlobalUnlock(h);
             }
             SetClipboardData(CF_UNICODETEXT, h);

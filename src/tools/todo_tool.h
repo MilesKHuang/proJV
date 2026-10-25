@@ -9,9 +9,9 @@ class ToolRegistry;
 // Holds the TODO list and overview history for the current session.
 // Points to Agent members so the tool can mutate agent state directly.
 struct TodoData {
-    std::string pendingTodo;                     // Current TODO markdown
-    std::vector<std::string> pendingBriefs;      // Briefs for current round
-    std::vector<std::string> overviewSummary;    // Permanent overview history
+    std::string pendingTodo;                  // Current TODO markdown
+    std::vector<std::string> pendingBriefs;   // Briefs for current round
+    std::vector<std::string> overviewSummary; // Permanent overview history
 
     // Latest user prompt (set by Agent::sendMessage before each API call).
     // Atomic snapshot -- only valid during the tool execution triggered by that sendMessage.

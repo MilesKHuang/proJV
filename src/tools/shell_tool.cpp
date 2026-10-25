@@ -12,16 +12,15 @@ static constexpr const char* TOOL_EXEC_SHELL_DESC_BASE =
 static constexpr const char* TOOL_EXEC_SHELL_DESC_FALLBACK =
     "Use for running programs, scripts, and diagnostics.";
 static constexpr const char* TOOL_PARAM_COMMAND = "The shell command to execute";
-static constexpr const char* TOOL_PARAM_STDIN =
-    "Optional: content to pipe to the command's stdin. "
-    "Use with PowerShell: powershell -Command \"$input | Set-Content -Path 'file.cpp' -Encoding UTF8\"";
+static constexpr const char* TOOL_PARAM_STDIN = "Optional: content to pipe to the command's stdin. "
+                                                "Use with PowerShell: powershell -Command \"$input "
+                                                "| Set-Content -Path 'file.cpp' -Encoding UTF8\"";
 static constexpr const char* TOOL_PARAM_TIMEOUT_MS =
     "Optional total timeout in milliseconds (default 1800000 = 30 min, hard cap 1800000 = 30 min). "
     "Pass a smaller value only to fail faster.";
 
 void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
-                       IProcessRunner* procRunner)
-{
+                       IProcessRunner* procRunner) {
     ToolDefinition def;
     def.name = "exec_shell";
     def.description = std::string(TOOL_EXEC_SHELL_DESC_BASE);
@@ -29,40 +28,37 @@ void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
         def.description += "Commands run inside the workspace directory: " + workspacePath;
     else
         def.description += TOOL_EXEC_SHELL_DESC_FALLBACK;
-    def.parameters = {
-        {"command", "string", TOOL_PARAM_COMMAND, true},
-        {"stdin", "string", TOOL_PARAM_STDIN, false},
-        {"timeout_ms", "number", TOOL_PARAM_TIMEOUT_MS, false}
-    };
+    def.parameters = {{"command", "string", TOOL_PARAM_COMMAND, true},
+                      {"stdin", "string", TOOL_PARAM_STDIN, false},
+                      {"timeout_ms", "number", TOOL_PARAM_TIMEOUT_MS, false}};
 
-    registry.registerTool(def, [&registry, workspacePath, procRunner](const std::string& args) -> std::string {
-        std::string cmd = extractStringArg(args, "command");
-        std::string stdinContent = extractStringArg(args, "stdin");
-        if (cmd.empty()) return "Error: Missing 'command' argument";
+    registry.registerTool(
+        def, [&registry, workspacePath, procRunner](const std::string& args) -> std::string {
+            std::string cmd = extractStringArg(args, "command");
+            std::string stdinContent = extractStringArg(args, "stdin");
+            if (cmd.empty()) return "Error: Missing 'command' argument";
 
-        int timeoutMs = extractIntArg(args, "timeout_ms", kProcessTimeoutMs);
-        if (timeoutMs <= 0) timeoutMs = kProcessTimeoutMs;
-        if (timeoutMs > kProcessTimeoutMs) timeoutMs = kProcessTimeoutMs;
+            int timeoutMs = extractIntArg(args, "timeout_ms", kProcessTimeoutMs);
+            if (timeoutMs <= 0) timeoutMs = kProcessTimeoutMs;
+            if (timeoutMs > kProcessTimeoutMs) timeoutMs = kProcessTimeoutMs;
 
-        ProcessConfig cfg;
-        cfg.command      = cmd;
-        cfg.workDir      = workspacePath;
-        cfg.stdinContent = stdinContent;
-        cfg.timeoutMs    = timeoutMs;
+            ProcessConfig cfg;
+            cfg.command = cmd;
+            cfg.workDir = workspacePath;
+            cfg.stdinContent = stdinContent;
+            cfg.timeoutMs = timeoutMs;
 
-        ProcessResult result = procRunner->Run(cfg);
+            ProcessResult result = procRunner->Run(cfg);
 
-        if (result.timedOut) {
-            std::string msg = "Error: exec_shell timed out after " +
-                              std::to_string(timeoutMs) + " ms";
-            if (!result.stdout_.empty())
-                msg += "\nPartial output:\n" + result.stdout_;
-            return msg;
-        }
-        if (result.cancelled) return "Error: exec_shell cancelled";
-        if (!result.stdout_.empty()) return result.stdout_;
-        if (result.exitCode != 0)
-            return "Exit code: " + std::to_string(result.exitCode);
-        return "";
-    });
+            if (result.timedOut) {
+                std::string msg =
+                    "Error: exec_shell timed out after " + std::to_string(timeoutMs) + " ms";
+                if (!result.stdout_.empty()) msg += "\nPartial output:\n" + result.stdout_;
+                return msg;
+            }
+            if (result.cancelled) return "Error: exec_shell cancelled";
+            if (!result.stdout_.empty()) return result.stdout_;
+            if (result.exitCode != 0) return "Exit code: " + std::to_string(result.exitCode);
+            return "";
+        });
 }

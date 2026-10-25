@@ -17,7 +17,7 @@
 namespace fs = std::filesystem;
 
 class SystemUtilLinux : public ISystemUtil {
-public:
+  public:
     std::string GetExeDir() override {
         char buf[4096] = {};
         ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -28,9 +28,7 @@ public:
         return fs::current_path().string();
     }
 
-    std::string GetUserConfigDir() override {
-        return GetExeDir() + "/projv_files";
-    }
+    std::string GetUserConfigDir() override { return GetExeDir() + "/projv_files"; }
 
     std::string GetSystemFontPath(const std::string& fontName) override {
         // 1. Try bundled font
@@ -38,15 +36,13 @@ public:
         if (fs::exists(bundled)) return bundled;
 
         // 2. Try common system CJK font paths
-        static const char* paths[] = {
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-            nullptr
-        };
+        static const char* paths[] = {"/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                                      "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                                      "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                                      "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                                      "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                                      "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+                                      nullptr};
         for (const char** p = paths; *p; ++p) {
             if (fs::exists(*p)) return *p;
         }
@@ -75,9 +71,7 @@ public:
         sigaction(SIGTERM, &sa, nullptr);
     }
 
-    std::string GetPathSeparator() override {
-        return "/";
-    }
+    std::string GetPathSeparator() override { return "/"; }
 
     void OpenUrl(const std::string& url) override {
         pid_t pid = fork();
@@ -87,10 +81,10 @@ public:
         }
     }
 
-private:
+  private:
     static SystemUtilLinux* prevHandler_;
-    static std::mutex       crashMutex_;
-    std::function<void()>   exitCallback_;
+    static std::mutex crashMutex_;
+    std::function<void()> exitCallback_;
 
     static void ExitAction(int sig) {
         (void)sig;
@@ -109,7 +103,8 @@ private:
         std::ofstream log(logPath, std::ios::app);
         if (log.is_open()) {
             auto t = std::time(nullptr);
-            char tb[64]; struct tm local;
+            char tb[64];
+            struct tm local;
             localtime_r(&t, &local);
             strftime(tb, sizeof(tb), "%Y-%m-%d %H:%M:%S", &local);
 
@@ -132,7 +127,9 @@ private:
 };
 
 SystemUtilLinux* SystemUtilLinux::prevHandler_ = nullptr;
-std::mutex       SystemUtilLinux::crashMutex_;
+std::mutex SystemUtilLinux::crashMutex_;
 
-ISystemUtil* CreateSystemUtil() { return new SystemUtilLinux(); }
+ISystemUtil* CreateSystemUtil() {
+    return new SystemUtilLinux();
+}
 #endif

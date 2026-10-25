@@ -11,14 +11,14 @@ namespace skill_trigger {
 
 struct Result {
     enum class Kind {
-        None,     // ordinary message -- fall through
-        List,     // "/skill" or "/skill list" -> print the installed skills
-        Trigger   // "/<installed skill> <topic>" -> run it
+        None,   // ordinary message -- fall through
+        List,   // "/skill" or "/skill list" -> print the installed skills
+        Trigger // "/<installed skill> <topic>" -> run it
     };
 
     Kind kind = Kind::None;
-    std::string name;    // canonical installed folder name (Trigger only)
-    std::string topic;   // text after the skill name, trimmed (Trigger only)
+    std::string name;  // canonical installed folder name (Trigger only)
+    std::string topic; // text after the skill name, trimmed (Trigger only)
 };
 
 // True for commands that keep their meaning even when a skill folder shadows

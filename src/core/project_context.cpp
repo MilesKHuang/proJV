@@ -33,20 +33,32 @@ std::string buildProjectContext(const std::string& workspacePath) {
     if (!fs::is_directory(root, ec) || ec) return "";
 
     static const std::vector<std::string> skipDirs = {
-        ".git", ".vs", ".vscode", ".idea",
-        "build", "Debug", "Release", "x64", "x86",
-        "bin", "bin64", "obj", "out", "target",
-        "node_modules", "packages", "vendor", "external",
-        "__pycache__", ".pytest_cache", ".mypy_cache",
-        "nix", "deploy", "integrations", "fuzzing",
-        "docs", "examples", "tests", "test", ".github"
-    };
+        ".git",        ".vs",           ".vscode",      ".idea",    "build",  "Debug",
+        "Release",     "x64",           "x86",          "bin",      "bin64",  "obj",
+        "out",         "target",        "node_modules", "packages", "vendor", "external",
+        "__pycache__", ".pytest_cache", ".mypy_cache",  "nix",      "deploy", "integrations",
+        "fuzzing",     "docs",          "examples",     "tests",    "test",   ".github"};
 
-    static const std::vector<std::string> srcExts = {
-        ".cpp", ".c", ".h", ".hpp", ".rs", ".py", ".go", ".ts", ".js",
-        ".toml", ".json", ".yaml", ".yml", ".cmake", ".txt", ".md",
-        "CMakeLists.txt", "Makefile", "Cargo.toml", "package.json"
-    };
+    static const std::vector<std::string> srcExts = {".cpp",
+                                                     ".c",
+                                                     ".h",
+                                                     ".hpp",
+                                                     ".rs",
+                                                     ".py",
+                                                     ".go",
+                                                     ".ts",
+                                                     ".js",
+                                                     ".toml",
+                                                     ".json",
+                                                     ".yaml",
+                                                     ".yml",
+                                                     ".cmake",
+                                                     ".txt",
+                                                     ".md",
+                                                     "CMakeLists.txt",
+                                                     "Makefile",
+                                                     "Cargo.toml",
+                                                     "package.json"};
 
     auto shouldSkip = [](const std::string& name) -> bool {
         if (name.empty() || name[0] == '.') return true;
@@ -72,15 +84,18 @@ std::string buildProjectContext(const std::string& workspacePath) {
     std::vector<fs::directory_entry> topEntries;
     for (const auto& entry : fs::directory_iterator(root, ec)) {
         topEntries.push_back(entry);
-        if (ec) { ec.clear(); continue; }
+        if (ec) {
+            ec.clear();
+            continue;
+        }
     }
     std::sort(topEntries.begin(), topEntries.end(),
-        [](const fs::directory_entry& a, const fs::directory_entry& b) {
-            bool aDir = a.is_directory();
-            bool bDir = b.is_directory();
-            if (aDir != bDir) return aDir > bDir;
-            return a.path().filename().string() < b.path().filename().string();
-        });
+              [](const fs::directory_entry& a, const fs::directory_entry& b) {
+                  bool aDir = a.is_directory();
+                  bool bDir = b.is_directory();
+                  if (aDir != bDir) return aDir > bDir;
+                  return a.path().filename().string() < b.path().filename().string();
+              });
 
     size_t totalChars = out.str().size();
     const size_t MAX_CHARS = 4500;
@@ -93,46 +108,67 @@ std::string buildProjectContext(const std::string& workspacePath) {
         if (shouldSkip(name)) continue;
 
         if (entry.is_directory(ec)) {
-            if (ec) { ec.clear(); continue; }
+            if (ec) {
+                ec.clear();
+                continue;
+            }
             ++dirsListed;
             out << "  " << name << "/\n";
 
             int subCount = 0;
             for (const auto& sub : fs::directory_iterator(entry.path(), ec)) {
-                if (ec) { ec.clear(); break; }
+                if (ec) {
+                    ec.clear();
+                    break;
+                }
                 if (totalChars > MAX_CHARS || subCount > 40) break;
 
                 auto subName = sub.path().filename().string();
                 if (shouldSkip(subName)) continue;
 
                 if (sub.is_directory(ec)) {
-                    if (ec) { ec.clear(); continue; }
+                    if (ec) {
+                        ec.clear();
+                        continue;
+                    }
                     out << "    " << subName << "/\n";
                     ++subCount;
                     totalChars = out.str().size();
 
                     int fileCount = 0;
                     for (const auto& f : fs::directory_iterator(sub.path(), ec)) {
-                        if (ec) { ec.clear(); break; }
+                        if (ec) {
+                            ec.clear();
+                            break;
+                        }
                         if (totalChars > MAX_CHARS || fileCount > 30) break;
 
                         auto fName = f.path().filename().string();
                         if (f.is_regular_file(ec) && isSrcFile(fName)) {
-                            if (ec) { ec.clear(); continue; }
+                            if (ec) {
+                                ec.clear();
+                                continue;
+                            }
                             out << "      " << fName << "\n";
                             ++fileCount;
                             totalChars = out.str().size();
                         }
                     }
                 } else if (sub.is_regular_file(ec) && isSrcFile(subName)) {
-                    if (ec) { ec.clear(); continue; }
+                    if (ec) {
+                        ec.clear();
+                        continue;
+                    }
                     out << "    " << subName << "\n";
                     ++subCount;
                     totalChars = out.str().size();
                 }
             }
         } else if (entry.is_regular_file(ec) && isSrcFile(name)) {
-            if (ec) { ec.clear(); continue; }
+            if (ec) {
+                ec.clear();
+                continue;
+            }
             out << "  " << name << "\n";
             totalChars = out.str().size();
         }

@@ -10,8 +10,14 @@ namespace {
 
 std::string fmtNum(int n) {
     char b[32];
-    if (n >= 1000000) { snprintf(b, sizeof(b), "%.2fM", n / 1000000.0); return b; }
-    if (n >= 1000)    { snprintf(b, sizeof(b), "%.2fK", n / 1000.0); return b; }
+    if (n >= 1000000) {
+        snprintf(b, sizeof(b), "%.2fM", n / 1000000.0);
+        return b;
+    }
+    if (n >= 1000) {
+        snprintf(b, sizeof(b), "%.2fK", n / 1000.0);
+        return b;
+    }
     snprintf(b, sizeof(b), "%d", n);
     return b;
 }
@@ -32,17 +38,25 @@ std::vector<Segment> renderSegments(const Data& d) {
 
     if (d.status.state == AgentState::Thinking) {
         std::string name = "LOW";
-        std::string ThemeColors::* ctxColor = &ThemeColors::statusCtxLow;
+        std::string ThemeColors::*ctxColor = &ThemeColors::statusCtxLow;
         switch (d.pressure) {
-            case Session::PressureLevel::High:
-                name = "HIGH"; ctxColor = &ThemeColors::statusCtxHigh; break;
-            case Session::PressureLevel::Critical:
-                name = "CRITICAL"; ctxColor = &ThemeColors::statusCtxCritical; break;
-            case Session::PressureLevel::Medium:
-                name = "MEDIUM"; ctxColor = &ThemeColors::statusCtxMedium; break;
-            case Session::PressureLevel::Low:
-            default:
-                name = "LOW"; ctxColor = &ThemeColors::statusCtxLow; break;
+        case Session::PressureLevel::High:
+            name = "HIGH";
+            ctxColor = &ThemeColors::statusCtxHigh;
+            break;
+        case Session::PressureLevel::Critical:
+            name = "CRITICAL";
+            ctxColor = &ThemeColors::statusCtxCritical;
+            break;
+        case Session::PressureLevel::Medium:
+            name = "MEDIUM";
+            ctxColor = &ThemeColors::statusCtxMedium;
+            break;
+        case Session::PressureLevel::Low:
+        default:
+            name = "LOW";
+            ctxColor = &ThemeColors::statusCtxLow;
+            break;
         }
         segs.push_back({" ctx: " + name, ctxColor});
         if (d.windowTokens > 0) {
@@ -53,9 +67,9 @@ std::vector<Segment> renderSegments(const Data& d) {
 
     if (d.status.state == AgentState::ExecutingTool) {
         segs.push_back({" running: " + d.status.currentToolName + " (" +
-            std::to_string(d.status.toolProgressCurrent) + "/" +
-            std::to_string(d.status.toolProgressTotal) + ")",
-            &ThemeColors::statusRunning});
+                            std::to_string(d.status.toolProgressCurrent) + "/" +
+                            std::to_string(d.status.toolProgressTotal) + ")",
+                        &ThemeColors::statusRunning});
     } else if (d.status.state == AgentState::AwaitingApproval) {
         segs.push_back({" awaiting approval", &ThemeColors::statusAwaiting});
     } else if (d.status.state == AgentState::Error) {
@@ -76,7 +90,8 @@ std::vector<Segment> renderSegments(const Data& d) {
 
 std::string render(const Data& d) {
     std::string s;
-    for (const auto& seg : renderSegments(d)) s += seg.text;
+    for (const auto& seg : renderSegments(d))
+        s += seg.text;
     return s;
 }
 

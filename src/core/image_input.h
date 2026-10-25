@@ -20,10 +20,10 @@
 namespace image_input {
 
 // Hard limits from the DeepSeek vision docs, with a conservative product cap.
-inline constexpr size_t kMaxImagesPerMessage   = 8;                    // global per message
-inline constexpr size_t kMaxImageBytes         = 30ull * 1024 * 1024;  // 30 MiB per file
-inline constexpr size_t kMaxTotalEncodedBytes  = 44ull * 1024 * 1024;  // 44 MiB encoded
-inline constexpr int    kImageTokens           = 1024;                 // per image, upper bound
+inline constexpr size_t kMaxImagesPerMessage = 8;                    // global per message
+inline constexpr size_t kMaxImageBytes = 30ull * 1024 * 1024;        // 30 MiB per file
+inline constexpr size_t kMaxTotalEncodedBytes = 44ull * 1024 * 1024; // 44 MiB encoded
+inline constexpr int kImageTokens = 1024;                            // per image, upper bound
 
 struct ParseResult {
     std::string text;                    // markers stripped, then trimmed
@@ -39,6 +39,8 @@ struct ParseResult {
 ParseResult parseMarkers(const std::string& text, const std::string& workspacePath);
 
 // Tokens to charge for a message's attachments (context-pressure accounting).
-inline size_t imageTokens(size_t count) { return count * kImageTokens; }
+inline size_t imageTokens(size_t count) {
+    return count * kImageTokens;
+}
 
 } // namespace image_input

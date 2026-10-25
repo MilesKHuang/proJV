@@ -12,25 +12,25 @@
 constexpr int kProcessTimeoutMs = 1800000; // 30 minutes
 
 struct ProcessConfig {
-    std::string command;            // shell command to execute
-    std::string workDir;            // working directory (empty = inherit)
-    std::string stdinContent;       // optional stdin data
-    int         timeoutMs = 0;      // total wall-clock timeout; 0 = no timeout
-    int         idleTimeoutMs = 0;  // max silence between output; 0 = disabled
-    bool        inheritEnv = true;  // inherit parent environment
+    std::string command;      // shell command to execute
+    std::string workDir;      // working directory (empty = inherit)
+    std::string stdinContent; // optional stdin data
+    int timeoutMs = 0;        // total wall-clock timeout; 0 = no timeout
+    int idleTimeoutMs = 0;    // max silence between output; 0 = disabled
+    bool inheritEnv = true;   // inherit parent environment
     std::map<std::string, std::string> extraEnv;
 };
 
 struct ProcessResult {
     std::string stdout_;
     std::string stderr_;
-    int         exitCode  = 0;
-    bool        timedOut  = false;
-    bool        cancelled = false;
+    int exitCode = 0;
+    bool timedOut = false;
+    bool cancelled = false;
 };
 
 class IProcessRunner {
-public:
+  public:
     virtual ~IProcessRunner() = default;
 
     // Synchronous: blocks until process exits, times out, or is cancelled.

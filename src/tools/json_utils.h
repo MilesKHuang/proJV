@@ -10,12 +10,14 @@ inline std::string extractStringArg(const std::string& json, const std::string& 
         if (j.contains(key) && j[key].is_string()) {
             return j[key].get<std::string>();
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return "";
 }
 
 // Extract a string value with an optional default.
-inline std::string extractStringArg(const std::string& json, const std::string& key, const std::string& fallback) {
+inline std::string extractStringArg(const std::string& json, const std::string& key,
+                                    const std::string& fallback) {
     std::string val = extractStringArg(json, key);
     return val.empty() ? fallback : val;
 }
@@ -27,7 +29,8 @@ inline bool extractBoolArg(const std::string& json, const std::string& key, bool
         if (j.contains(key) && j[key].is_boolean()) {
             return j[key].get<bool>();
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return fallback;
 }
 
@@ -38,6 +41,7 @@ inline int extractIntArg(const std::string& json, const std::string& key, int fa
         if (j.contains(key) && j[key].is_number_integer()) {
             return j[key].get<int>();
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return fallback;
 }

@@ -136,9 +136,9 @@ TEST_CASE("markdown: table column alignment") {
     auto lines = parseMarkdown("| A | B | C |\n|:---|---:|:---:|\n| 1 | 2 | 3 |");
     REQUIRE(lines.size() == 2);
     REQUIRE(lines[0].tableAlign.size() == 3);
-    CHECK(lines[0].tableAlign[0] == 0);  // left
-    CHECK(lines[0].tableAlign[1] == 2);  // right
-    CHECK(lines[0].tableAlign[2] == 1);  // center
+    CHECK(lines[0].tableAlign[0] == 0); // left
+    CHECK(lines[0].tableAlign[1] == 2); // right
+    CHECK(lines[0].tableAlign[2] == 1); // center
 }
 
 TEST_CASE("markdown: table followed by paragraph") {
@@ -166,7 +166,7 @@ TEST_CASE("markdown: two tables separated by blank line") {
     CHECK(lines[0].segs[0].text == "A");
     CHECK(lines[1].segs[0].style == Style::TableCell);
     CHECK(lines[1].segs[0].text == "1");
-    CHECK(lines[2].segs.empty());  // blank line between tables
+    CHECK(lines[2].segs.empty()); // blank line between tables
     CHECK(lines[3].segs[0].style == Style::TableHeader);
     CHECK(lines[3].segs[0].text == "B");
     CHECK(lines[4].segs[0].style == Style::TableCell);
@@ -174,8 +174,8 @@ TEST_CASE("markdown: two tables separated by blank line") {
 }
 
 TEST_CASE("markdown: table cells with inline styles keep one entry per cell") {
-    auto lines = parseMarkdown(
-        "| 名称 | 描述 |\n|---|---|\n| 工具 | 使用 `tool.json` + `main.py` |");
+    auto lines =
+        parseMarkdown("| 名称 | 描述 |\n|---|---|\n| 工具 | 使用 `tool.json` + `main.py` |");
     REQUIRE(lines.size() == 2);
 
     // Header: 2 cells.
@@ -187,8 +187,9 @@ TEST_CASE("markdown: table cells with inline styles keep one entry per cell") {
     // inline `code` segments (several inline segs, ONE cell).
     REQUIRE(lines[1].cells.size() == 2);
     CHECK(lines[1].cells[0][0].text == "工具");
-    REQUIRE(lines[1].cells[1].size() >= 3);  // text + code + text + code + text
+    REQUIRE(lines[1].cells[1].size() >= 3); // text + code + text + code + text
     std::string joined;
-    for (const auto& sg : lines[1].cells[1]) joined += sg.text;
+    for (const auto& sg : lines[1].cells[1])
+        joined += sg.text;
     CHECK(joined == "使用 tool.json + main.py");
 }

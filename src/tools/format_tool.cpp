@@ -54,7 +54,8 @@ int diffLines(const std::string& a, const std::string& b) {
     const std::vector<std::string> y = splitLines(b);
     const size_t common = std::min(x.size(), y.size());
     int n = 0;
-    for (size_t i = 0; i < common; ++i) if (x[i] != y[i]) ++n;
+    for (size_t i = 0; i < common; ++i)
+        if (x[i] != y[i]) ++n;
     n += static_cast<int>(x.size() > y.size() ? x.size() - y.size() : y.size() - x.size());
     return n;
 }
@@ -78,7 +79,9 @@ bool findClangFormatConfig(const fs::path& filePath, const fs::path& workspace) 
     return false;
 }
 
-std::string quotePath(const std::string& p) { return "\"" + p + "\""; }
+std::string quotePath(const std::string& p) {
+    return "\"" + p + "\"";
+}
 
 // Safe text cleanup only: no re-indent, no re-wrap, no semantic change.
 // - leading tabs expand to 4 spaces (indent only; inner tabs left alone)
@@ -91,7 +94,8 @@ std::string normalizeWhitespace(const std::string& in) {
     const std::string eol = crlf ? "\r\n" : "\n";
 
     std::vector<std::string> lines = splitLines(in);
-    while (!lines.empty() && lines.back().empty()) lines.pop_back();   // trailing blank lines
+    while (!lines.empty() && lines.back().empty())
+        lines.pop_back(); // trailing blank lines
 
     std::ostringstream out;
     for (size_t i = 0; i < lines.size(); ++i) {
@@ -100,12 +104,15 @@ std::string normalizeWhitespace(const std::string& in) {
         fixed.reserve(s.size() + 8);
         size_t k = 0;
         while (k < s.size() && (s[k] == ' ' || s[k] == '\t')) {
-            if (s[k] == '\t') fixed.append(kWhitespaceTabWidth, ' ');
-            else fixed.push_back(' ');
+            if (s[k] == '\t')
+                fixed.append(kWhitespaceTabWidth, ' ');
+            else
+                fixed.push_back(' ');
             ++k;
         }
         fixed += s.substr(k);
-        while (!fixed.empty() && (fixed.back() == ' ' || fixed.back() == '\t')) fixed.pop_back();
+        while (!fixed.empty() && (fixed.back() == ' ' || fixed.back() == '\t'))
+            fixed.pop_back();
         out << fixed;
         if (i + 1 < lines.size()) out << eol;
     }
@@ -128,95 +135,95 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
         "-> 4 spaces, trailing whitespace removed, exactly one final newline, line endings "
         "preserved. Reports how many lines changed. Never changes code semantics. Prefer "
         "edit_file for logic edits; use this for formatting only.";
-    def.parameters = {
-        {"path", "string", "File to format", true},
-        {"mode", "string", "'clang' (default) or 'whitespace'", false},
-        {"style", "string", "clang mode only: -style value (default: nearest .clang-format, else LLVM)", false}
-    };
+    def.parameters = {{"path", "string", "File to format", true},
+                      {"mode", "string", "'clang' (default) or 'whitespace'", false},
+                      {"style", "string",
+                       "clang mode only: -style value (default: nearest .clang-format, else LLVM)",
+                       false}};
 
-    registry.registerTool(def, [workspacePath, procRunner, clangFormatPath](
-                                   const std::string& args) -> std::string {
-        const std::string path = extractStringArg(args, "path");
-        if (path.empty()) return "Error: Missing required 'path' argument for format_file.";
+    registry.registerTool(
+        def, [workspacePath, procRunner, clangFormatPath](const std::string& args) -> std::string {
+            const std::string path = extractStringArg(args, "path");
+            if (path.empty()) return "Error: Missing required 'path' argument for format_file.";
 
-        std::string resolved;
-        const std::string err = validateToolPath(path, workspacePath, resolved);
-        if (!err.empty()) return err;
+            std::string resolved;
+            const std::string err = validateToolPath(path, workspacePath, resolved);
+            if (!err.empty()) return err;
 
-        std::error_code ec;
-        if (!fs::is_regular_file(resolved, ec)) return "Error: Not a file: " + resolved;
+            std::error_code ec;
+            if (!fs::is_regular_file(resolved, ec)) return "Error: Not a file: " + resolved;
 
-        const std::string mode = lower(extractStringArg(args, "mode", "clang"));
+            const std::string mode = lower(extractStringArg(args, "mode", "clang"));
 
-        std::string before;
-        if (!readWholeFile(resolved, before)) return "Error: Cannot read: " + resolved;
+            std::string before;
+            if (!readWholeFile(resolved, before)) return "Error: Cannot read: " + resolved;
 
-        if (mode == "whitespace") {
-            const std::string after = normalizeWhitespace(before);
-            if (after == before)
-                return "No changes: " + resolved + " (whitespace already clean)";
-            std::ofstream ofs(resolved, std::ios::binary | std::ios::trunc);
-            if (!ofs) return "Error: Cannot write: " + resolved;
-            ofs << after;
+            if (mode == "whitespace") {
+                const std::string after = normalizeWhitespace(before);
+                if (after == before)
+                    return "No changes: " + resolved + " (whitespace already clean)";
+                std::ofstream ofs(resolved, std::ios::binary | std::ios::trunc);
+                if (!ofs) return "Error: Cannot write: " + resolved;
+                ofs << after;
+                const int changed = diffLines(before, after);
+                return "Formatted (whitespace): " + resolved + " - " + std::to_string(changed) +
+                       " line(s) changed";
+            }
+
+            if (mode != "clang")
+                return "Error: Unknown mode '" + mode + "'. Use \"clang\" or \"whitespace\".";
+
+            if (!procRunner)
+                return "Error: No process runner available; use mode=\"whitespace\" instead.";
+
+            const std::string exe =
+                clangFormatPath.empty() ? std::string("clang-format") : clangFormatPath;
+            std::string styleArg;
+            const std::string style = extractStringArg(args, "style");
+            if (!style.empty()) {
+                styleArg = " -style=" + style;
+            } else if (findClangFormatConfig(fs::path(resolved), fs::path(workspacePath))) {
+                styleArg = " -style=file";
+            } else {
+                // No .clang-format anywhere above the file. Falling back to LLVM here
+                // would silently restyle the whole project (2-space indent, joined
+                // 2-space blocks); measured on this repo that is ~35% of all lines.
+                // Refuse, and say what the options are.
+                return "Error: no .clang-format found above " + resolved +
+                       ". Add one, pass style=\"LLVM\" (or another style) explicitly, "
+                       "or call format_file with mode=\"whitespace\".";
+            }
+
+            ProcessConfig cfg;
+            cfg.command = quotePath(exe) + " -i" + styleArg + " " + quotePath(resolved);
+            cfg.workDir = workspacePath;
+            cfg.timeoutMs = kFormatTimeoutMs;
+            cfg.idleTimeoutMs = 0; // clang-format is silent; no idle cutoff
+
+            const ProcessResult r = procRunner->Run(cfg);
+            if (r.cancelled) return "Error: clang-format cancelled";
+            if (r.timedOut) return "Error: clang-format timed out after 30s";
+            if (r.exitCode != 0) {
+                std::string detail = r.stderr_.empty() ? r.stdout_ : r.stderr_;
+                const std::string low = lower(detail);
+                const bool missing = detail.empty() ||
+                                     low.find("not recognized") != std::string::npos ||
+                                     low.find("not found") != std::string::npos ||
+                                     low.find("no such file") != std::string::npos;
+                if (missing)
+                    return "Error: clang-format not found ('" + exe +
+                           "'). Install it, set "
+                           "clang_format_path in config.toml, or call format_file with "
+                           "mode=\"whitespace\".";
+                if (detail.size() > 400) detail.resize(400);
+                return "Error: clang-format failed on " + resolved + ": " + detail;
+            }
+
+            std::string after;
+            if (!readWholeFile(resolved, after)) return "Error: Cannot read back: " + resolved;
+            if (after == before) return "No changes: " + resolved + " (already formatted)";
             const int changed = diffLines(before, after);
-            return "Formatted (whitespace): " + resolved + " - " +
-                   std::to_string(changed) + " line(s) changed";
-        }
-
-        if (mode != "clang")
-            return "Error: Unknown mode '" + mode + "'. Use \"clang\" or \"whitespace\".";
-
-        if (!procRunner)
-            return "Error: No process runner available; use mode=\"whitespace\" instead.";
-
-        const std::string exe = clangFormatPath.empty() ? std::string("clang-format")
-                                                         : clangFormatPath;
-        std::string styleArg;
-        const std::string style = extractStringArg(args, "style");
-        if (!style.empty()) {
-            styleArg = " -style=" + style;
-        } else if (findClangFormatConfig(fs::path(resolved), fs::path(workspacePath))) {
-            styleArg = " -style=file";
-        } else {
-            // No .clang-format anywhere above the file. Falling back to LLVM here
-            // would silently restyle the whole project (2-space indent, joined
-            // 2-space blocks); measured on this repo that is ~35% of all lines.
-            // Refuse, and say what the options are.
-            return "Error: no .clang-format found above " + resolved +
-                   ". Add one, pass style=\"LLVM\" (or another style) explicitly, "
-                   "or call format_file with mode=\"whitespace\".";
-        }
-
-        ProcessConfig cfg;
-        cfg.command = quotePath(exe) + " -i" + styleArg + " " + quotePath(resolved);
-        cfg.workDir = workspacePath;
-        cfg.timeoutMs = kFormatTimeoutMs;
-        cfg.idleTimeoutMs = 0;   // clang-format is silent; no idle cutoff
-
-        const ProcessResult r = procRunner->Run(cfg);
-        if (r.cancelled) return "Error: clang-format cancelled";
-        if (r.timedOut) return "Error: clang-format timed out after 30s";
-        if (r.exitCode != 0) {
-            std::string detail = r.stderr_.empty() ? r.stdout_ : r.stderr_;
-            const std::string low = lower(detail);
-            const bool missing = detail.empty() ||
-                low.find("not recognized") != std::string::npos ||
-                low.find("not found") != std::string::npos ||
-                low.find("no such file") != std::string::npos;
-            if (missing)
-                return "Error: clang-format not found ('" + exe + "'). Install it, set "
-                       "clang_format_path in config.toml, or call format_file with "
-                       "mode=\"whitespace\".";
-            if (detail.size() > 400) detail.resize(400);
-            return "Error: clang-format failed on " + resolved + ": " + detail;
-        }
-
-        std::string after;
-        if (!readWholeFile(resolved, after)) return "Error: Cannot read back: " + resolved;
-        if (after == before)
-            return "No changes: " + resolved + " (already formatted)";
-        const int changed = diffLines(before, after);
-        return "Formatted (clang-format): " + resolved + " - " +
-               std::to_string(changed) + " line(s) changed";
-    });
+            return "Formatted (clang-format): " + resolved + " - " + std::to_string(changed) +
+                   " line(s) changed";
+        });
 }

@@ -20,21 +20,27 @@ namespace {
 std::vector<std::string> strArr(const nlohmann::json& j, const char* key) {
     std::vector<std::string> out;
     if (j.contains(key) && j[key].is_array())
-        for (const auto& v : j[key]) if (v.is_string()) out.push_back(v.get<std::string>());
+        for (const auto& v : j[key])
+            if (v.is_string()) out.push_back(v.get<std::string>());
     return out;
 }
 
 std::string toLower(std::string s) {
-    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (auto& c : s)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return s;
 }
 
 // True when `v` is one of the allowed literals. Reports the legal set on miss.
 bool checkEnum(const std::string& key, const std::string& v,
                std::initializer_list<const char*> allowed, std::string& err) {
-    for (const char* a : allowed) if (v == a) return true;
+    for (const char* a : allowed)
+        if (v == a) return true;
     std::string list;
-    for (const char* a : allowed) { if (!list.empty()) list += " | "; list += std::string("\"") + a + "\""; }
+    for (const char* a : allowed) {
+        if (!list.empty()) list += " | ";
+        list += std::string("\"") + a + "\"";
+    }
     err = "invalid '" + key + "' value \"" + v + "\" (allowed: " + list + ")";
     return false;
 }
@@ -42,7 +48,8 @@ bool checkEnum(const std::string& key, const std::string& v,
 size_t editDistance(const std::string& a, const std::string& b) {
     const size_t n = a.size(), m = b.size();
     std::vector<size_t> prev(m + 1), cur(m + 1);
-    for (size_t j = 0; j <= m; ++j) prev[j] = j;
+    for (size_t j = 0; j <= m; ++j)
+        prev[j] = j;
     for (size_t i = 1; i <= n; ++i) {
         cur[0] = i;
         for (size_t j = 1; j <= m; ++j) {
@@ -64,9 +71,15 @@ void warnUnknownKeys(const nlohmann::json& j, const std::vector<std::string>& kn
         std::string best;
         size_t bestDist = std::string::npos;
         for (const auto& k : known) {
-            if (k == key) { ok = true; break; }
+            if (k == key) {
+                ok = true;
+                break;
+            }
             const size_t d = editDistance(toLower(key), toLower(k));
-            if (d < bestDist) { bestDist = d; best = k; }
+            if (d < bestDist) {
+                bestDist = d;
+                best = k;
+            }
         }
         if (ok) continue;
         std::string msg = "unknown key '" + prefix + key + "'";
@@ -83,8 +96,8 @@ void warnUnknownKeys(const nlohmann::json& j, const std::vector<std::string>& kn
 // never reach the database or the (release-stripped) loguru output -- which made
 // it impossible to answer "how many calls did worker_3 actually spend?" after a
 // run. Cheap, always on, thread-safe; parse it with awk or pandas.
-static void appendSkillMetric(const std::string& agent, const std::string& verb,
-                              int iters, size_t resultLen, bool wasReport) {
+static void appendSkillMetric(const std::string& agent, const std::string& verb, int iters,
+                              size_t resultLen, bool wasReport) {
     static std::mutex mtx;
     std::lock_guard<std::mutex> lk(mtx);
     std::error_code ec;
@@ -103,10 +116,16 @@ static void appendSkillMetric(const std::string& agent, const std::string& verb,
 // ---- SkillConfig::loadFromJson -------------------------------------------
 bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::string& err) {
     std::ifstream ifs(path);
-    if (!ifs) { err = "cannot open skill config: " + path; return false; }
+    if (!ifs) {
+        err = "cannot open skill config: " + path;
+        return false;
+    }
     nlohmann::json j;
-    try { ifs >> j; } catch (const std::exception& e) {
-        err = std::string("parse error: ") + e.what(); return false;
+    try {
+        ifs >> j;
+    } catch (const std::exception& e) {
+        err = std::string("parse error: ") + e.what();
+        return false;
     }
     try {
         out.name = j.value("name", std::string(""));
@@ -128,8 +147,14 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         if (!checkEnum("tool_mode", out.toolMode, {"verb", "auto"}, err)) return false;
         if (!checkEnum("converge", out.converge, {"none", "all_agree"}, err)) return false;
         if (!checkEnum("thinking", out.thinking, {"on", "off"}, err)) return false;
-        if (out.maxRounds < 1) { err = "max_rounds must be >= 1"; return false; }
-        if (out.maxToolIters < 1) { err = "max_tool_iters must be >= 1"; return false; }
+        if (out.maxRounds < 1) {
+            err = "max_rounds must be >= 1";
+            return false;
+        }
+        if (out.maxToolIters < 1) {
+            err = "max_tool_iters must be >= 1";
+            return false;
+        }
         if (out.submitReserve < 0 || out.submitReserve >= out.maxToolIters) {
             err = "submit_reserve must be >= 0 and < max_tool_iters (got " +
                   std::to_string(out.submitReserve) + " with max_tool_iters " +
@@ -137,8 +162,8 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
             return false;
         }
         if (out.maxParallel < 1 || out.maxParallel > 64) {
-            err = "max_parallel must be between 1 and 64 (got " +
-                  std::to_string(out.maxParallel) + ")";
+            err = "max_parallel must be between 1 and 64 (got " + std::to_string(out.maxParallel) +
+                  ")";
             return false;
         }
 
@@ -147,7 +172,8 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
             out.stopWhenValue = j["stop_when"].value("equals", std::string(""));
         }
         if (j.contains("tools") && j["tools"].is_array())
-            for (const auto& t : j["tools"]) if (t.is_string()) out.tools.push_back(t.get<std::string>());
+            for (const auto& t : j["tools"])
+                if (t.is_string()) out.tools.push_back(t.get<std::string>());
         if (j.contains("agents") && j["agents"].is_array())
             for (const auto& a : j["agents"]) {
                 SkillAgent ag;
@@ -156,8 +182,12 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
                 ag.promptFile = a.value("prompt", std::string(""));
                 ag.thinking = a.value("thinking", std::string(""));
                 if (!ag.thinking.empty() &&
-                    !checkEnum("agents[].thinking", ag.thinking, {"on", "off"}, err)) return false;
-                if (ag.id.empty()) { err = "every agent needs an 'id'"; return false; }
+                    !checkEnum("agents[].thinking", ag.thinking, {"on", "off"}, err))
+                    return false;
+                if (ag.id.empty()) {
+                    err = "every agent needs an 'id'";
+                    return false;
+                }
                 warnUnknownKeys(a, {"id", "display_name", "prompt", "thinking"},
                                 "agents." + ag.id + ".", out.warnings);
                 out.agents.push_back(ag);
@@ -184,13 +214,16 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
                         ac.emit = a.value("emit", std::string(""));
                         if (a.contains("vars") && a["vars"].is_object())
                             for (auto it = a["vars"].begin(); it != a["vars"].end(); ++it)
-                                if (it.value().is_string()) ac.vars[it.key()] = it.value().get<std::string>();
+                                if (it.value().is_string())
+                                    ac.vars[it.key()] = it.value().get<std::string>();
                         if (ac.into.empty()) ac.into = ac.agent;
                         if (!checkEnum("shape", ac.shape, {"text", "vote"}, err)) return false;
                         if (!checkEnum("emit", ac.emit, {"", "message", "vote", "document"}, err))
                             return false;
-                        warnUnknownKeys(a, {"agent", "tool", "message", "capture", "into",
-                                            "shape", "emit", "vars"}, "", out.warnings);
+                        warnUnknownKeys(a,
+                                        {"agent", "tool", "message", "capture", "into", "shape",
+                                         "emit", "vars"},
+                                        "", out.warnings);
                         st.actions.push_back(std::move(ac));
                     }
                 dst.push_back(std::move(st));
@@ -206,17 +239,31 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
             for (const auto& st : *steps)
                 for (const auto& ac : st.actions) {
                     bool known = false;
-                    for (const auto& ag : out.agents) if (ag.id == ac.agent) { known = true; break; }
-                    if (!known) { err = "action references unknown agent '" + ac.agent + "'"; return false; }
+                    for (const auto& ag : out.agents)
+                        if (ag.id == ac.agent) {
+                            known = true;
+                            break;
+                        }
+                    if (!known) {
+                        err = "action references unknown agent '" + ac.agent + "'";
+                        return false;
+                    }
                 }
 
-        warnUnknownKeys(j, {"name", "description", "tools", "agents", "max_rounds", "converge",
-                            "loop_detect", "dynamic_dispatch", "dispatch_tool", "max_tool_iters",
-                            "submit_reserve", "tool_mode", "thinking", "max_parallel",
-                            "stop_when", "round_steps", "on_converge"},
+        warnUnknownKeys(j,
+                        {"name", "description", "tools", "agents", "max_rounds", "converge",
+                         "loop_detect", "dynamic_dispatch", "dispatch_tool", "max_tool_iters",
+                         "submit_reserve", "tool_mode", "thinking", "max_parallel", "stop_when",
+                         "round_steps", "on_converge"},
                         "", out.warnings);
-    } catch (const std::exception& e) { err = e.what(); return false; }
-    if (out.name.empty()) { err = "skill has no name"; return false; }
+    } catch (const std::exception& e) {
+        err = e.what();
+        return false;
+    }
+    if (out.name.empty()) {
+        err = "skill has no name";
+        return false;
+    }
     return true;
 }
 
@@ -238,7 +285,8 @@ SkillRunner::~SkillRunner() = default;
 void SkillRunner::cancel() {
     cancelRequested_.store(true);
     std::lock_guard<std::mutex> lk(snapMutex_);
-    for (auto& kv : agents_) if (kv.second) kv.second->cancel();
+    for (auto& kv : agents_)
+        if (kv.second) kv.second->cancel();
 }
 
 // Boundary probe: called between actions, steps and rounds. A probe hit is
@@ -298,21 +346,24 @@ void SkillRunner::loadAgents() {
                         d.parameters.push_back(tp);
                     }
                 if (!d.name.empty()) jsonDefs[d.name] = d;
-            } catch (...) {}
+            } catch (...) {
+            }
         }
     }
 
     // Capability tool defs from the registry.
     std::map<std::string, ToolDefinition> regDefs;
     if (tools_)
-        for (const auto& d : tools_->getToolDefinitions()) regDefs[d.name] = d;
+        for (const auto& d : tools_->getToolDefinitions())
+            regDefs[d.name] = d;
 
     // One layer only: an agent that appears in the program drives the flow and
     // may dispatch; everyone else is a leaf worker and never sees request_agent.
     std::set<std::string> drivers;
     for (const auto* steps : {&config_.roundSteps, &config_.onConverge})
         for (const auto& st : *steps)
-            for (const auto& ac : st.actions) drivers.insert(ac.agent);
+            for (const auto& ac : st.actions)
+                drivers.insert(ac.agent);
     drivers_ = drivers;
 
     for (const auto& ag : config_.agents) {
@@ -337,8 +388,10 @@ void SkillRunner::loadAgents() {
         // Every verb tool is available to every agent (skill-local, no conflict
         // with capability tools). This lets request_agent workers -- which have
         // no explicit action in the program -- still have a verb to answer with.
-        for (const auto& kv : jsonDefs) sa->registerToolDef(kv.second);
-        for (const auto& t : config_.tools) if (regDefs.count(t)) sa->registerToolDef(regDefs[t]);
+        for (const auto& kv : jsonDefs)
+            sa->registerToolDef(kv.second);
+        for (const auto& t : config_.tools)
+            if (regDefs.count(t)) sa->registerToolDef(regDefs[t]);
 
         if (config_.dynamicDispatch && drivers.count(ag.id)) {
             ToolDefinition ra;
@@ -346,20 +399,20 @@ void SkillRunner::loadAgents() {
             ra.description =
                 "Ask another agent (by id) and get its raw reply. Calls to different "
                 "agents in one reply run concurrently; calls to the same agent run in order.";
-            ra.parameters = {
-                {"agent_id", "string", "target agent id", true},
-                {"message", "string", "your request to that agent", true}
-            };
+            ra.parameters = {{"agent_id", "string", "target agent id", true},
+                             {"message", "string", "your request to that agent", true}};
             sa->registerToolDef(ra);
-            sa->setToolInterceptor([this](const std::string&, const std::string& args) -> std::string {
-                std::string id, msg;
-                try {
-                    auto j = nlohmann::json::parse(args);
-                    id = j.value("agent_id", std::string(""));
-                    msg = j.value("message", std::string(""));
-                } catch (...) {}
-                return handleRequestAgent(id, msg);
-            });
+            sa->setToolInterceptor(
+                [this](const std::string&, const std::string& args) -> std::string {
+                    std::string id, msg;
+                    try {
+                        auto j = nlohmann::json::parse(args);
+                        id = j.value("agent_id", std::string(""));
+                        msg = j.value("message", std::string(""));
+                    } catch (...) {
+                    }
+                    return handleRequestAgent(id, msg);
+                });
         }
 
         {
@@ -374,8 +427,8 @@ void SkillRunner::loadAgents() {
 void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     topic_ = topic;
     if (!modelSupportsTools(cfg_.model)) {
-        std::string msg = "[skill] model '" + cfg_.model +
-            "' does not support tool calls; cannot run.";
+        std::string msg =
+            "[skill] model '" + cfg_.model + "' does not support tool calls; cannot run.";
         if (cbs_.onEvent) cbs_.onEvent("system", "system", msg);
         return;
     }
@@ -395,7 +448,10 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
         lastRounds_ = round;
         executeSteps(config_.roundSteps, round);
         if (checkCancel()) break;
-        if (stopRule(round)) { converged_ = true; break; }
+        if (stopRule(round)) {
+            converged_ = true;
+            break;
+        }
         roundContext_ = voteSummary();
         prevSlots_ = slots_;
     }
@@ -425,7 +481,7 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
             th.reserve(st.actions.size());
             for (size_t i = 0; i < st.actions.size(); ++i)
                 th.emplace_back([&, i] {
-                    if (checkCancel()) return;   // probe hit -> skip this action
+                    if (checkCancel()) return; // probe hit -> skip this action
                     const SkillAction& a = st.actions[i];
                     try {
                         if (SubAgent* ag = agentById(a.agent)) {
@@ -439,7 +495,8 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                         results[i] = "[error] unknown exception in action thread";
                     }
                 });
-            for (auto& t : th) t.join();
+            for (auto& t : th)
+                t.join();
         } else {
             for (size_t i = 0; i < st.actions.size(); ++i) {
                 if (checkCancel()) return;
@@ -447,8 +504,8 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                 try {
                     if (SubAgent* ag = agentById(a.agent)) {
                         results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
-                        appendSkillMetric(a.agent, a.tool, ag->lastIterations(),
-                                          results[i].size(), ag->lastWasReport());
+                        appendSkillMetric(a.agent, a.tool, ag->lastIterations(), results[i].size(),
+                                          ag->lastWasReport());
                     }
                 } catch (const std::exception& e) {
                     results[i] = std::string("[error] ") + e.what();
@@ -473,12 +530,14 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
                 auto j = nlohmann::json::parse(r);
                 if (j.is_object()) {
                     ok = true;
-                    if (j.contains("agree") && j["agree"].is_boolean()) vr.agree = j["agree"].get<bool>();
+                    if (j.contains("agree") && j["agree"].is_boolean())
+                        vr.agree = j["agree"].get<bool>();
                     vr.agreedPoints = strArr(j, "agreed_points");
                     vr.concerns = strArr(j, "concerns");
                     vr.suggestedTweak = j.value("suggested_tweak", std::string("none"));
                 }
-            } catch (...) {}
+            } catch (...) {
+            }
         }
         if (!ok) {
             vr.agree = false;
@@ -486,8 +545,7 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
             vr.concerns.push_back(r.empty() ? "[high] (no structured vote)" : "[high] " + r);
         }
         votes_[a.agent] = vr;
-        if (a.emit == "vote" && cbs_.onEvent)
-            cbs_.onEvent(display(a.agent), "vote", voteLine(vr));
+        if (a.emit == "vote" && cbs_.onEvent) cbs_.onEvent(display(a.agent), "vote", voteLine(vr));
         return;
     }
 
@@ -501,15 +559,18 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
                     s = j[a.capture].get<std::string>();
                     got = true;
                 }
-            } catch (...) {}
+            } catch (...) {
+            }
         }
-        if (!got) s = r;   // fallback: raw text (narration / non-JSON reply)
+        if (!got) s = r; // fallback: raw text (narration / non-JSON reply)
     }
     slots_[a.into] = s;
-    if (a.emit == "document") lastDoc_ = s;   // independent of callback presence
+    if (a.emit == "document") lastDoc_ = s; // independent of callback presence
     if (!s.empty() && cbs_.onEvent) {
-        if (a.emit == "message")  cbs_.onEvent(display(a.agent), "message", s);
-        else if (a.emit == "document") cbs_.onEvent(display(a.agent), "document", s);
+        if (a.emit == "message")
+            cbs_.onEvent(display(a.agent), "message", s);
+        else if (a.emit == "document")
+            cbs_.onEvent(display(a.agent), "document", s);
     }
 }
 
@@ -522,12 +583,13 @@ bool SkillRunner::stopRule(int round) const {
     if (!config_.loopDetect.empty() && round > 1) {
         auto it = slots_.find(config_.loopDetect);
         auto pit = prevSlots_.find(config_.loopDetect);
-        if (it != slots_.end() && pit != prevSlots_.end() &&
-            !it->second.empty() && it->second == pit->second)
+        if (it != slots_.end() && pit != prevSlots_.end() && !it->second.empty() &&
+            it->second == pit->second)
             return true;
     }
     if (config_.converge == "all_agree" && !votes_.empty()) {
-        for (const auto& kv : votes_) if (!kv.second.agree) return false;
+        for (const auto& kv : votes_)
+            if (!kv.second.agree) return false;
         return true;
     }
     return false;
@@ -536,7 +598,7 @@ bool SkillRunner::stopRule(int round) const {
 bool SkillRunner::whenMatches(const std::string& when, int round) const {
     if (when.empty()) return true;
     if (when == "round==1") return round == 1;
-    if (when == "round>1")  return round > 1;
+    if (when == "round>1") return round > 1;
     return true;
 }
 
@@ -548,26 +610,40 @@ std::string SkillRunner::fill(const std::string& tmpl, int round,
     size_t i = 0;
     while (i < tmpl.size()) {
         size_t b = tmpl.find("{{", i);
-        if (b == std::string::npos) { out += tmpl.substr(i); break; }
+        if (b == std::string::npos) {
+            out += tmpl.substr(i);
+            break;
+        }
         out += tmpl.substr(i, b - i);
         size_t e = tmpl.find("}}", b + 2);
-        if (e == std::string::npos) { out += tmpl.substr(b); break; }
+        if (e == std::string::npos) {
+            out += tmpl.substr(b);
+            break;
+        }
         std::string key = tmpl.substr(b + 2, e - b - 2);
         size_t s = key.find_first_not_of(" \t");
         size_t t = key.find_last_not_of(" \t");
         key = (s == std::string::npos) ? std::string() : key.substr(s, t - s + 1);
 
         std::string val;
-        if (key == "topic") val = topic_;
-        else if (key == "round") val = std::to_string(round);
-        else if (key == "max_rounds") val = std::to_string(config_.maxRounds);
-        else if (key == "round_context") val = roundContext_;
-        else if (key == "residual_concerns") val = residualConcerns();
-        else if (key == "round_outputs") val = roundOutputs();
-        else if (key == "skills_dir") val = skillsDir_;
+        if (key == "topic")
+            val = topic_;
+        else if (key == "round")
+            val = std::to_string(round);
+        else if (key == "max_rounds")
+            val = std::to_string(config_.maxRounds);
+        else if (key == "round_context")
+            val = roundContext_;
+        else if (key == "residual_concerns")
+            val = residualConcerns();
+        else if (key == "round_outputs")
+            val = roundOutputs();
+        else if (key == "skills_dir")
+            val = skillsDir_;
         else {
             auto vit = vars.find(key);
-            if (vit != vars.end()) val = vit->second;
+            if (vit != vars.end())
+                val = vit->second;
             else if (key.size() > 8 && key.compare(key.size() - 8, 8, ".current") == 0) {
                 auto it = slots_.find(key.substr(0, key.size() - 8));
                 if (it != slots_.end()) val = it->second;
@@ -604,8 +680,13 @@ std::string SkillRunner::voteSummary() const {
         out += ag.displayName;
         out += v.agree ? ": agree" : ": dissent";
         out += " (concerns: ";
-        if (v.concerns.empty()) out += "none";
-        else for (size_t k = 0; k < v.concerns.size(); ++k) { if (k) out += "; "; out += v.concerns[k]; }
+        if (v.concerns.empty())
+            out += "none";
+        else
+            for (size_t k = 0; k < v.concerns.size(); ++k) {
+                if (k) out += "; ";
+                out += v.concerns[k];
+            }
         out += "); tweak: " + v.suggestedTweak + "\n";
     }
     return out;
@@ -616,7 +697,8 @@ std::string SkillRunner::residualConcerns() const {
     for (const auto& ag : config_.agents) {
         auto it = votes_.find(ag.id);
         if (it == votes_.end() || it->second.agree) continue;
-        for (const auto& c : it->second.concerns) out += "- " + ag.displayName + ": " + c + "\n";
+        for (const auto& c : it->second.concerns)
+            out += "- " + ag.displayName + ": " + c + "\n";
     }
     if (out.empty()) out = "(none)\n";
     return out;
@@ -626,7 +708,10 @@ std::string SkillRunner::voteLine(const VoteResult& vr) const {
     std::string s = vr.agree ? "AGREE" : "DISSENT";
     if (!vr.concerns.empty()) {
         s += " (concerns: ";
-        for (size_t k = 0; k < vr.concerns.size(); ++k) { if (k) s += "; "; s += vr.concerns[k]; }
+        for (size_t k = 0; k < vr.concerns.size(); ++k) {
+            if (k) s += "; ";
+            s += vr.concerns[k];
+        }
         s += ")";
     }
     return s;
@@ -657,9 +742,12 @@ std::vector<SkillRunner::AgentSnapshot> SkillRunner::agentStatuses() const {
             s.msgCount = kv.second->messageCount();
             s.busy = kv.second->busy();
             s.status = kv.second->lastNarration();
-            if (s.busy) s.activity = AgentActivity::Working;
-            else if (s.status.rfind("[error]", 0) == 0) s.activity = AgentActivity::Error;
-            else s.activity = AgentActivity::Idle;
+            if (s.busy)
+                s.activity = AgentActivity::Working;
+            else if (s.status.rfind("[error]", 0) == 0)
+                s.activity = AgentActivity::Error;
+            else
+                s.activity = AgentActivity::Idle;
         }
         out.push_back(std::move(s));
     }

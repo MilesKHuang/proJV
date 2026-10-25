@@ -25,7 +25,7 @@
 class IProcessRunner;
 
 class TuiApp {
-public:
+  public:
     TuiApp();
     ~TuiApp();
 
@@ -47,11 +47,13 @@ public:
     // Config access / persistence / approval.
     const AppConfig& getConfig() const { return config; }
     void saveApiKeyAndConnect(const std::string& apiKey);
-    void saveFullConfig(const std::string& apiKey, const std::string& baseUrl,
-                        int maxTokens, double temperature, const std::string& workspace,
+    void saveFullConfig(const std::string& apiKey, const std::string& baseUrl, int maxTokens,
+                        double temperature, const std::string& workspace,
                         const std::string& compiler, const std::string& python,
                         const std::string& model);
-    void approveTool(int action) { if (agent) agent->approveTool(action); }
+    void approveTool(int action) {
+        if (agent) agent->approveTool(action);
+    }
 
     // System prompt role switching (coder / designer / analyzer / ...).
     const std::vector<std::string>& promptFiles() const { return promptFiles_; }
@@ -123,7 +125,7 @@ public:
     // Cancel agent + join threads (call before exit).
     void shutdown();
 
-private:
+  private:
     void setupTools();
     void harvestSpeakers();
     void buildBubblesFromMessages();
@@ -171,7 +173,7 @@ private:
     int activePromptIndex_ = 0;
 
     std::vector<std::string> pendingQueue_;
-    bool reasoningExpanded_ = false;  // global chain-of-thought collapse state (default collapsed)
+    bool reasoningExpanded_ = false; // global chain-of-thought collapse state (default collapsed)
 
     std::vector<ModelInfo> availableModels_;
     mutable std::mutex modelsMutex_;
@@ -184,9 +186,12 @@ private:
     // Skill requested by the run_skill tool during the current turn. Written by
     // the executor (agent thread), taken by runAgentTurnLoop (same thread) and
     // dropped by cancelTurn (TUI thread) -- all under skillMutex_.
-    struct PendingSkill { std::string name; std::string topic; };
+    struct PendingSkill {
+        std::string name;
+        std::string topic;
+    };
     std::optional<PendingSkill> pendingSkill_;
-    int skillCallsThisTurn_ = 0;   // hard cap per user turn (run_skill loop guard)
+    int skillCallsThisTurn_ = 0; // hard cap per user turn (run_skill loop guard)
     // Last skill that already ran in this user turn. Re-running it is refused:
     // the model may read the produced files, but not redo the whole workflow.
     std::string lastSkillThisTurn_;

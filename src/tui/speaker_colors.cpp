@@ -34,7 +34,9 @@ std::size_t fnv1a(const std::string& s) {
 
 } // namespace
 
-std::size_t paletteCount() { return kPaletteSize; }
+std::size_t paletteCount() {
+    return kPaletteSize;
+}
 
 std::size_t paletteSlot(const std::string& roleName) {
     if (roleName.empty()) return 0;
