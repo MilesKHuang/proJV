@@ -1,14 +1,15 @@
 # assets
 
-Everything the README and the docs embed.
+Everything the README and the docs embed, plus the GitHub social preview.
 
 | File | Used by | Notes |
 |------|---------|-------|
-| `logo.jpg` | repo settings, social preview | the source logo |
-| `demo.gif` | `README.md`, `README_zh.md` hero | **this is the hero** - no separate `hero.gif` needed |
-| `social-preview.png` | GitHub Settings -> Social preview | 1280 x 640, to be produced from `logo.jpg` |
+| `logo.jpg` | source image | 779x780, black interior with a #4971B7 frame |
+| `logo.png` | `README.md`, `README_zh.md` | 240x240 downscale, so GitHub does not render the original full width |
+| `social-preview.png` | GitHub Settings -> Social preview | 1280x640 card: logo on black, title, tagline, accent rule |
+| `demo.gif` | README hero | the hero. No separate `hero.gif` is planned |
 | `wechat_donate.jpg` | README support section | unchanged |
-| `raw/` | not shipped | source screen recordings, see `raw/README.md` |
+| `raw/` | not shipped | recording instructions, kept for later |
 
 ## Rules
 
@@ -17,15 +18,17 @@ Everything the README and the docs embed.
   or trim the clip, do not commit the video.
 - Source recordings stay in `raw/` and are not referenced from any page.
 
-## Pending
+## Regenerating the social preview
 
-- [ ] `first-run.gif` - launch, paste key, first message, <= 15 s
-- [ ] `skill-monica.gif` - `/monica <dir>`, several workers busy in the sidebar
-- [ ] `skill-bigbang.gif` - debate rounds -> vote -> execution doc
-- [ ] `theme.gif` - switch theme, open the editor, edit a colour
-- [ ] `image-input.gif` - `@path` and the answer
-- [ ] `social-preview.png` - 1280 x 640
+`social-preview.png` is produced from `logo.jpg` (script kept out of the repo):
+black 1280x640 canvas so the logo's black interior blends seamlessly, logo at
+400x400 on the left, `proJV` in Segoe UI Bold, tagline and a #4971B7 rule on the
+right. Text must stay pure ASCII: a PowerShell script saved without a BOM is read
+as ANSI, so a `·` becomes two Chinese glyphs in the image.
 
-`demo.gif` already covers the hero slot, so the README has no placeholder left.
-Each remaining clip is referenced from the docs by its final name; dropping the
-file in is the whole swap.
+## Not doing (decided for v0.6.0)
+
+The five extra action GIFs (`first-run`, `skill-monica`, `skill-bigbang`,
+`theme`, `image-input`) are **not** part of this release. The README needs no
+placeholder for them, so nothing is broken by leaving them out. `raw/README.md`
+keeps the recording instructions in case they are wanted later.

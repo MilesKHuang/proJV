@@ -81,11 +81,27 @@ jobs:
       - name: Show files
         run: ls -lR dist
 
+      # Use the curated notes for this tag if they exist (RELEASE_NOTES_<tag>.md),
+      # else fall back to a one-liner. Always writes release_body.md so the
+      # action never fails on a missing path.
+      - name: Pick release body
+        shell: bash
+        run: |
+          notes="RELEASE_NOTES_${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            echo "using $notes"
+            cp "$notes" release_body.md
+          else
+            echo "$notes not found - falling back to a generated body"
+            printf 'Release %s\n\nSee the commit history for details.\n' "$GITHUB_REF_NAME" > release_body.md
+          fi
+
       - name: Create / update the Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: release_body.md
+          generate_release_notes: false
           fail_on_unmatched_files: true
           draft: false
           prerelease: false

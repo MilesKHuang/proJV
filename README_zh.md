@@ -1,5 +1,7 @@
 # proJV
 
+![proJV](assets/logo.png)
+
 **简体中文** | [English](README.md)
 
 `proJV = Project Just Vibing` —— 用原生 C++ 写的终端 AI agent，基于 DeepSeek。

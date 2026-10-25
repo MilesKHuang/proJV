@@ -1,5 +1,7 @@
 # proJV
 
+![proJV](assets/logo.png)
+
 [简体中文](README_zh.md) | **English**
 
 `proJV = Project Just Vibing` — a native C++ AI agent for the terminal, built on

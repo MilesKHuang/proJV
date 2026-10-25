@@ -1,5 +1,9 @@
 # Recording raw footage
 
+**Not needed for v0.6.0.** The README ships with `assets/demo.gif` as its hero
+and no other GIF embeds, so nothing here is a blocker. The instructions below are
+kept for when the extra clips are wanted.
+
 This folder holds the original screen recordings. **Nothing here is shipped or
 referenced from a page** - the GIFs in `assets/` are the deliverables.
 
