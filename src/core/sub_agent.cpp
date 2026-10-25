@@ -225,6 +225,8 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
             // swallowed (empty slot -> no event -> "the batch never existed").
             else out = "[no report] '" + name_ +
                        "' returned no text and no tool call";
+            lastIters_ = r + 1;
+            lastMarker_ = out.rfind("[no report]", 0) == 0;
             session_.addMessage(Message::Assistant(out));
             setNarration(out);
             return out;
@@ -318,8 +320,14 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
             const std::string& r = sideResults[i].empty() ? std::string("Error: no result") : sideResults[i];
             session_.addMessage(Message::Tool(calls[i].id, calls[i].name, r));
         }
-        if (finalize) return calls[verbIdx].arguments;
+        if (finalize) {
+            lastIters_ = r + 1;
+            lastMarker_ = false;
+            return calls[verbIdx].arguments;
+        }
     }
+    lastIters_ = maxToolIters_;
+    lastMarker_ = narr.empty();
     if (!narr.empty()) return narr;   // loop exhausted: surface the narration
     return "[no report] '" + name_ + "' ran out of tool budget (" +
            std::to_string(maxToolIters_) + " calls) without calling '" + verb + "'";

@@ -65,6 +65,10 @@ public:
         return lastNarration_;
     }
 
+    // Last turn's cost, for the skill metrics log (see skill_runner.cpp).
+    int lastIterations() const { return lastIters_; }
+    bool lastWasReport() const { return !lastMarker_; }
+
 private:
     std::vector<ToolCall> doRequest(const std::string& verb, bool force, std::string& outText);
     std::vector<ToolCall> requestTool(const std::string& verb, bool force, std::string& outText);
@@ -89,6 +93,8 @@ private:
     std::string lastReasoning_;
     std::string lastError_;
     std::atomic<bool> busy_{false};
+    int lastIters_ = 0;        // iterations used by the last turn
+    bool lastMarker_ = false;  // true when the turn ended in a [no report] marker
     mutable std::mutex narrMutex_;
     std::string lastNarration_;
     std::function<std::string(const std::string&, const std::string&)> toolInterceptor_;

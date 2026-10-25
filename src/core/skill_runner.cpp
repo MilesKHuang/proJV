@@ -77,6 +77,28 @@ void warnUnknownKeys(const nlohmann::json& j, const std::vector<std::string>& kn
 
 } // namespace
 
+// ---- skill metrics -------------------------------------------------------
+// One tab-separated line per turn, appended to projv_files/logs/skill_metrics.log.
+// This exists because a skill's own tool calls live in the SubAgent sessions and
+// never reach the database or the (release-stripped) loguru output -- which made
+// it impossible to answer "how many calls did worker_3 actually spend?" after a
+// run. Cheap, always on, thread-safe; parse it with awk or pandas.
+static void appendSkillMetric(const std::string& agent, const std::string& verb,
+                              int iters, size_t resultLen, bool wasReport) {
+    static std::mutex mtx;
+    std::lock_guard<std::mutex> lk(mtx);
+    std::error_code ec;
+    const std::string dir = getProjvDir() + "/logs";
+    fs::create_directories(dir, ec);
+    const std::string path = dir + "/skill_metrics.log";
+    std::error_code sizeEc;
+    const bool fresh = !fs::exists(path, sizeEc) || fs::file_size(path, sizeEc) == 0;
+    std::ofstream f(path, std::ios::app);
+    if (!f) return;
+    if (fresh) f << "# agent\tverb\titerations\tresult_bytes\tstate\n";
+    f << agent << '\t' << verb << '\t' << iters << '\t' << resultLen << '\t'
+      << (wasReport ? "report" : "NO_REPORT") << '\n';
+}
 // ---- SkillConfig::loadFromJson -------------------------------------------
 bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::string& err) {
     std::ifstream ifs(path);
@@ -405,8 +427,11 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                     if (checkCancel()) return;   // probe hit -> skip this action
                     const SkillAction& a = st.actions[i];
                     try {
-                        if (SubAgent* ag = agentById(a.agent))
+                        if (SubAgent* ag = agentById(a.agent)) {
                             results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                            appendSkillMetric(a.agent, a.tool, ag->lastIterations(),
+                                              results[i].size(), ag->lastWasReport());
+                        }
                     } catch (const std::exception& e) {
                         results[i] = std::string("[error] ") + e.what();
                     } catch (...) {
@@ -419,8 +444,11 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                 if (checkCancel()) return;
                 const SkillAction& a = st.actions[i];
                 try {
-                    if (SubAgent* ag = agentById(a.agent))
+                    if (SubAgent* ag = agentById(a.agent)) {
                         results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                        appendSkillMetric(a.agent, a.tool, ag->lastIterations(),
+                                          results[i].size(), ag->lastWasReport());
+                    }
                 } catch (const std::exception& e) {
                     results[i] = std::string("[error] ") + e.what();
                 } catch (...) {
@@ -646,5 +674,7 @@ std::string SkillRunner::handleRequestAgent(const std::string& id, const std::st
     std::string verb = config_.dispatchTool;
     if (verb.empty()) verb = ag->firstToolName();
     if (verb.empty()) return "[error] no tool for agent '" + id + "'";
-    return ag->turn(msg, verb, /*force=*/false);
+    const std::string result = ag->turn(msg, verb, /*force=*/false);
+    appendSkillMetric(id, verb, ag->lastIterations(), result.size(), ag->lastWasReport());
+    return result;
 }
