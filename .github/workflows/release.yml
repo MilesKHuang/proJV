@@ -73,6 +73,10 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     steps:
+      # Needed so the curated notes file is available to the body step; without
+      # a checkout this job only has the downloaded artifacts.
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -92,9 +96,17 @@ jobs:
             echo "using $notes"
             cp "$notes" release_body.md
           else
-            echo "$notes not found - falling back to a generated body"
-            printf 'Release %s\n\nSee the commit history for details.\n' "$GITHUB_REF_NAME" > release_body.md
+            # Fall back to the newest notes file in the tree before giving up.
+            newest=$(ls -1 RELEASE_NOTES_v*.md 2>/dev/null | sort -V | tail -1)
+            if [ -n "$newest" ]; then
+              echo "$notes not found - using $newest"
+              cp "$newest" release_body.md
+            else
+              echo "no RELEASE_NOTES file found - writing a placeholder"
+              printf 'Release %s\n\nSee the commit history for details.\n' "$GITHUB_REF_NAME" > release_body.md
+            fi
           fi
+          wc -l release_body.md
 
       - name: Create / update the Release
         uses: softprops/action-gh-release@v2
