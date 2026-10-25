@@ -9,6 +9,7 @@
 #include "tui/theme_manager.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
+#include "tools/format_tool.h"
 #include "tools/md_file_tool.h"
 #include "tools/web_tools.h"
 #include "tools/json_utils.h"
@@ -37,6 +38,7 @@ void TuiApp::setupTools() {
 
     registerShellTool(tools, ws, procRunner_);
     registerFileTools(tools, ws);
+    registerFormatTool(tools, ws, procRunner_, config.clangFormatPath);
     registerMdFileTool(tools, ws);
     registerEditFileTool(tools);
     registerFileSearchTool(tools);

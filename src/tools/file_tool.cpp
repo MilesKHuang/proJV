@@ -2,17 +2,31 @@
 #include "registry.h"
 #include "json_utils.h"
 #include <fstream>
+#include <cstdlib>
+#include <functional>
+#include <vector>
 
 // -- Tool description strings (moved from prompts.h) --------------------
 static constexpr const char* TOOL_READ_FILE_DESC =
-    "Read a file's contents. Use for inspecting source code, configs, and text files.";
+    "Read a file's contents. Whole-file reads are capped at 100KB. For larger files, "
+    "pass start_line/end_line (1-based, inclusive) to read one slice at a time; the "
+    "reply starts with '[lines A-B of T]' and ends with the next start_line when cut.";
+static constexpr const char* TOOL_LIST_DIR_DESC =
+    "List a directory as an indented tree (directories end with '/'). Start broad "
+    "(depth=2 on the workspace root) to see the layout, then deepen on the "
+    "subdirectories that matter. Use exclude to skip noise by name. Build artifacts "
+    "and VCS directories are always skipped.";
 static constexpr const char* TOOL_WRITE_FILE_DESC =
     "Write a small amount of content to a file. Creates parent directories if needed. "
     "Maximum content size is 8KB. For anything larger, use exec_shell with stdin.\n"
     "Write via exec_shell+stdin for large files:\n"
     "  exec_shell(command=\"powershell -Command \\\"$input | Set-Content -Path 'file.cpp' -Encoding UTF8\\\"\", stdin=\"<content>\")";
 static constexpr const char* TOOL_GREP_FILES_DESC =
-    "Search for a pattern in workspace files. Returns matching lines with context.";
+    "Search workspace files for a regular expression (case-insensitive). Returns "
+    "matching lines only, no context, as 'path:line: text'. Stops at max_results "
+    "(default 100, max 500); when it stops early the reply ends with "
+    "'[truncated at N results]'. Recommended: grep to locate line numbers, then "
+    "read_file with start_line/end_line for the surrounding code.";
 
 // MAX_WRITE_CONTENT_SIZE -- write_file size limit
 static constexpr size_t MAX_WRITE_CONTENT_SIZE = 8 * 1024;
@@ -74,6 +88,9 @@ static bool isPathInWorkspace(const std::string& resolvedPath, const std::string
         std::transform(tStr.begin(), tStr.end(), tStr.begin(), ::tolower);
         std::transform(bStr.begin(), bStr.end(), bStr.begin(), ::tolower);
 
+        // The workspace root itself (list_dir / grep_files default to it).
+        if (tStr == bStr) return true;
+
         // Append separator to base to prevent false match (e.g. D:\ws vs D:\ws2)
         if (!bStr.empty() && bStr.back() != '\\' && bStr.back() != '/')
             bStr += '\\';
@@ -113,6 +130,56 @@ static std::string validateFilePath(const std::string& rawPath, const std::strin
     return "";
 }
 
+// Public wrapper: other file-touching tools (format_file) share this guard.
+std::string validateToolPath(const std::string& rawPath, const std::string& workspace,
+                             std::string& outResolved) {
+    return validateFilePath(rawPath, workspace, outResolved);
+}
+
+// -- file_requests spec: "path", "path#L120", "path#L120-L480" ----------
+bool parseFileRequestSpec(const std::string& spec, std::string& outPath,
+                          int& startLine, int& endLine) {
+    outPath.clear();
+    startLine = 0;
+    endLine = 0;
+    if (spec.empty()) return false;
+
+    // The range suffix is optional; a '#' that is not followed by L<digits>
+    // belongs to the path itself.
+    size_t hash = spec.rfind('#');
+    if (hash != std::string::npos && hash + 2 < spec.size()) {
+        std::string tail = spec.substr(hash + 1);
+        auto isL = [](char c) { return c == 'L' || c == 'l'; };
+        size_t i = 0;
+        if (isL(tail[0])) ++i;
+        size_t digitStart = i;
+        while (i < tail.size() && tail[i] >= '0' && tail[i] <= '9') ++i;
+        bool firstNum = (i > digitStart);
+        int a = firstNum ? std::atoi(tail.substr(digitStart, i - digitStart).c_str()) : 0;
+        int b = 0;
+        bool okRange = firstNum;
+        if (firstNum && i < tail.size() && tail[i] == '-') {
+            ++i;
+            size_t s2 = i;
+            if (i < tail.size() && isL(tail[i])) ++i;
+            size_t d2 = i;
+            while (i < tail.size() && tail[i] >= '0' && tail[i] <= '9') ++i;
+            if (i > d2) b = std::atoi(tail.substr(d2, i - d2).c_str());
+            else okRange = false;
+            (void)s2;
+        }
+        if (okRange && i == tail.size() && a > 0) {
+            outPath = spec.substr(0, hash);
+            startLine = a;
+            endLine = b > 0 ? b : 0;
+            return true;
+        }
+    }
+    outPath = spec;
+    return true;
+}
+
+// -- read_file: whole-file read -----------------------------------------
 static std::string readFileContent(const std::string& path) {
     std::ifstream ifs(path, std::ios::binary | std::ios::ate);
     if (!ifs) return "Error: Cannot open file: " + path;
@@ -121,6 +188,83 @@ static std::string readFileContent(const std::string& path) {
     ifs.seekg(0);
     std::string content((std::istreambuf_iterator<char>(ifs)), {});
     return content;
+}
+
+// -- read_file: line-range read -----------------------------------------
+static constexpr size_t kRangeMaxFileSize = 2 * 1024 * 1024;  // 2MB scanned
+static constexpr size_t kRangeMaxBytes = 100 * 1024;          // 100KB returned
+static constexpr int kRangeMaxLines = 1000;
+
+// Accepts a JSON number or a numeric string (models send both).
+static int intArgOrZero(const std::string& args, const char* key) {
+    try {
+        auto j = nlohmann::json::parse(args);
+        if (!j.contains(key)) return 0;
+        const auto& v = j[key];
+        if (v.is_number_integer()) return v.get<int>();
+        if (v.is_number()) return static_cast<int>(v.get<double>());
+        if (v.is_string()) {
+            const std::string s = v.get<std::string>();
+            try { return std::stoi(s); } catch (...) { return 0; }
+        }
+    } catch (...) {}
+    return 0;
+}
+
+static std::string readFileRange(const std::string& path, int startLine, int endLine) {
+    std::error_code ec;
+    auto fsize = fs::file_size(path, ec);
+    if (!ec && fsize > kRangeMaxFileSize)
+        return "Error: File too large for a range read (>2MB): " + path;
+
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs) return "Error: Cannot open file: " + path;
+
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(ifs, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        lines.push_back(line);
+    }
+    const int total = static_cast<int>(lines.size());
+
+    int s = startLine > 0 ? startLine : 1;
+    int e = endLine > 0 ? endLine : total;
+    if (s < 1)
+        return "Error: start_line must be >= 1 (got " + std::to_string(startLine) + ")";
+    if (endLine > 0 && endLine < s)
+        return "Error: end_line (" + std::to_string(endLine) +
+               ") must be >= start_line (" + std::to_string(s) + ")";
+    if (s > total)
+        return "Error: start_line " + std::to_string(s) +
+               " is beyond the end of the file (" + std::to_string(total) + " lines)";
+    if (e > total) e = total;
+
+    std::string out = "[lines " + std::to_string(s) + "-" + std::to_string(e) +
+                      " of " + std::to_string(total) + "]\n";
+    int last = s - 1;
+    for (int n = s; n <= e; ++n) {
+        std::string body = std::to_string(n) + ": " + lines[static_cast<size_t>(n - 1)] + "\n";
+        if (out.size() + body.size() > kRangeMaxBytes) {
+            if (n == s) {
+                // Never return an empty range because of one very long line.
+                size_t room = kRangeMaxBytes - out.size();
+                if (room > 16) {
+                    body.resize(room - 1);
+                    body += "\n";
+                    out += body;
+                    last = n;
+                }
+            }
+            break;
+        }
+        out += body;
+        last = n;
+        if ((n - s + 1) >= kRangeMaxLines) break;
+    }
+    if (last < e)
+        out += "\n[truncated, continue with start_line=" + std::to_string(last + 1) + "]\n";
+    return out;
 }
 
 // -- Friendly error: search workspace for same-named files ------------
@@ -197,6 +341,87 @@ static std::string findSimilarFiles(const std::string& failedPath,
     return out.str();
 }
 
+// -- list_dir -------------------------------------------------------------
+static constexpr int kListDefaultDepth = 2;
+static constexpr int kListMaxDepth = 6;
+static constexpr int kListMaxEntries = 500;
+
+static bool isSkippedDirName(const std::string& name) {
+    if (name.empty()) return true;
+    if (name[0] == '.') return true;                 // .git / .vs / .pytest_cache ...
+    for (const auto& d : kSkipDirs) if (name == d) return true;
+    return false;
+}
+
+static size_t countChildEntries(const fs::path& dir) {
+    std::error_code ec;
+    size_t n = 0;
+    for (auto it = fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+         it != fs::directory_iterator(); it.increment(ec)) {
+        if (ec) { ec.clear(); break; }
+        ++n;
+    }
+    return n;
+}
+
+// Indented tree, directories first and then files, both name-sorted.
+// Stops at `depth` with an entry count so the caller can decide to deepen.
+static std::string listDirTree(const fs::path& root, int depth, const std::regex* exclude) {
+    std::ostringstream out;
+    int emitted = 0;
+    bool truncated = false;
+
+    std::function<void(const fs::path&, int)> walk = [&](const fs::path& dir, int level) {
+        if (truncated) return;
+        std::error_code ec;
+        std::vector<fs::directory_entry> dirs, files;
+        for (auto it = fs::directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+             it != fs::directory_iterator(); it.increment(ec)) {
+            if (ec) { ec.clear(); break; }
+            const fs::directory_entry& e = *it;
+            const std::string name = e.path().filename().string();
+            std::error_code ec2;
+            const bool isDir = e.is_directory(ec2);
+            if (!isDir && !e.is_regular_file(ec2)) continue;
+            if (isDir) { if (isSkippedDirName(name)) continue; }
+            else if (name.empty()) continue;
+            if (exclude && std::regex_search(name, *exclude)) continue;
+            (isDir ? dirs : files).push_back(e);
+        }
+        auto byName = [](const fs::directory_entry& a, const fs::directory_entry& b) {
+            return a.path().filename().string() < b.path().filename().string();
+        };
+        std::sort(dirs.begin(), dirs.end(), byName);
+        std::sort(files.begin(), files.end(), byName);
+
+        const std::string pad(static_cast<size_t>(level) * 2, ' ');
+        for (const auto& e : dirs) {
+            if (emitted >= kListMaxEntries) { truncated = true; return; }
+            ++emitted;
+            out << pad << e.path().filename().string() << "/";
+            if (level + 1 >= depth) {
+                out << " (" << countChildEntries(e.path()) << " entries, not expanded)\n";
+            } else {
+                out << "\n";
+                walk(e.path(), level + 1);
+            }
+        }
+        for (const auto& e : files) {
+            if (emitted >= kListMaxEntries) { truncated = true; return; }
+            ++emitted;
+            out << pad << e.path().filename().string() << "\n";
+        }
+    };
+
+    walk(root, 0);
+    std::string body = out.str();
+    if (body.empty()) body = "(empty)\n";
+    if (truncated)
+        body += "\n[truncated at " + std::to_string(kListMaxEntries) +
+                " entries - lower depth or narrow path]\n";
+    return body;
+}
+
 void registerFileTools(ToolRegistry& registry, const std::string& workspacePath) {
     // read_file
     {
@@ -204,7 +429,11 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
         def.name = "read_file";
         def.description = TOOL_READ_FILE_DESC;
         def.parameters = {
-            {"path", "string", "Path to the file to read", true}
+            {"path", "string", "Path to the file to read", true},
+            {"start_line", "number",
+             "Optional, 1-based first line of the slice (inclusive). Omit to start at line 1.", false},
+            {"end_line", "number",
+             "Optional, 1-based last line of the slice (inclusive). Omit to read to the end.", false}
         };
         registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
@@ -212,7 +441,11 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
             std::string resolved;
             std::string err = validateFilePath(path, workspacePath, resolved);
             if (!err.empty()) return err;
-            std::string content = readFileContent(resolved);
+            const int startLine = intArgOrZero(args, "start_line");
+            const int endLine = intArgOrZero(args, "end_line");
+            std::string content = (startLine <= 0 && endLine <= 0)
+                ? readFileContent(resolved)                 // legacy whole-file read
+                : readFileRange(resolved, startLine, endLine);
             // -- Friendly error: if file not found, suggest correct paths --
             if (content.find("Error: Cannot open file:") == 0) {
                 std::string suggestions = findSimilarFiles(resolved, workspacePath);
@@ -222,6 +455,52 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 }
             }
             return content;
+        });
+    }
+
+    // list_dir
+    {
+        ToolDefinition def;
+        def.name = "list_dir";
+        def.description = TOOL_LIST_DIR_DESC;
+        def.parameters = {
+            {"path", "string", "Directory to list (optional; default = workspace root)", false},
+            {"depth", "number", "Levels to expand, 1..6 (default 2)", false},
+            {"exclude", "string", "Optional regex; entries whose name matches are hidden", false}
+        };
+        registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+            std::string path = extractStringArg(args, "path");
+            if (path.empty()) path = workspacePath.empty() ? std::string(".") : workspacePath;
+            std::string resolved;
+            std::string err = validateFilePath(path, workspacePath, resolved);
+            if (!err.empty()) return err;
+
+            std::error_code ec;
+            if (!fs::is_directory(resolved, ec))
+                return "Error: Not a directory: " + resolved;
+
+            int depth = intArgOrZero(args, "depth");
+            bool depthCapped = false;
+            if (depth <= 0) depth = kListDefaultDepth;
+            if (depth > kListMaxDepth) { depth = kListMaxDepth; depthCapped = true; }
+
+            const std::string exclude = extractStringArg(args, "exclude");
+            std::regex excludeRe;
+            bool hasExclude = false;
+            if (!exclude.empty()) {
+                try {
+                    excludeRe = std::regex(exclude, std::regex::ECMAScript | std::regex::icase);
+                    hasExclude = true;
+                } catch (const std::exception& e) {
+                    return "Error: invalid 'exclude' regex (" + std::string(e.what()) + ")";
+                }
+            }
+
+            std::string header = "[list_dir] " + resolved +
+                                 " (depth=" + std::to_string(depth) +
+                                 (depthCapped ? ", capped at 6" : "") + ")\n";
+            return header + listDirTree(fs::path(resolved), depth,
+                                        hasExclude ? &excludeRe : nullptr);
         });
     }
 
@@ -328,13 +607,17 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
         def.description = TOOL_GREP_FILES_DESC;
         def.parameters = {
             {"pattern", "string", "Regular expression pattern to search for", true},
-            {"path", "string", "Directory to search (optional)", false}
+            {"path", "string", "Directory to search (optional)", false},
+            {"max_results", "number", "Stop after this many hits: default 100, max 500", false}
         };
         registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
             std::string pattern = extractStringArg(args, "pattern");
             std::string path = extractStringArg(args, "path");
             if (pattern.empty()) return "Error: Missing 'pattern' argument";
             if (path.empty()) path = workspacePath.empty() ? "." : workspacePath;
+            int maxResults = intArgOrZero(args, "max_results");
+            if (maxResults <= 0) maxResults = 100;
+            if (maxResults > 500) maxResults = 500;
             std::string resolved;
             std::string err = validateFilePath(path, workspacePath, resolved);
             if (!err.empty()) return err;
@@ -343,6 +626,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 std::ostringstream result;
                 int count = 0;
                 int fileCount = 0;
+                bool hitLimit = false;
                 static constexpr int kMaxFilesToScan = 5000;  // hard cap to prevent UI freeze
                 std::error_code ec;
                 for (auto it = fs::recursive_directory_iterator(resolved,
@@ -385,10 +669,10 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                         if (std::regex_search(line, re)) {
                             result << entry.path().string() << ":" << lineNum << ": " << line << "\n";
                             ++count;
-                            if (count >= 100) break;
+                            if (count >= maxResults) break;
                         }
                     }
-                    if (count >= 100) break;
+                    if (count >= maxResults) { hitLimit = true; break; }
                     if (fileCount >= kMaxFilesToScan) {
                         result << "\n[grep_files: reached file scan limit (" << kMaxFilesToScan << "). Results may be incomplete.]\n";
                         break;
@@ -396,7 +680,11 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                     ++it;
                 }
                 if (result.str().empty()) return "No matches found for pattern: " + pattern;
-                return result.str();
+                std::string out = result.str();
+                if (hitLimit)
+                    out += "\n[truncated at " + std::to_string(count) +
+                           " results - narrow the pattern/path, or raise max_results]\n";
+                return out;
             } catch (const std::exception& e) {
                 return "Error: " + std::string(e.what());
             }

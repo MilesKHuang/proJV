@@ -23,6 +23,7 @@ set(TEST_SOURCES
     unit/test_prompt_style.cpp
     unit/test_turn_end.cpp
     unit/test_reasoning_content.cpp
+    unit/test_file_tools.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
@@ -63,7 +64,9 @@ if(WIN32)
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
     )
     if(MSVC)
-        add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+        # target-scoped: add_compile_options() after add_executable() would not
+        # reach proJV_tests, and the test suite contains non-ASCII literals.
+        target_compile_options(proJV_tests PRIVATE /utf-8)
     endif()
 endif()
 

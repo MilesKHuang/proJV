@@ -170,7 +170,7 @@ struct AppConfig {
     std::string workspacePath;   // file access whitelist; empty = exe dir
     std::string cppCompilerPath; // C++ compiler path (e.g. MSBuild.exe, cl.exe)
     std::string pythonPath;      // Python interpreter path
-
+    std::string clangFormatPath; // clang-format binary for the format_file tool (empty = PATH)
     // Model pricing: map of prefix -> {input_price, output_price}
     // Parsed from [model_prices] section in config.toml
     std::vector<ModelPriceEntry> modelPrices;

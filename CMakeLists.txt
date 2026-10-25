@@ -85,6 +85,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/session.cpp
     ${SRC_DIR}/tools/registry.cpp
     ${SRC_DIR}/tools/file_tool.cpp
+    ${SRC_DIR}/tools/format_tool.cpp
     ${SRC_DIR}/tools/md_file_tool.cpp
     ${SRC_DIR}/tools/edit_file_tool.cpp
     ${SRC_DIR}/tools/file_search_tool.cpp

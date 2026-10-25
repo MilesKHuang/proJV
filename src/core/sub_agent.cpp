@@ -2,6 +2,7 @@
 // BigbangParticipant (roundtable.cpp): same tool_choice force/auto fallback,
 // same reasoning_content echo, same file-request round cap. Made generic.
 #include "sub_agent.h"
+#include "tools/file_tool.h"
 #include "json.hpp"
 #include "debug_log.h"
 
@@ -125,7 +126,14 @@ std::string SubAgent::executeFileRequests(const std::vector<std::string>& paths)
         if (n >= 3) { out += "\n[skill] file_requests truncated to 3 per turn.\n"; break; }
         seen.insert(p);
         ++n;
-        std::string args = nlohmann::json{{"path", p}}.dump();
+        // "path#L120-L480" -> read_file(path, start_line=120, end_line=480).
+        std::string fpath;
+        int startLine = 0, endLine = 0;
+        parseFileRequestSpec(p, fpath, startLine, endLine);
+        nlohmann::json ja{{"path", fpath}};
+        if (startLine > 0) ja["start_line"] = startLine;
+        if (endLine > 0) ja["end_line"] = endLine;
+        std::string args = ja.dump();
         std::string res = tools_ ? tools_->execute("read_file", args)
                                  : std::string("Error: no tool registry available");
         out += "===== " + p + " =====\n" + res + "\n";

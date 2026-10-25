@@ -66,6 +66,7 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         cfg.workspacePath = tbl["workspace_path"].value_or<std::string>("");
         cfg.cppCompilerPath = tbl["cpp_compiler_path"].value_or<std::string>("");
         cfg.pythonPath = tbl["python_path"].value_or<std::string>("");
+        cfg.clangFormatPath = tbl["clang_format_path"].value_or<std::string>("");
         cfg.contextWindow = tbl["context_window"].value_or<size_t>(0);
         cfg.themeName = tbl["theme"].value_or<std::string>("");
 
@@ -164,6 +165,8 @@ bool saveApiKey(const std::string& key) {
             tbl.insert_or_assign("cpp_compiler_path", "");
         if (!tbl.contains("python_path"))
             tbl.insert_or_assign("python_path", "");
+        if (!tbl.contains("clang_format_path"))
+            tbl.insert_or_assign("clang_format_path", "");
         if (!tbl.contains("context_window")) tbl.insert_or_assign("context_window", 0);
     } catch (const std::exception& e) {
         debugLogf("[Config] Error updating config table: %s", e.what());
@@ -207,6 +210,7 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("workspace_path", cfg.workspacePath);
     tbl.insert_or_assign("cpp_compiler_path", cfg.cppCompilerPath);
     tbl.insert_or_assign("python_path", cfg.pythonPath);
+    tbl.insert_or_assign("clang_format_path", cfg.clangFormatPath);
     tbl.insert_or_assign("context_window", static_cast<int64_t>(cfg.contextWindow));
     if (!cfg.themeName.empty())
         tbl.insert_or_assign("theme", cfg.themeName);
