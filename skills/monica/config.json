@@ -6,9 +6,9 @@
   "tool_mode": "auto",
   "dynamic_dispatch": true,
   "dispatch_tool": "emit",
-  "max_tool_iters": 60,
+  "max_tool_iters": 90,
   "max_parallel": 16,
-  "max_rounds": 8,
+  "max_rounds": 10,
   "converge": "none",
   "stop_when": {"slot": "supervisor", "equals": "DONE"},
   "agents": [

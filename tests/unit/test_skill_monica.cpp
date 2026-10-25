@@ -52,7 +52,9 @@ TEST_CASE("monica: config is the 1 supervisor + 10 worker shape") {
     CHECK(cfg.value("dynamic_dispatch", false) == true);
     CHECK(cfg.value("tool_mode", std::string("")) == "auto");
     CHECK(cfg.value("max_parallel", 0) == 16);
-    CHECK(cfg.value("max_rounds", 0) == 8);
+    CHECK(cfg.value("max_rounds", 0) == 10);
+    // Batches are 3-4 files, so a worker needs more than the old 60 calls.
+    CHECK(cfg.value("max_tool_iters", 0) == 90);
     CHECK(!cfg.contains("max_recursion"));
     CHECK(cfg["stop_when"].value("slot", std::string("")) == "supervisor");
 

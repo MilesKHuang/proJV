@@ -6,24 +6,44 @@ message and nothing else.
 - Never touch a file that is not listed. Never scan or "fix" the whole project.
 - If a listed file does not exist, say so in the report and move on.
 
+## Budget - read this first
+Your whole batch gets **about 90 tool calls**. It is not infinite: if you run
+out, the engine ends the turn and your report is lost.
+- Aim for **at most 12 tool calls per file**.
+- If a file is getting expensive: report what you have and move on. A report
+  with "audit: skipped (budget)" is worth far more than silence.
+- Never explore the project just to understand context. You were given files.
+
 ## Per file, in this order
 1. **Format.** Call `format_file(path=...)`. It tries `clang-format` first and
    falls back to a whitespace pass by itself. If it reports "not found", call
    `format_file(path=..., mode="whitespace")` and note it in the report.
    Do not attempt to reformat by rewriting the file.
-2. **ASCII / full-width check.** Replace full-width characters that should be
-   ASCII - `，。；：（）【】「」` and full-width digits/letters - **inside code and
-   comments only**. Translate Chinese comments into concise English. Keep the
-   comment markers and indentation. Never change string literals the user sees
-   unless the dispatch message says so.
-3. **Unused-code audit (report only).** For each function / method / type /
-   global defined in the file, run `grep_files` across the project for its
-   name, one symbol at a time. Raise `max_results` (up to 500) when the default
-   100 is not enough. If the output ends with `[truncated at N results]`, mark
-   that row as "search truncated - do not trust" and say so.
-   Every finding is **suspected**, never certain: macros, callbacks, virtual
-   dispatch, reflection and indirect use all hide real callers.
-   **Never delete, never rename, never comment out.** Report only.
+2. **ASCII / full-width check.** Replace what is on the left of this table,
+   keep what is on the right. Change code and comments only; never change a
+   string the user sees unless the dispatch message says so.
+
+   | Replace with ASCII | Keep as is |
+   |---|---|
+   | full-width punctuation `，。；：（）【】「」、` | box drawing `─ │ ┌ ┐ └ ┘ ├ ┤` |
+   | full-width digits and letters | `·` `…` `•` (UI separators) |
+   | `—` `–` `→` `←` `↔` | `↑` `↓` (scroll hints) |
+   | emoji, including `⚠` `✓` `❌` | any CJK text the project intentionally keeps |
+
+   If you are unsure whether a character is a UI glyph or sloppy punctuation,
+   leave it and note it in the report - a wrong replacement breaks the UI.
+3. **Unused-code audit (report only).**
+   - List the symbols **defined** in the file (functions, methods, types,
+     globals). Do not list locals.
+   - Then run **ONE** `grep_files` for the whole file's symbols using an
+     alternation regex, `max_results=500`:
+     `\b(symA|symB|symC)\b`
+   - Only if that comes back `[truncated at N results]`, retry the handful of
+     ambiguous symbols one by one - **at most 5 extra calls**.
+   - A symbol that appears only in its own definition line is **suspected**
+     dead. Everything is suspected, never certain: macros, callbacks, virtual
+     dispatch and indirect use all hide real callers.
+   - **Never delete, never rename, never comment out.** Report only.
 
 ## Editing rules
 - Use `edit_file` for every change. Never rewrite a whole file with
@@ -43,16 +63,21 @@ prose-only turn is discarded and your work is lost.
 emit(summary="<report>")
 ```
 
-Report format, keep it under 30 lines:
+Format, keep it under 30 lines:
+
 ```
-FILES (n): src/a.cpp, src/a.h, ...
-CHANGES: src/a.cpp - formatted (clang), ascii x3, comments translated x2
-         src/a.h   - formatted (whitespace: clang-format missing), no other change
-SUSPECTED DEAD (file:line): src/a.cpp:142 ensureRetryUsed - only found in its own definition
-TRUNCATED SEARCHES: src/a.cpp:88 - 500 results, conclusion not reliable
-FAILED: src/a.h - format_file error: <reason>
+FILES (n): src/a.cpp, src/a.h
+CHANGED: src/a.cpp - 3 lines (2 em-dash, 1 trailing space)
+         src/a.h   - no change
+AUDIT: done - 12 symbols in 1 grep, 1 suspect
+       src/a.cpp:142 ensureRetryUsed - only found in its own definition
+AUDIT: skipped - src/big.cpp (budget)
+TRUNCATED: src/a.cpp:88 - 500 results, conclusion not reliable
+FAILED: src/c.h - format_file error: <reason>
 ```
-If nothing changed for a file, say `no change` for it - the supervisor needs to
-know the file was actually looked at.
+
+Every file must appear at least once, either with its changes or as
+`no change`. Say `no change` explicitly - the supervisor needs to know the file
+was actually opened.
 
 Write the report in ASCII English only.
