@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    tags-ignore: [ "v*" ]        # release.yml owns tags
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false            # a Linux failure must not hide Windows
+      matrix:
+        os: [ windows-latest, ubuntu-latest ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      # Windows builds libcurl from source (external/curl-8.21.0); that is the
+      # slow part of the job, so cache the build tree.
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-build-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'external/**') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      # Keep the binary available for a quick manual check / future artifacts.
+      - name: Upload binary
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: proJV_tui-windows-x64
+          path: build/Release/proJV_tui.exe
+          if-no-files-found: error

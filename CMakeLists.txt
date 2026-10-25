@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(proJV VERSION 0.5.6 LANGUAGES C CXX)
+project(proJV VERSION 0.6.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -259,7 +259,13 @@ install(TARGETS proJV_tui RUNTIME DESTINATION .)
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/"
         DESTINATION projv_files
         PATTERN "__pycache__" EXCLUDE
-        PATTERN "*.pyc" EXCLUDE)
+        PATTERN "*.pyc" EXCLUDE
+        # Never ship secrets or history: these are generated on first launch.
+        # CI builds from a clean checkout, but a local `cpack` would otherwise
+        # pack the developer's API key and chat sessions.
+        PATTERN "config.toml" EXCLUDE
+        PATTERN "sessions" EXCLUDE
+        PATTERN "prompts" EXCLUDE)
 
 # Example skills (bigbang, monica). The built-in skill_maker is compiled into
 # the exe and self-seeds on first launch, so it is NOT packaged here.
@@ -289,8 +295,19 @@ install(CODE [[
   endforeach()
 ]])
 
-# ── CPack: one-click ZIP (driven by clean_and_build.bat) ─────────────────
-set(CPACK_GENERATOR "ZIP")
+# ── CPack: one-click package (ZIP on Windows, TGZ on Linux) ──────────────
+# Releases are produced by .github/workflows/release.yml on a `v*` tag; the
+# same commands work locally:
+#   cmake -B build -DCMAKE_BUILD_TYPE=Release
+#   cmake --build build --config Release
+#   cpack --config build/CPackConfig.cmake -B dist
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP")
+    set(CPACK_SYSTEM_NAME "windows-x64")
+else()
+    set(CPACK_GENERATOR "TGZ")
+    set(CPACK_SYSTEM_NAME "linux-x64")
+endif()
 set(CPACK_PACKAGE_NAME "proJV")
 set(CPACK_PACKAGE_VENDOR "Humanity")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
@@ -298,9 +315,9 @@ set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "proJV -- native C++ DeepSeek AI agent (TUI)")
-set(CPACK_SYSTEM_NAME "win64")
-set(CPACK_PACKAGE_FILE_NAME "proJV_v${PROJECT_VERSION}_win64")
+set(CPACK_PACKAGE_FILE_NAME "proJV-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
 include(CPack)
+
 
 

@@ -1,0 +1,91 @@
+name: Release
+
+# Triggered by a version tag, e.g.:
+#   git tag v0.6.0 && git push origin v0.6.0
+# Produces proJV-<version>-windows-x64.zip and proJV-<version>-linux-x64.tar.gz
+# and attaches them to the GitHub Release for that tag.
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:            # allow a manual dry run
+
+permissions:
+  contents: write               # needed to create the Release
+
+jobs:
+  package:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: windows-x64
+          - os: ubuntu-latest
+            artifact: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-release-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt', 'src/**', 'external/**') }}
+          restore-keys: |
+            ${{ runner.os }}-release-
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DPROJV_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      # Never ship a package that failed its tests.
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package (CPack)
+        run: cpack --config build/CPackConfig.cmake -B dist
+
+      - name: Collect package
+        shell: bash
+        run: |
+          ls -l dist
+          mkdir -p out
+          cp dist/proJV-*-${{ matrix.artifact }}.* out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.artifact }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show files
+        run: ls -lR dist
+
+      - name: Create / update the Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false

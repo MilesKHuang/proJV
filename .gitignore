@@ -40,3 +40,5 @@ config.toml
 Thumbs.db
 __pycache__/  
 build_linux/  
+
+dist/
