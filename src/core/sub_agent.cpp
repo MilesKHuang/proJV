@@ -8,12 +8,38 @@
 
 #include <set>
 #include <utility>
+#include <condition_variable>
+#include <map>
+#include <mutex>
+#include <thread>
 
 namespace {
 // Clears the busy flag on every exit path of turn().
 struct BusyFlag {
     std::atomic<bool>* flag;
     ~BusyFlag() { flag->store(false, std::memory_order_relaxed); }
+};
+
+// Bounded concurrency for request_agent groups: max_parallel == in flight.
+class Semaphore {
+public:
+    explicit Semaphore(int n) : slots_(n < 1 ? 1 : n) {}
+    void acquire() {
+        std::unique_lock<std::mutex> lk(m_);
+        cv_.wait(lk, [this] { return slots_ > 0; });
+        --slots_;
+    }
+    void release() {
+        {
+            std::lock_guard<std::mutex> lk(m_);
+            ++slots_;
+        }
+        cv_.notify_one();
+    }
+private:
+    std::mutex m_;
+    std::condition_variable cv_;
+    int slots_;
 };
 } // namespace
 
@@ -158,6 +184,9 @@ std::string SubAgent::dispatchSide(const ToolCall& tc) {
 }
 
 std::string SubAgent::turn(const std::string& message, const std::string& verb, bool force) {
+    // One turn per agent at a time: the session is not reentrant, and a driver
+    // may have several concurrent request_agent groups pointing at agents.
+    std::lock_guard<std::mutex> turnLock(turnMutex_);
     busy_.store(true, std::memory_order_relaxed);
     BusyFlag busyGuard{&busy_};
     session_.addMessage(Message::User(message));
@@ -210,9 +239,67 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
             }
         }
         // Every call in the response gets a tool result (no orphan tool_calls).
+        // request_agent calls are grouped by target: different targets run
+        // concurrently, the same target runs in order, and every result is
+        // written back in the original call order.
+        std::vector<std::string> sideResults(calls.size());
+        std::vector<int> serialIdx;
+        std::map<std::string, std::vector<int>> groups;
         for (int i = 0; i < static_cast<int>(calls.size()); ++i) {
             if (i == verbIdx) continue;
-            session_.addMessage(Message::Tool(calls[i].id, calls[i].name, dispatchSide(calls[i])));
+            if (calls[i].name != "request_agent") { serialIdx.push_back(i); continue; }
+            std::string target;
+            try { target = nlohmann::json::parse(calls[i].arguments).value("agent_id", std::string("")); }
+            catch (...) {}
+            if (target.empty()) serialIdx.push_back(i);   // malformed -> answer in order
+            else groups[target].push_back(i);
+        }
+
+        for (int i : serialIdx) {
+            try {
+                sideResults[i] = dispatchSide(calls[i]);
+            } catch (const std::exception& e) {
+                sideResults[i] = std::string("[error] ") + e.what();
+            } catch (...) {
+                sideResults[i] = "[error] unknown exception in tool '" + calls[i].name + "'";
+            }
+        }
+
+        if (!groups.empty()) {
+            Semaphore slots(maxParallel_);
+            std::vector<std::thread> workers;
+            workers.reserve(groups.size());
+            for (auto& kv : groups) {
+                slots.acquire();
+                const std::vector<int> idxs = kv.second;
+                workers.emplace_back([this, &calls, &sideResults, idxs, &slots]() {
+                    try {
+                        for (int idx : idxs) {
+                            if (tools_ && tools_->isCancelled()) {
+                                sideResults[idx] = "[cancelled]";
+                                continue;
+                            }
+                            sideResults[idx] = dispatchSide(calls[idx]);
+                        }
+                    } catch (const std::exception& e) {
+                        for (int idx : idxs)
+                            if (sideResults[idx].empty())
+                                sideResults[idx] = std::string("[error] ") + e.what();
+                    } catch (...) {
+                        for (int idx : idxs)
+                            if (sideResults[idx].empty())
+                                sideResults[idx] = "[error] unknown exception in dispatch";
+                    }
+                    slots.release();
+                });
+            }
+            for (auto& t : workers) t.join();
+        }
+
+        for (int i = 0; i < static_cast<int>(calls.size()); ++i) {
+            if (i == verbIdx) continue;
+            const std::string& r = sideResults[i].empty() ? std::string("Error: no result") : sideResults[i];
+            session_.addMessage(Message::Tool(calls[i].id, calls[i].name, r));
         }
         if (finalize) return calls[verbIdx].arguments;
     }

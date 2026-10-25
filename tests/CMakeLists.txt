@@ -25,6 +25,7 @@ set(TEST_SOURCES
     unit/test_reasoning_content.cpp
     unit/test_file_tools.cpp
     unit/test_skill_thinking.cpp
+    unit/test_skill_parallel.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp

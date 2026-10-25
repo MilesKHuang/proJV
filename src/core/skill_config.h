@@ -49,7 +49,7 @@ struct SkillConfig {
     std::string converge = "none";       // "all_agree" | "none"
     std::string loopDetect;              // text slot; "" = off
     bool dynamicDispatch = false;
-    int maxRecursion = 3;
+    int maxParallel = 16;                // concurrent request_agent groups (default 16)
     std::string dispatchTool;            // verb used for request_agent targets ("" = first tool)
     int maxToolIters = 3;                // tool-call iterations per turn (default preserves old behavior)
     std::string toolMode = "verb";       // "verb" (force the action tool) | "auto" (model may use any tool)

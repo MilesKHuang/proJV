@@ -34,6 +34,20 @@ public:
     virtual ~IProcessRunner() = default;
 
     // Synchronous: blocks until process exits, times out, or is cancelled.
+    //
+    // DESIGN NOTE -- do not "fix" the serialization:
+    //   proJV creates exactly ONE runner for the whole process (see
+    //   CreateProcessRunner() and TuiApp::procRunner_), and Run() holds the
+    //   runner-wide lock for the entire lifetime of the child process. That is
+    //   intentional:
+    //     - an external program cannot be relied on to receive ESC, so only one
+    //       child may exist at a time;
+    //     - Cancel() targets "the current process", which is only meaningful
+    //       while a single process owns the runner;
+    //     - a hung command must never be able to wedge a second caller.
+    //   Anything that needs real concurrency (skill workers, file tools) must
+    //   use the in-process tools, never the runner. Do not turn this into a
+    //   pool, and do not drop the lock.
     virtual ProcessResult Run(const ProcessConfig& cfg) = 0;
 
     // Signal the running process to terminate.

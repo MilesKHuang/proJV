@@ -96,6 +96,7 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         out.maxToolIters = j.value("max_tool_iters", 3);
         out.toolMode = j.value("tool_mode", std::string("verb"));
         out.thinking = j.value("thinking", std::string("on"));
+        out.maxParallel = j.value("max_parallel", 16);
         out.warnings.clear();
 
         // Known literals are validated: a typo here used to fall back to the
@@ -105,6 +106,11 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         if (!checkEnum("thinking", out.thinking, {"on", "off"}, err)) return false;
         if (out.maxRounds < 1) { err = "max_rounds must be >= 1"; return false; }
         if (out.maxToolIters < 1) { err = "max_tool_iters must be >= 1"; return false; }
+        if (out.maxParallel < 1 || out.maxParallel > 64) {
+            err = "max_parallel must be between 1 and 64 (got " +
+                  std::to_string(out.maxParallel) + ")";
+            return false;
+        }
 
         if (j.contains("stop_when") && j["stop_when"].is_object()) {
             out.stopWhenSlot = j["stop_when"].value("slot", std::string(""));
@@ -176,9 +182,9 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
 
         warnUnknownKeys(j, {"name", "description", "tools", "agents", "max_rounds", "converge",
                             "loop_detect", "dynamic_dispatch", "dispatch_tool", "max_tool_iters",
-                            "tool_mode", "thinking", "stop_when", "round_steps", "on_converge"},
-                        "", out.warnings);
-    } catch (const std::exception& e) { err = e.what(); return false; }
+                            "tool_mode", "thinking", "max_parallel", "stop_when",
+                            "round_steps", "on_converge"},
+                        "", out.warnings);    } catch (const std::exception& e) { err = e.what(); return false; }
     if (out.name.empty()) { err = "skill has no name"; return false; }
     return true;
 }
@@ -270,6 +276,14 @@ void SkillRunner::loadAgents() {
     if (tools_)
         for (const auto& d : tools_->getToolDefinitions()) regDefs[d.name] = d;
 
+    // One layer only: an agent that appears in the program drives the flow and
+    // may dispatch; everyone else is a leaf worker and never sees request_agent.
+    std::set<std::string> drivers;
+    for (const auto* steps : {&config_.roundSteps, &config_.onConverge})
+        for (const auto& st : *steps)
+            for (const auto& ac : st.actions) drivers.insert(ac.agent);
+    drivers_ = drivers;
+
     for (const auto& ag : config_.agents) {
         std::ifstream f(sdir + "/" + ag.promptFile, std::ios::binary);
         std::string prompt((std::istreambuf_iterator<char>(f)), {});
@@ -278,6 +292,7 @@ void SkillRunner::loadAgents() {
         // Role-level thinking overrides the skill-level setting.
         const bool thinkingOn = SkillConfig::thinkingEnabled(config_.thinking, ag.thinking);
         sa->configure(cfg_, tools_, config_.tools, config_.maxToolIters, thinkingOn);
+        sa->setMaxParallel(config_.maxParallel);
         sa->seedSharedContext(sharedContext_);
         {
             auto rit = responders_.find(ag.id);
@@ -293,27 +308,25 @@ void SkillRunner::loadAgents() {
         for (const auto& kv : jsonDefs) sa->registerToolDef(kv.second);
         for (const auto& t : config_.tools) if (regDefs.count(t)) sa->registerToolDef(regDefs[t]);
 
-        if (config_.dynamicDispatch) {
+        if (config_.dynamicDispatch && drivers.count(ag.id)) {
             ToolDefinition ra;
             ra.name = "request_agent";
-            ra.description = "Ask another agent (by id) and get its raw reply.";
+            ra.description =
+                "Ask another agent (by id) and get its raw reply. Calls to different "
+                "agents in one reply run concurrently; calls to the same agent run in order.";
             ra.parameters = {
                 {"agent_id", "string", "target agent id", true},
                 {"message", "string", "your request to that agent", true}
             };
             sa->registerToolDef(ra);
             sa->setToolInterceptor([this](const std::string&, const std::string& args) -> std::string {
-                static thread_local int depth = 0;
-                if (++depth > config_.maxRecursion) { --depth; return "[error] max recursion depth exceeded"; }
                 std::string id, msg;
                 try {
                     auto j = nlohmann::json::parse(args);
                     id = j.value("agent_id", std::string(""));
                     msg = j.value("message", std::string(""));
                 } catch (...) {}
-                std::string r = handleRequestAgent(id, msg, depth);
-                --depth;
-                return r;
+                return handleRequestAgent(id, msg);
             });
         }
 
@@ -382,16 +395,28 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                 th.emplace_back([&, i] {
                     if (checkCancel()) return;   // probe hit -> skip this action
                     const SkillAction& a = st.actions[i];
-                    if (SubAgent* ag = agentById(a.agent))
-                        results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                    try {
+                        if (SubAgent* ag = agentById(a.agent))
+                            results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                    } catch (const std::exception& e) {
+                        results[i] = std::string("[error] ") + e.what();
+                    } catch (...) {
+                        results[i] = "[error] unknown exception in action thread";
+                    }
                 });
             for (auto& t : th) t.join();
         } else {
             for (size_t i = 0; i < st.actions.size(); ++i) {
                 if (checkCancel()) return;
                 const SkillAction& a = st.actions[i];
-                if (SubAgent* ag = agentById(a.agent))
-                    results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                try {
+                    if (SubAgent* ag = agentById(a.agent))
+                        results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                } catch (const std::exception& e) {
+                    results[i] = std::string("[error] ") + e.what();
+                } catch (...) {
+                    results[i] = "[error] unknown exception in action";
+                }
             }
         }
         if (cancelRequested_.load()) return;
@@ -603,10 +628,12 @@ std::vector<SkillRunner::AgentSnapshot> SkillRunner::agentStatuses() const {
     return out;
 }
 
-std::string SkillRunner::handleRequestAgent(const std::string& id, const std::string& msg, int depth) {
-    (void)depth;
+std::string SkillRunner::handleRequestAgent(const std::string& id, const std::string& msg) {
+    if (id.empty()) return "[error] request_agent needs an 'agent_id'";
+    if (drivers_.count(id)) return "[error] cannot dispatch to a driver agent ('" + id + "')";
     SubAgent* ag = agentById(id);
     if (!ag) return "[error] unknown agent '" + id + "'";
+    if (checkCancel()) return "[cancelled]";
     std::string verb = config_.dispatchTool;
     if (verb.empty()) verb = ag->firstToolName();
     if (verb.empty()) return "[error] no tool for agent '" + id + "'";

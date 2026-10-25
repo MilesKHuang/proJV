@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -87,7 +88,7 @@ private:
     std::string residualConcerns() const;
     std::string voteLine(const VoteResult& vr) const;
     std::string display(const std::string& agentId) const;
-    std::string handleRequestAgent(const std::string& id, const std::string& msg, int depth);
+    std::string handleRequestAgent(const std::string& id, const std::string& msg);
     SubAgent* agentById(const std::string& id);
 
     // True when cancel was requested locally or by the injected probe.
@@ -111,6 +112,7 @@ private:
     std::map<std::string, std::string> prevSlots_;   // snapshot at end of round
     std::map<std::string, VoteResult> votes_;        // keyed by voting agent id
     std::map<std::string, std::string> displayNames_;
+    std::set<std::string> drivers_;   // agents allowed to dispatch (one layer only)
     std::string roundContext_;                       // last round's vote summary
 
     bool converged_ = false;

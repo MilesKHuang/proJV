@@ -20,6 +20,11 @@ class ProcessRunnerLinux : public IProcessRunner {
 public:
     ProcessResult Run(const ProcessConfig& cfg) override {
         ProcessResult result;
+        // Serialize the whole process lifetime on purpose: there is one runner
+        // per proJV process and Cancel() can only target the current child.
+        // An external program cannot be trusted to notice ESC, so a second
+        // concurrent child is not allowed. Concurrent skill workers must use
+        // in-process tools instead of the runner. See iprocess_runner.h.
         std::lock_guard<std::mutex> lock(mutex_);
 
         // Build command: block git interactive prompts, cd to workDir
