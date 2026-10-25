@@ -94,6 +94,7 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         out.dynamicDispatch = j.value("dynamic_dispatch", false);
         out.dispatchTool = j.value("dispatch_tool", std::string(""));
         out.maxToolIters = j.value("max_tool_iters", 3);
+        out.submitReserve = j.value("submit_reserve", 0);
         out.toolMode = j.value("tool_mode", std::string("verb"));
         out.thinking = j.value("thinking", std::string("on"));
         out.maxParallel = j.value("max_parallel", 16);
@@ -106,6 +107,12 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         if (!checkEnum("thinking", out.thinking, {"on", "off"}, err)) return false;
         if (out.maxRounds < 1) { err = "max_rounds must be >= 1"; return false; }
         if (out.maxToolIters < 1) { err = "max_tool_iters must be >= 1"; return false; }
+        if (out.submitReserve < 0 || out.submitReserve >= out.maxToolIters) {
+            err = "submit_reserve must be >= 0 and < max_tool_iters (got " +
+                  std::to_string(out.submitReserve) + " with max_tool_iters " +
+                  std::to_string(out.maxToolIters) + ")";
+            return false;
+        }
         if (out.maxParallel < 1 || out.maxParallel > 64) {
             err = "max_parallel must be between 1 and 64 (got " +
                   std::to_string(out.maxParallel) + ")";
@@ -182,9 +189,10 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
 
         warnUnknownKeys(j, {"name", "description", "tools", "agents", "max_rounds", "converge",
                             "loop_detect", "dynamic_dispatch", "dispatch_tool", "max_tool_iters",
-                            "tool_mode", "thinking", "max_parallel", "stop_when",
-                            "round_steps", "on_converge"},
-                        "", out.warnings);    } catch (const std::exception& e) { err = e.what(); return false; }
+                            "submit_reserve", "tool_mode", "thinking", "max_parallel",
+                            "stop_when", "round_steps", "on_converge"},
+                        "", out.warnings);
+    } catch (const std::exception& e) { err = e.what(); return false; }
     if (out.name.empty()) { err = "skill has no name"; return false; }
     return true;
 }
@@ -293,6 +301,7 @@ void SkillRunner::loadAgents() {
         const bool thinkingOn = SkillConfig::thinkingEnabled(config_.thinking, ag.thinking);
         sa->configure(cfg_, tools_, config_.tools, config_.maxToolIters, thinkingOn);
         sa->setMaxParallel(config_.maxParallel);
+        sa->setSubmitReserve(config_.submitReserve);
         sa->seedSharedContext(sharedContext_);
         {
             auto rit = responders_.find(ag.id);

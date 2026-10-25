@@ -42,6 +42,9 @@ public:
     void setResponderText(SubAgentTextResponder r) { textResponder_ = std::move(r); }
     // Upper bound on concurrent request_agent groups inside one turn.
     void setMaxParallel(int n) { maxParallel_ = n < 1 ? 1 : n; }
+    // Keep the last N iterations of a turn free for the submission tool.
+    // 0 == off (default), which is exactly the behaviour before this knob.
+    void setSubmitReserve(int n) { submitReserve_ = n < 0 ? 0 : n; }
     // Run one interaction: returns the verb tool's raw args JSON, a plain-text
     // fallback, an "[error] ..." string, or "" (no tool call and no text).
     std::string turn(const std::string& message, const std::string& verb, bool force);
@@ -76,6 +79,7 @@ private:
     int maxToolIters_ = 3;
     bool thinking_ = true;   // rejected together with a forced tool_choice
     int maxParallel_ = 16;   // concurrent request_agent groups per turn
+    int submitReserve_ = 0;  // iterations reserved for the verb (0 = off)
     std::mutex turnMutex_;   // turn() is not reentrant: one turn per agent at a time
     DeepSeekClient client_;
     Session session_;

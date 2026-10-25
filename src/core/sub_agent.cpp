@@ -192,7 +192,18 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
     session_.addMessage(Message::User(message));
     std::string narr;   // last assistant narration text (used if the verb tool never fires)
     bool nudged = false;   // "call the tool" hint is appended at most once per turn
+    bool budgetNudged = false;
     for (int r = 0; r < maxToolIters_; ++r) {
+        // Budget backpressure (opt-in, see submit_reserve): when the turn is
+        // close to running out of tool calls, say so once. Soft on purpose --
+        // forcing tool_choice here would kill the thinking chain.
+        if (!budgetNudged && submitReserve_ > 0 && r >= maxToolIters_ - submitReserve_) {
+            budgetNudged = true;
+            session_.addMessage(Message::User(
+                "Tool budget nearly exhausted (" + std::to_string(maxToolIters_ - r) +
+                " call(s) left of " + std::to_string(maxToolIters_) + "). Stop exploring "
+                "and call the '" + verb + "' tool now with what you have."));
+        }
         std::string text;
         std::vector<ToolCall> calls = requestTool(verb, force, text);
         if (!text.empty()) { narr = text; setNarration(text); }
@@ -209,7 +220,13 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
             std::string out;
             if (!lastError_.empty()) out = "[error] " + lastError_;
             else if (!text.empty()) out = text;
-            if (!out.empty()) { session_.addMessage(Message::Assistant(out)); setNarration(out); }
+            // Contract: a turn always returns something a caller can reason
+            // about. Silence used to propagate as "", which every caller then
+            // swallowed (empty slot -> no event -> "the batch never existed").
+            else out = "[no report] '" + name_ +
+                       "' returned no text and no tool call";
+            session_.addMessage(Message::Assistant(out));
+            setNarration(out);
             return out;
         }
 
@@ -303,5 +320,7 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
         }
         if (finalize) return calls[verbIdx].arguments;
     }
-    return narr;   // loop exhausted without the verb: surface narration so the turn is visible
+    if (!narr.empty()) return narr;   // loop exhausted: surface the narration
+    return "[no report] '" + name_ + "' ran out of tool budget (" +
+           std::to_string(maxToolIters_) + " calls) without calling '" + verb + "'";
 }

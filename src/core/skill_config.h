@@ -52,6 +52,12 @@ struct SkillConfig {
     int maxParallel = 16;                // concurrent request_agent groups (default 16)
     std::string dispatchTool;            // verb used for request_agent targets ("" = first tool)
     int maxToolIters = 3;                // tool-call iterations per turn (default preserves old behavior)
+    // Keep the last N iterations free for the submission tool: when a turn gets
+    // close to its budget, the agent is told to stop exploring and call the verb.
+    // 0 (default) == off, which is byte-for-byte today's behaviour. Skills that
+    // hand out big batches (monica) turn it on; short ones (bigbang, 3 iters)
+    // must leave it off or the first iteration is already "nearly exhausted".
+    int submitReserve = 0;
     std::string toolMode = "verb";       // "verb" (force the action tool) | "auto" (model may use any tool)
     std::string stopWhenSlot;            // optional: stop the round loop when stopWhenSlot == stopWhenValue
     std::string stopWhenValue;
