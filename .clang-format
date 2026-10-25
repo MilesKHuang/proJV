@@ -1,0 +1,22 @@
+# proJV house style.
+# Chosen to match the code as it was written, not to impose a new look: 4-space
+# indent, attached braces, 100 columns, single-statement ifs allowed on one line,
+# pointers/references bound to the type (`AppConfig& cfg`). Includes are NOT
+# sorted: several files deliberately include after code, and reordering them
+# risks changing what a macro sees.
+#
+# This file also matters to the format_file tool: with no .clang-format above a
+# file it refuses to run, because falling back to LLVM would silently restyle
+# the whole project.
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+SortIncludes: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AlignAfterOpenBracket: Align
+ContinuationIndentWidth: 4
