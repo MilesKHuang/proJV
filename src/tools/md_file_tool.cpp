@@ -1,4 +1,5 @@
-﻿#include "md_file_tool.h"
+#include "md_file_tool.h"
+#include "file_tool.h"          // validateToolPath -- the one shared workspace guard
 #include "registry.h"
 #include "json_utils.h"
 #include <fstream>
@@ -15,70 +16,6 @@ static constexpr const char* TOOL_MD_FILE_DESC =
     "Only .md files are allowed. Use read_file / grep_files to read project code.";
 
 static constexpr size_t MAX_MD_CONTENT_SIZE = 8 * 1024;
-
-// -- Workspace violation constants (same as file_tool.cpp) ---------------
-static constexpr const char* WS_VIOLATION_PREFIX_INTERNAL = "__WORKSPACE_VIOLATION__:";
-static constexpr const char* WS_VIOLATION_VALIDATE_ERROR = " Path '";
-static constexpr const char* WS_VIOLATION_VALIDATE_MIDDLE =
-    "' is outside the workspace. Only files inside the workspace can be accessed. "
-    "Use /workspace to check current workspace, or set workspace_path in config.toml.";
-
-// -- Path resolution (duplicated from file_tool.cpp for independence) ---
-static std::string resolveWorkspacePath(const std::string& path, const std::string& workspace) {
-    try {
-        fs::path inputPath(path);
-        if (inputPath.is_absolute()) {
-            return fs::absolute(inputPath).lexically_normal().string();
-        }
-        if (workspace.empty()) {
-            return fs::absolute(inputPath).lexically_normal().string();
-        }
-        fs::path base = fs::absolute(workspace).lexically_normal();
-        return (base / inputPath).lexically_normal().string();
-    } catch (...) {
-        return path;
-    }
-}
-
-static bool isPathInWorkspace(const std::string& resolvedPath, const std::string& workspace) {
-    if (workspace.empty()) return true;
-    try {
-        fs::path base = fs::absolute(workspace).lexically_normal();
-        fs::path target(resolvedPath);
-
-        std::string tStr = target.string();
-        std::string bStr = base.string();
-        std::transform(tStr.begin(), tStr.end(), tStr.begin(), ::tolower);
-        std::transform(bStr.begin(), bStr.end(), bStr.begin(), ::tolower);
-
-        if (!bStr.empty() && bStr.back() != '\\' && bStr.back() != '/')
-            bStr += '\\';
-
-        return tStr.find(bStr) == 0;
-    } catch (...) {
-        return false;
-    }
-}
-
-static std::string validateFilePath(const std::string& rawPath, const std::string& workspace,
-                                     std::string& outResolved) {
-    if (rawPath.empty()) return "Error: Empty path";
-    outResolved = resolveWorkspacePath(rawPath, workspace);
-    if (!workspace.empty() && !isPathInWorkspace(outResolved, workspace)) {
-        try {
-            std::error_code ec;
-            fs::path canonical = fs::weakly_canonical(rawPath, ec);
-            if (!ec && canonical != fs::path(outResolved) && isPathInWorkspace(canonical.string(), workspace)) {
-                outResolved = canonical.string();
-                return "";
-            }
-        } catch (...) {}
-
-        return std::string(WS_VIOLATION_PREFIX_INTERNAL) + WS_VIOLATION_VALIDATE_ERROR + rawPath +
-               WS_VIOLATION_VALIDATE_MIDDLE;
-    }
-    return "";
-}
 
 // -- Validate .md suffix --------------------------------------------------
 static std::string validateMdSuffix(const std::string& path) {
@@ -115,9 +52,9 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
         std::string suffixErr = validateMdSuffix(path);
         if (!suffixErr.empty()) return suffixErr;
 
-        // Validate path is in workspace
+        // Validate path is in workspace (shared guard, see file_tool.h)
         std::string resolved;
-        std::string pathErr = validateFilePath(path, workspacePath, resolved);
+        std::string pathErr = validateToolPath(path, workspacePath, resolved);
         if (!pathErr.empty()) return pathErr;
 
         if (action == "write") {

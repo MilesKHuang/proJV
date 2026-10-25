@@ -635,6 +635,28 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 bool hitLimit = false;
                 static constexpr int kMaxFilesToScan = 5000;  // hard cap to prevent UI freeze
                 std::error_code ec;
+
+                // A plain file path means "search this one file". Passing it to
+                // recursive_directory_iterator silently yields no matches, which
+                // reads as "no callers" and corrupts dead-code conclusions.
+                if (fs::is_regular_file(resolved, ec)) {
+                    std::ifstream ifs(resolved);
+                    std::string line;
+                    int lineNum = 0;
+                    while (std::getline(ifs, line)) {
+                        ++lineNum;
+                        if (!std::regex_search(line, re)) continue;
+                        result << resolved << ":" << lineNum << ": " << line << "\n";
+                        if (++count >= maxResults) { hitLimit = true; break; }
+                    }
+                    if (count == 0) return "No matches found for pattern: " + pattern;
+                    std::string out = result.str();
+                    if (hitLimit)
+                        out += "\n[truncated at " + std::to_string(count) +
+                               " results - narrow the pattern, or raise max_results]\n";
+                    return out;
+                }
+
                 for (auto it = fs::recursive_directory_iterator(resolved,
                         fs::directory_options::skip_permission_denied, ec);
                      it != fs::recursive_directory_iterator(); ) {

@@ -32,6 +32,11 @@ public:
             "set GIT_ASKPASS= && "
             "set SSH_ASKPASS= && "
             "set CORE_ASKPASS= && ";
+        // Extra environment (pytool passes its own vars here). The Linux runner
+        // prefixes `export K=V;`, this one must do the same with `set`, or the
+        // variable is silently dropped -- which is how it behaved until now.
+        for (const auto& [key, value] : cfg.extraEnv)
+            if (!key.empty()) gitEnv += "set " + key + "=" + value + " && ";
         std::string fullCmd = gitEnv + cfg.command;
         if (!cfg.workDir.empty())
             fullCmd = "cd /d \"" + cfg.workDir + "\" && " + fullCmd;

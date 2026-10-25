@@ -24,6 +24,7 @@ set(TEST_SOURCES
     unit/test_turn_end.cpp
     unit/test_reasoning_content.cpp
     unit/test_file_tools.cpp
+    unit/test_workspace_paths.cpp
     unit/test_skill_thinking.cpp
     unit/test_skill_parallel.cpp
     golden/test_tui_smoke.cpp
