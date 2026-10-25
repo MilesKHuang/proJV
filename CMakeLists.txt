@@ -53,6 +53,13 @@ set(FTXUI_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
 # SQLiteCpp (both platforms, built from source; also builds sqlite3).
+# Its CMakeLists defaults SQLITECPP_RUN_CPPCHECK and SQLITECPP_RUN_CPPLINT to ON
+# and attaches both as ALL custom targets. That is a lint gate for SQLiteCpp
+# itself, not for us, and on CI it aborted the whole Windows build with
+#   error MSB8066: Custom build for '...SQLiteCpp_cppcheck.rule' exited with code 1
+# Turn them off before add_subdirectory so the option is already set.
+set(SQLITECPP_RUN_CPPCHECK OFF CACHE BOOL "SQLiteCpp cppcheck target" FORCE)
+set(SQLITECPP_RUN_CPPLINT OFF CACHE BOOL "SQLiteCpp cpplint target" FORCE)
 add_subdirectory("${EXTERNAL_DIR}/SQLiteCpp-3.3.3"
                  "${CMAKE_BINARY_DIR}/SQLiteCpp")
 
