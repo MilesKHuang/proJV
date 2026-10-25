@@ -92,7 +92,7 @@
 | 技能里工具报 "not allowed" | 该技能的 `tools` 列表没包含它 |
 | `cannot dispatch to a driver agent` | 派活只有一层，这是设计如此 |
 | `[skill] config: unknown key 'x'` | `config.json` 里写错了键名，值被忽略 |
-| `format_file` 说没找到 | 装 `clang-format`，或配 `clang_format_path` |
+| `format_file` 说没找到 | 装 `clang-format`，或配 `clang_format_path`。Visual Studio 自带一个：`...\VC\Tools\Llvm\x64\bin\clang-format.exe` |
 
 ---
 

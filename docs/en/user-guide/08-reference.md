@@ -90,7 +90,7 @@
 | tools "not allowed" in a skill | the skill's `tools` list does not include them |
 | `cannot dispatch to a driver agent` | dispatch is one layer deep by design |
 | `[skill] config: unknown key 'x'` | typo in `config.json`; the value was ignored |
-| `format_file` says not found | install `clang-format` or set `clang_format_path` |
+| `format_file` says not found | install `clang-format` or set `clang_format_path`. Visual Studio ships one: `...\VC\Tools\Llvm\x64\bin\clang-format.exe` |
 
 ---
 
