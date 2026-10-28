@@ -57,6 +57,7 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 | **技能** | `/monica <目录>`（十个 worker 并发整理项目）、`/bigbang`（三方圆桌辩论 -> 一份执行文档）、`skill_maker` 自动生成新技能 |
 | **图片输入** | `@路径` 附加截图或图片；给目录会自动展开其中的图片 |
 | **思考链** | 实时流式显示、可折叠，`F8` 看完整思考；`reasoning_effort` 控制深度（none / low / high / max） |
+| **1M 上下文** | DeepSeek V4 完整 1M token 窗口，压力高时自动压缩长会话 |
 | **网页** | DeepSeek 官方 Search / Fetch API（结构化结果、Markdown 页面） |
 | **会话** | 每段对话一个 SQLite 库，崩溃不丢，`/compress` 压缩长对话 |
 | **主题** | 2 个内置 + 6 套精选，可视化编辑器实时预览，JSON 导入导出 |

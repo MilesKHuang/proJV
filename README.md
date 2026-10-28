@@ -60,6 +60,7 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | **Skills** | `/monica <dir>` (10 concurrent workers tidy up a repo), `/bigbang` (three-role debate -> one execution doc), `skill_maker` authors new ones |
 | **Vision input** | `@path` attaches screenshots or images; directories expand to their images |
 | **Thinking chain** | reasoning streamed live, collapsible, `F8` for the full trace; `reasoning_effort` sets the depth (none / low / high / max) |
+| **1M context** | the full DeepSeek V4 1M-token window, with automatic compression when pressure builds |
 | **Web** | DeepSeek's own Search and Fetch APIs (structured results, Markdown pages) |
 | **Sessions** | SQLite per conversation, crash-safe, `/compress` to shrink long ones |
 | **Themes** | 2 built-in + 6 curated, visual editor with live preview, JSON import/export |
