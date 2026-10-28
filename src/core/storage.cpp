@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "debug_log.h"
 #include "json.hpp"
+#include "token_estimate.h"
 #include <SQLiteCpp/Database.h>
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
@@ -201,23 +202,15 @@ static std::vector<ImageAttachment> imagePathsFromJson(const std::string& json) 
     return out;
 }
 
-static size_t estimateTokens(const std::string& text) {
-    size_t t = 0;
-    for (char c : text) {
-        if ((unsigned char)c >= 0x80)
-            t += 2;
-        else
-            t += 1;
-    }
-    return std::max<size_t>(1, t / 4);
-}
-
+// token_count has no reader anywhere in the tree; it exists for future analysis
+// of stored sessions. The estimate is shared with Session (token_estimate.h) so
+// both stay on the same calibration.
 int64_t Storage::insertMessage(const Message& msg) {
     if (!writeDb_) return -1;
     try {
         SQLite::Transaction transaction(*writeDb_, SQLite::TransactionBehavior::IMMEDIATE);
 
-        size_t tokens = estimateTokens(msg.content);
+        size_t tokens = estimateTokensForText(msg.content);
 
         SQLite::Statement stmt(*writeDb_, "INSERT INTO messages (role, content, reasoning_content, "
                                           "tool_call_id, name, token_count, image_paths) "

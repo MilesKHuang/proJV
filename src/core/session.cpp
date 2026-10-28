@@ -1,6 +1,7 @@
 #include "session.h"
 #include "json.hpp"
 #include "debug_log.h"
+#include "token_estimate.h"
 #include <algorithm>
 #include <set>
 
@@ -15,18 +16,8 @@ size_t Session::estimateImageTokens(size_t imageCount) {
     return imageCount * static_cast<size_t>(kImageTokenEstimate);
 }
 
-// -- Token estimation: ~4 ASCII chars = 1 token, ~2 CJK chars = 1 token --
-size_t Session::estimateTokens(const std::string& text) {
-    if (text.empty()) return 0;
-    size_t t = 0;
-    for (char c : text) {
-        if ((unsigned char)c >= 0x80)
-            t += 2;
-        else
-            t += 1;
-    }
-    return std::max<size_t>(1, t / 4);
-}
+// -- Token estimation: see core/token_estimate.h (official 0.3 / 0.6 per char) --
+size_t Session::estimateTokens(const std::string& text) { return estimateTokensForText(text); }
 
 // -- Prune session to fit within maxTokens context window --
 void Session::pruneForContext(size_t maxTokens) {

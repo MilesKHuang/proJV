@@ -28,6 +28,7 @@ set(TEST_SOURCES
     unit/test_skill_thinking.cpp
     unit/test_skill_parallel.cpp
     unit/test_skill_budget.cpp
+    unit/test_token_estimate.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
