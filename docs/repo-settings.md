@@ -56,7 +56,7 @@ https://github.com/MilesKHuang/proJV/releases
    git push origin v0.6.0
    ```
 2. `release.yml` builds, tests, packages both platforms and creates the Release.
-3. Paste `RELEASE_NOTES_v0.6.0.md` into the Release body (the workflow generates
+3. Paste `RELEASE_NOTES_<tag>.md` into the Release body (the workflow generates
    notes from commits; the curated file is better), and add:
    - Windows: unsigned binary, SmartScreen -> "More info" -> "Run anyway".
    - Linux: `sudo apt-get install -y libcurl4-openssl-dev` if libcurl is missing.
