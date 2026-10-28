@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(proJV VERSION 0.6.0 LANGUAGES C CXX)
+project(proJV VERSION 0.6.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -245,6 +245,44 @@ add_custom_command(TARGET proJV_tui POST_BUILD
 
 # ── Tests ────────────────────────────────────────────────────────────────
 option(PROJV_BUILD_TESTS "Build proJV unit tests" ON)
+option(PROJV_BUILD_E2E "Build the headless end-to-end harness (dev only)" OFF)
+if(PROJV_BUILD_E2E)
+    set(E2E_SOURCES
+        ${CMAKE_SOURCE_DIR}/tests/e2e/main_e2e.cpp
+        ${SRC_DIR}/tui/terminal.cpp
+        ${SRC_DIR}/tui/app_tui.cpp
+        ${SRC_DIR}/tui/chat_view.cpp
+        ${SRC_DIR}/tui/bubble_model.cpp
+        ${SRC_DIR}/tui/speaker_colors.cpp
+        ${SRC_DIR}/tui/markdown_text.cpp
+        ${SRC_DIR}/tui/markdown_view.cpp
+        ${SRC_DIR}/tui/status_line.cpp
+        ${SRC_DIR}/tui/status_bar.cpp
+        ${SRC_DIR}/tui/todo_view.cpp
+        ${SRC_DIR}/tui/approval_logic.cpp
+        ${SRC_DIR}/tui/config_view.cpp
+        ${SRC_DIR}/tui/theme_map.cpp
+        ${SRC_DIR}/tui/theme_colors.cpp
+        ${SRC_DIR}/tui/theme_manager.cpp
+        ${SRC_DIR}/tui/theme_editor_view.cpp
+        ${SRC_DIR}/tui/clipboard.cpp
+    )
+    add_executable(proJV_e2e ${E2E_SOURCES})
+    target_include_directories(proJV_e2e PRIVATE
+        ${EXTERNAL_DIR}/FTXUI-7.0.3/include
+        ${EXTERNAL_DIR}
+        ${SRC_DIR}
+        ${SRC_DIR}/client
+        ${SRC_DIR}/tui
+    )
+    target_link_libraries(proJV_e2e PRIVATE proJV_lib ftxui::component)
+    target_compile_definitions(proJV_e2e PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+    )
+    if(MSVC)
+        target_compile_options(proJV_e2e PRIVATE /utf-8)
+    endif()
+endif()
 if(PROJV_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
