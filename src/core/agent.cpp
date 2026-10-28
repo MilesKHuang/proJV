@@ -820,6 +820,7 @@ ChatRequest Agent::buildChatRequest() const {
     req.model = model_;
     req.maxTokens = configMaxTokens;
     req.temperature = configTemperature;
+    req.reasoningEffort = configReasoningEffort;
     req.tools = getFilteredToolDefinitions();
     if (!req.messages.empty()) {
         std::string tp = buildToolPathsMessage(cppCompilerPath, pythonPath);

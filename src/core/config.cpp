@@ -69,6 +69,19 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         cfg.clangFormatPath = tbl["clang_format_path"].value_or<std::string>("");
         cfg.contextWindow = tbl["context_window"].value_or<size_t>(0);
         cfg.themeName = tbl["theme"].value_or<std::string>("");
+        // Reasoning effort: official values none/low/high/max (aliases are
+        // normalized). Anything else falls back to the official default "high"
+        // instead of being sent to the API.
+        {
+            const std::string raw = tbl["reasoning_effort"].value_or<std::string>("max");
+            cfg.reasoningEffort = normalizeReasoningEffort(raw);
+            if (cfg.reasoningEffort.empty()) {
+                debugLogf("[Config] reasoning_effort '%s' is not one of "
+                          "none/low/high/max -- using official default 'high'",
+                          raw.c_str());
+                cfg.reasoningEffort = kReasoningEffortOfficialDefault();
+            }
+        }
 
         // Parse [model_prices] section (optional)
         if (auto* pricesTbl = tbl["model_prices"].as_table()) {
@@ -162,6 +175,8 @@ bool saveApiKey(const std::string& key) {
         if (!tbl.contains("python_path")) tbl.insert_or_assign("python_path", "");
         if (!tbl.contains("clang_format_path")) tbl.insert_or_assign("clang_format_path", "");
         if (!tbl.contains("context_window")) tbl.insert_or_assign("context_window", 0);
+        if (!tbl.contains("reasoning_effort"))
+            tbl.insert_or_assign("reasoning_effort", kReasoningEffortDefault());
     } catch (const std::exception& e) {
         debugLogf("[Config] Error updating config table: %s", e.what());
         return false;
@@ -207,6 +222,7 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("python_path", cfg.pythonPath);
     tbl.insert_or_assign("clang_format_path", cfg.clangFormatPath);
     tbl.insert_or_assign("context_window", static_cast<int64_t>(cfg.contextWindow));
+    tbl.insert_or_assign("reasoning_effort", cfg.reasoningEffort);
     if (!cfg.themeName.empty()) tbl.insert_or_assign("theme", cfg.themeName);
 
     std::ofstream ofs(configPath);

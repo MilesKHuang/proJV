@@ -175,9 +175,15 @@ std::string DeepSeekClient::buildRequestBody(const ChatRequest& request) {
     }
 
     // Thinking mode is ON by default at the API. Only send the field when it
-    // must be turned off (forced tool_choice, or a role that asked for "off").
-    if (!request.thinking) {
+    // must be turned off (forced tool_choice, a role that asked for "off", or
+    // reasoning_effort = "none", which is the documented "do not think" value).
+    const bool thinkingOff = !request.thinking || request.reasoningEffort == "none";
+    if (thinkingOff) {
         body["thinking"] = {{"type", "disabled"}};
+    } else if (!request.reasoningEffort.empty()) {
+        // Effort control, only valid while thinking is on: the docs spell out
+        // that conflicting controls must not be sent together.
+        body["reasoning_effort"] = request.reasoningEffort;
     }
 
     if (!request.toolChoice.empty()) {

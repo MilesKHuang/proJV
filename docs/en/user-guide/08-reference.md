@@ -63,7 +63,8 @@
 | `model` | `deepseek-v4-flash` (default) or `deepseek-v4-pro` |
 | `base_url` | API endpoint, default `https://api.deepseek.com` |
 | `max_tokens` | reply budget (default 65536) |
-| `temperature` | 0.0 by default |
+| `temperature` | 0.0 by default (no effect in thinking mode, per the API docs) |
+| `reasoning_effort` | thinking depth: `none` / `low` / `high` / `max`, default `max`; `none` turns thinking off (the API default level is `high`) |
 | `workspace_path` | the only tree the file tools may touch; empty = exe dir |
 | `context_window` | 0 = auto |
 | `theme` | active theme name |

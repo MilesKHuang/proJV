@@ -150,6 +150,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     };
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
+    agent->setReasoningEffort(config.reasoningEffort);
     agent->setWorkspacePath(config.workspacePath);
     agent->setModel(config.model);
     agent->setContextWindow(config.contextWindow);
@@ -714,6 +715,7 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
     setupTools(); // re-register tools with new workspace path
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
+    agent->setReasoningEffort(config.reasoningEffort);
     agent->setModel(config.model);
     agent->setContextWindow(0); // reset auto-detect on model switch
     config.loadError.clear();

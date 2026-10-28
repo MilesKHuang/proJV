@@ -73,13 +73,42 @@ TEST_CASE("thinking: the request body only carries the field when it is off") {
 
     req.thinking = true;
     const std::string onBody = client.buildRequestBody(req);
-    CHECK(onBody.find("thinking") == std::string::npos); // default: do not send
+    CHECK(onBody.find("\"thinking\"") == std::string::npos); // default: do not send
+    CHECK(onBody.find("\"reasoning_effort\": \"max\"") != std::string::npos);
 
     req.thinking = false;
     const std::string offBody = client.buildRequestBody(req);
     auto j = nlohmann::json::parse(offBody);
     CHECK(j.contains("thinking"));
     CHECK(j["thinking"]["type"] == "disabled");
+    CHECK_FALSE(j.contains("reasoning_effort")); // never send conflicting controls
+}
+
+TEST_CASE("thinking: reasoning_effort follows the official enum") {
+    DeepSeekClient client;
+    ChatRequest req;
+    req.model = "deepseek-v4-flash";
+    req.messages.push_back(Message::User("hi"));
+
+    // Canonical values pass through, aliases are mapped the way the API maps them.
+    CHECK(normalizeReasoningEffort("max") == "max");
+    CHECK(normalizeReasoningEffort("HIGH") == "high");
+    CHECK(normalizeReasoningEffort(" low ") == "low");
+    CHECK(normalizeReasoningEffort("none") == "none");
+    CHECK(normalizeReasoningEffort("minimal") == "low");
+    CHECK(normalizeReasoningEffort("medium") == "high");
+    CHECK(normalizeReasoningEffort("xhigh") == "high");
+    CHECK(normalizeReasoningEffort("ultra") == "max");
+    // Anything else is rejected so the caller can fall back to "high".
+    CHECK(normalizeReasoningEffort("off").empty());
+    CHECK(normalizeReasoningEffort("").empty());
+    CHECK(normalizeReasoningEffort("highest").empty());
+
+    // "none" is the documented "do not think" value: toggle, not an effort level.
+    req.reasoningEffort = "none";
+    auto j = nlohmann::json::parse(client.buildRequestBody(req));
+    CHECK(j["thinking"]["type"] == "disabled");
+    CHECK_FALSE(j.contains("reasoning_effort"));
 }
 
 TEST_CASE("thinking: role level overrides the skill level") {

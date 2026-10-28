@@ -1,4 +1,5 @@
 #pragma once
+#include <cctype>
 #include <string>
 #include <vector>
 #include <map>
@@ -81,6 +82,41 @@ struct Message {
 
 // --- API types ------------------------------------------------------
 
+// --- Reasoning effort (official Thinking Mode values) ----------------
+//
+// The API documents none/low/high/max for `reasoning_effort` and maps these
+// aliases itself: minimal -> low, medium/xhigh -> high, ultra -> max. Nothing
+// else is legal, so an unknown value is reported as empty here and the caller
+// falls back to the official default instead of sending something the server
+// would reject.
+inline std::string normalizeReasoningEffort(const std::string& raw) {
+    std::string v;
+    for (char c : raw) {
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+        v += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (v == "minimal") return "low";
+    if (v == "medium" || v == "xhigh") return "high";
+    if (v == "ultra") return "max";
+    if (v == "none" || v == "low" || v == "high" || v == "max") return v;
+    return std::string();
+}
+
+// Official default: thinking is on and the effort is "high".
+inline const std::string& kReasoningEffortOfficialDefault() {
+    static const std::string v = "high";
+    return v;
+}
+
+// What proJV ships with: the highest documented level, so a fresh install gets
+// the best answer quality. Users may lower it (or turn thinking off with
+// "none") in config.toml; an invalid value falls back to the official default.
+inline const std::string& kReasoningEffortDefault() {
+    static const std::string v = "max";
+    return v;
+}
+
+
 struct ChatRequest {
     std::string model = "deepseek-v4-flash";
     std::vector<Message> messages;
@@ -96,6 +132,10 @@ struct ChatRequest {
     // mode rejects a forced function tool_choice, so SubAgent disables it
     // whenever a verb tool is forced.
     bool thinking = true;
+    // OpenAI-compatible `reasoning_effort`: none / low / high / max. "none" is
+    // the documented way to switch thinking off, so it is translated into the
+    // thinking toggle above rather than sent as an effort level.
+    std::string reasoningEffort = "max";
 };
 
 struct ChatResponse {
@@ -159,6 +199,9 @@ struct AppConfig {
     std::string baseUrl = "https://api.deepseek.com";
     int maxTokens = 65536;
     double temperature = 0.0;
+    // Thinking effort (config.toml "reasoning_effort"): none / low / high / max.
+    // "none" turns thinking off. Invalid values fall back to "high".
+    std::string reasoningEffort = "max";
     std::string configPath;
     std::string workspacePath;   // file access whitelist; empty = exe dir
     std::string cppCompilerPath; // C++ compiler path (e.g. MSBuild.exe, cl.exe)

@@ -59,7 +59,7 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | **Tool orchestration** | read / write / edit files, targeted line ranges, directory trees, regex grep, shell, todo, skills — the model decides |
 | **Skills** | `/monica <dir>` (10 concurrent workers tidy up a repo), `/bigbang` (three-role debate -> one execution doc), `skill_maker` authors new ones |
 | **Vision input** | `@path` attaches screenshots or images; directories expand to their images |
-| **Thinking chain** | reasoning streamed live, collapsible, `F8` for the full trace |
+| **Thinking chain** | reasoning streamed live, collapsible, `F8` for the full trace; `reasoning_effort` sets the depth (none / low / high / max) |
 | **Web** | DeepSeek's own Search and Fetch APIs (structured results, Markdown pages) |
 | **Sessions** | SQLite per conversation, crash-safe, `/compress` to shrink long ones |
 | **Themes** | 2 built-in + 6 curated, visual editor with live preview, JSON import/export |

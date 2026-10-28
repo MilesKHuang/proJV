@@ -57,6 +57,12 @@ class Agent {
     void setModel(const std::string& model);
     void setToolPaths(const std::string& cpp, const std::string& python);
     void setRequestParams(int maxTokens, double temperature);
+    // Reasoning effort (official enum: none/low/high/max). Anything unusable
+    // falls back to the official default "high".
+    void setReasoningEffort(const std::string& effort) {
+        const std::string v = normalizeReasoningEffort(effort);
+        configReasoningEffort = v.empty() ? kReasoningEffortOfficialDefault() : v;
+    }
     void setSystemPrompt(const std::string& sp) {
         systemPrompt_ = sp;
         reloadAllowedTools();
@@ -152,4 +158,5 @@ class Agent {
     size_t configContextWindow = 0;
     int configMaxTokens = 65536;
     double configTemperature = 0.0;
+    std::string configReasoningEffort = "max";
 };

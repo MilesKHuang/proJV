@@ -65,7 +65,8 @@
 | `model` | `deepseek-v4-flash`（默认）或 `deepseek-v4-pro` |
 | `base_url` | 接口地址，默认 `https://api.deepseek.com` |
 | `max_tokens` | 单次回复预算（默认 65536） |
-| `temperature` | 默认 0.0 |
+| `temperature` | 默认 0.0（思考模式下官方不生效） |
+| `reasoning_effort` | 思考强度：`none` / `low` / `high` / `max`，默认 `max`；`none` 表示关闭思考（官方默认强度为 `high`） |
 | `workspace_path` | 文件工具唯一可访问的目录；留空 = 可执行文件所在目录 |
 | `context_window` | 0 = 自动 |
 | `theme` | 当前主题名 |
