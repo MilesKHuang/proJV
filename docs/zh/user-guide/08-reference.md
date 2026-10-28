@@ -53,6 +53,7 @@
 | `fetch_url` | DeepSeek 抓取 API（返回 Markdown） |
 | `update_todo` | TODO 面板：`init` / `update` / `done` |
 | `run_skill` | 在对话中启动一个技能 |
+| `view_image` | 看磁盘上的图片；图片在下一轮以 user 消息送达（仅 Flash 模型） |
 
 `diagram_tool` 不是内置的，它是示例 pytool（`projv_files/pytool/diagram_tool/`，
 需要 Graphviz）。

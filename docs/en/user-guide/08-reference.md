@@ -51,6 +51,7 @@
 | `fetch_url` | DeepSeek Fetch API (returns Markdown) |
 | `update_todo` | TODO panel: `init` / `update` / `done` |
 | `run_skill` | Start an installed skill from inside a turn |
+| `view_image` | Look at images on disk; they arrive in the next turn as a user message (Flash models only) |
 
 `diagram_tool` is not built in: it is the example pytool in
 `projv_files/pytool/diagram_tool/` (it needs Graphviz).
