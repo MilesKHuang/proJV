@@ -44,3 +44,6 @@ build_linux/
 dist/
 dist_linux/
 build_strict/
+
+# local planning archive (never published)
+docs/archive/
