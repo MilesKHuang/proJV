@@ -20,6 +20,7 @@
 - [ ] new or changed behaviour is covered by a test (bug fix: the test fails
       before the fix)
 - [ ] docs updated in **both** languages (`docs/en/` and `docs/zh/`)
+- [ ] if build steps or the "do not" rules changed: `AGENTS.md` updated too
 - [ ] `README.md` / `README_zh.md` updated if user-visible surface changed
 - [ ] no secrets: no `config.toml`, no `projv_files/sessions/`, no keys, no logs
 - [ ] if this touches the skill engine: UI callbacks still only after a join,
