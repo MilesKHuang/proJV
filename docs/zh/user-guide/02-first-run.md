@@ -64,7 +64,7 @@ Key 保存在 `projv_files/config.toml`（`api_key = "..."`）。这个文件已
 
 | 现象 | 原因 |
 |------|------|
-| 跑技能时提示 "does not support tool calls" | 选了 reasoner 类模型，换成 `deepseek-v4-flash` |
+| `@路径` 提示 "does not accept image input" | 图片只有 Flash 线支持，`F10` 换成 `deepseek-v4-flash` |
 | 每次工具调用都报 "outside the workspace" | 工作区设成了不含该文件的上层目录 |
 | 一直转圈没有回答 | 网络或 Key 的问题，看 `projv_files/logs` |
 

@@ -245,9 +245,7 @@ TEST_CASE("serialization: from_json restores text and image parts") {
 }
 
 TEST_CASE("model support: vision is a Flash-line capability") {
-    CHECK(modelSupportsVision("deepseek-flash"));
     CHECK(modelSupportsVision("deepseek-v4-flash"));
     CHECK(modelSupportsVision("deepseek-v4-flash-vision-exp"));
     CHECK_FALSE(modelSupportsVision("deepseek-v4-pro"));
-    CHECK_FALSE(modelSupportsVision("deepseek-reasoner"));
 }

@@ -5,7 +5,7 @@
 ## Requirements
 
 - A **Flash** model (`deepseek-v4-flash` or any name containing `flash` /
-  `vision`). Reasoner-style models do not accept images; proJV refuses to
+  `vision`). `deepseek-v4-pro` does not accept images; proJV refuses to
   attach them instead of failing with a 400.
 - JPEG, PNG, GIF or WebP.
 

@@ -136,14 +136,17 @@ inline double lookupModelPrice(const std::vector<ModelPriceEntry>& prices,
     return input ? 0.5 : 2.0; // fallback: cheapest
 }
 
-// Whether a model supports tool calls (model-specific knowledge)
+// Whether a model supports tool calls. Every current DeepSeek model does; the
+// helper stays so call sites keep one place to ask, and so a future text-only
+// model has a single switch to turn off.
 inline bool modelSupportsTools(const std::string& modelId) {
-    return modelId.find("reasoner") == std::string::npos;
+    (void)modelId;
+    return true;
 }
 
 // Whether a model accepts image content blocks. DeepSeek serves vision on the
-// Flash line ("deepseek-flash", legacy "deepseek-v4-flash-vision-exp"); the
-// "vision" tag is accepted too so experimental names keep working.
+// Flash line (deepseek-v4-flash); the "vision" tag is accepted too so
+// experimental names keep working.
 inline bool modelSupportsVision(const std::string& modelId) {
     if (modelId.find("flash") != std::string::npos) return true;
     if (modelId.find("vision") != std::string::npos) return true;
@@ -193,7 +196,7 @@ inline size_t contextWindowForModel(const std::string& model) {
 
 // --- Model info (fetched from API + pricing) ----------------------
 struct ModelInfo {
-    std::string id;               // e.g. "deepseek-chat"
+    std::string id;               // e.g. "deepseek-v4-flash"
     std::string label;            // display name (same as id when simplified)
     double inputPricePerM = 0.0;  // $ per 1M input tokens
     double outputPricePerM = 0.0; // $ per 1M output tokens
@@ -215,7 +218,7 @@ enum class AgentState {
 struct AgentStatus {
     AgentState state = AgentState::Idle;
     std::string streamingText;
-    std::string reasoningText; // reasoning_content from deepseek-reasoner
+    std::string reasoningText; // reasoning_content (thinking mode)
     std::string errorMessage;
     std::string statusMessage; // "Working...", "Thinking...", etc.
 

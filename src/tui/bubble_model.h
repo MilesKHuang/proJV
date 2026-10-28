@@ -19,7 +19,7 @@ namespace bubble_model {
 struct Bubble {
     std::string role; // "user" | "assistant" | "system" | "tool_call" | "tool_result"
     std::string content;
-    std::string reasoningText; // reasoning_content from deepseek-reasoner
+    std::string reasoningText; // reasoning_content (thinking mode)
     bool hasReasoning = false;
     std::string speaker; // skill role: "Sheldon" | "Penny" | "Leonard" (else empty)
     bool isVote = false; // true for a "**[Role vote]**" line

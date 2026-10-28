@@ -67,7 +67,7 @@ dialog shows the tool name and its arguments.
 
 | Symptom | Cause |
 |---------|-------|
-| "does not support tool calls" on a skill | you selected a reasoner-style model; pick `deepseek-v4-flash` |
+| "does not accept image input" on `@path` | images need the Flash line; switch to `deepseek-v4-flash` (`F10`) |
 | every tool call is rejected with "outside the workspace" | workspace is set to a parent folder that does not contain the file |
 | no answer, spinner forever | network / key problem; check `projv_files/logs` |
 

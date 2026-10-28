@@ -22,7 +22,7 @@ static constexpr int kStreamTotalTimeoutSec =
     0; // 0 = no total cap; idle timeout governs long reasoning
 static constexpr int kStreamLowSpeedLimit = 1; // bytes/sec (very low -- tolerate API pauses)
 static constexpr int kStreamLowSpeedTime =
-    120; // 2 min below limit -> timeout (was 120s; give reasoner more time)
+    120; // 2 min below limit -> timeout (was 120s; give thinking models more time)
 static constexpr int kConnectTimeoutSec = 30;
 static constexpr int kSendTimeoutSec = 60; // sending large POST body
 

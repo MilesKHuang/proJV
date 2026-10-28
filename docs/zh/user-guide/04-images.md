@@ -7,7 +7,7 @@
 ## 前提
 
 - 必须是 **Flash** 模型（`deepseek-v4-flash`，或名字里带 `flash` / `vision`）。
-  reasoner 类模型不接受图片，proJV 会直接不附加，而不是让你吃一个 400。
+  `deepseek-v4-pro` 不接受图片，proJV 会直接不附加，而不是让你吃一个 400。
 - 支持 JPEG、PNG、GIF、WebP。
 
 ## 怎么发

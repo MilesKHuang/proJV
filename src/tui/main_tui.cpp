@@ -248,8 +248,6 @@ int main() {
         } else if (app.modelsLoading()) {
             model_names->push_back("(loading models...)");
         } else {
-            model_names->push_back("deepseek-chat");
-            model_names->push_back("deepseek-reasoner");
             model_names->push_back("deepseek-v4-flash");
             model_names->push_back("deepseek-v4-pro");
         }
