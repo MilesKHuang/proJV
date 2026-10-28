@@ -18,6 +18,21 @@ you type.
 Sessions survive crashes: pages are checkpointed, and a `recovery.db` is used
 when a write was interrupted.
 
+## AGENTS.md
+
+Put an `AGENTS.md` in the **workspace root** and proJV reads it into every new
+conversation, wrapped in `[AGENTS.MD] ... [END AGENTS.MD]`. It is the place for
+what you cannot infer from the code: build and test commands, house rules,
+things the agent must never touch.
+
+- Only the root file is read: sub-directories are not scanned, and there is no
+  `CLAUDE.md` fallback.
+- Editing it takes effect in the **next** conversation (`F3`) or after `/clear`,
+  because the block is written into the session at its start.
+- The content is capped at 16 KiB; a longer file is truncated and says so.
+- Skills do not receive it: their role prompts are already mandatory reading, and
+  ten concurrent workers would each pay for another copy.
+
 ## TODO panel
 
 ```text

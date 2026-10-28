@@ -832,9 +832,19 @@ ChatRequest Agent::buildChatRequest() const {
         if (!ur.empty()) inj.push_back(Message::System(ur));
         if (!tm.empty()) inj.push_back(Message::System(tm));
         if (!ov.empty()) inj.push_back(Message::System(ov));
-        if (!inj.empty())
-            req.messages.insert(req.messages.begin() + 1, std::make_move_iterator(inj.begin()),
+        if (!inj.empty()) {
+            // Insert right after the FIXED system block -- the same rule
+            // Session::applyCompaction() uses for the compaction summary. The
+            // system prompt, the directory tree and AGENTS.md then keep indices
+            // [0, sysCount), so a changing todo no longer shifts them and
+            // DeepSeek's KV prefix cache keeps hitting.
+            size_t sysCount = 0;
+            while (sysCount < req.messages.size() && req.messages[sysCount].role == "system")
+                ++sysCount;
+            req.messages.insert(req.messages.begin() + static_cast<std::ptrdiff_t>(sysCount),
+                                std::make_move_iterator(inj.begin()),
                                 std::make_move_iterator(inj.end()));
+        }
     }
     return req;
 }

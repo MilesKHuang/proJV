@@ -13,9 +13,14 @@
 - **入口。** `src/tui/main_tui.cpp` -> `src/tui/app_tui.cpp` 的 `setup()` 与
   `run()`。工具注册集中在 `setupTools()`。
 - **数据流。** 按键 -> `TuiApp` -> agent 或技能；回调 -> 气泡 + 状态栏。
+- **固定上下文注入点。** 目录树与 `AGENTS.md` 都由
+  `TuiApp::injectWorkspaceContext()` 注入；启动、`F3`、`/clear` 三条路径共用它
+  （`/clear` 走 `reinitConversation(true)`，保留会话库）。动态的 todo/overview
+  消息由 `Agent::buildChatRequest()` 插在固定 system 块之后，前缀缓存才稳定。
 - **一起看。** `chat_view.*`、`status_bar.*`、`status_line.*`、`approval_logic.*`、
-  `config_view.*`、`skill_trigger.*`。
-- **测试。** `tests/golden/*`、`test_approval_logic.cpp`、`test_skill_trigger.cpp`。
+  `config_view.*`、`skill_trigger.*`、`core/turn_requests.h`。
+- **测试。** `tests/golden/*`、`test_approval_logic.cpp`、`test_skill_trigger.cpp`、
+  `test_agents_md.cpp`、`test_turn_end.cpp`。
 
 ## 2. Markdown 渲染
 

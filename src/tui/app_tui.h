@@ -129,6 +129,16 @@ class TuiApp {
     void setupTools();
     void harvestSpeakers();
     void buildBubblesFromMessages();
+    // Inject the fixed workspace context as system messages at the start of a
+    // conversation: the directory tree, then the repository's AGENTS.md. Empty
+    // pieces are skipped. Called on startup, on F3 and on "/clear".
+    void injectWorkspaceContext();
+    // Body shared by newChat() and "/clear": cancel the turn, wipe the session,
+    // then re-inject the system prompt plus the workspace context. keepStorage
+    // false also drops the session database and starts a new one (F3); "/clear"
+    // keeps the same session file, so history rows stay where they are.
+    void reinitConversation(bool keepStorage);
+
     // Agent thread body: one user turn, then -- if run_skill asked for it -- the
     // skill phase, then a follow-up turn so the model can report the result.
     void runAgentTurnLoop();

@@ -204,15 +204,9 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     // Inject system prompt as first session message.
     agent->addPersistedMessage(Message::System(loadPromptFile(promptFiles_[activePromptIndex_])));
 
-    // Inject project context (directory structure) so the LLM knows where
-    // files actually live instead of guessing wrong paths.
-    {
-        std::string ctx = buildProjectContext(config.workspacePath);
-        if (!ctx.empty()) {
-            agent->addPersistedMessage(Message::System(ctx));
-            debugLogf("[TuiApp] Injected project context (%zu chars)", ctx.size());
-        }
-    }
+    // Fixed workspace context: directory tree + AGENTS.md. Same call the F3 and
+    // "/clear" paths use, so a conversation always starts with the same prefix.
+    injectWorkspaceContext();
 
     // Theme: load from projv_files/theme/, prefer config.themeName.
     ThemeManager::instance().init(getThemeDir(), config.themeName);
@@ -362,7 +356,24 @@ void TuiApp::sendMessage(const std::string& text) {
         }
     }
 
-    // Other quick commands handled by the backend (/clear /help).
+    // "/clear" is handled here rather than in Agent: wiping the session must also
+    // restore the fixed system prompt and the workspace context, and the core has
+    // no access to the prompt files. Same path as F3, except the session database
+    // (and the visible history) stay as they are.
+    if (trimmed == "/clear") {
+        reinitConversation(true);
+        agent->addPersistedMessage(Message::System(
+            "[clear] context cleared. System prompt, directory tree and AGENTS.md were "
+            "reloaded; the visible history is kept, the model starts fresh."));
+        bubble_model::Bubble cb;
+        cb.role = "system";
+        cb.content = "[clear] context cleared; prompt and workspace context reloaded.";
+        chatHistory.push_back(cb);
+        resetChatScroll();
+        return;
+    }
+
+    // Other quick commands handled by the backend (/help).
     if (agent->handleQuickCommand(trimmed)) {
         // Already persisted; the event that sent it triggers a redraw.
         return;
@@ -722,20 +733,56 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
 }
 
 void TuiApp::newChat() {
+    reinitConversation(false);
+}
+
+void TuiApp::injectWorkspaceContext() {
+    if (!agent) return;
+    // Directory tree: the LLM knows where files actually live instead of
+    // guessing wrong paths.
+    {
+        std::string ctx = buildProjectContext(config.workspacePath);
+        if (!ctx.empty()) {
+            agent->addPersistedMessage(Message::System(ctx));
+            debugLogf("[TuiApp] Injected project context (%zu chars)", ctx.size());
+        }
+    }
+    // AGENTS.md: the repository owner's instructions for agents. Editing the file
+    // takes effect in the next conversation (F3) or after "/clear".
+    {
+        std::string md = buildAgentsMdContext(config.workspacePath);
+        if (!md.empty()) {
+            agent->addPersistedMessage(Message::System(md));
+            debugLogf("[TuiApp] Injected AGENTS.md (%zu chars)", md.size());
+        }
+    }
+}
+
+void TuiApp::reinitConversation(bool keepStorage) {
     if (!agent) return;
     agent->cancel();
-    if (storage.isOpen()) storage.closeDatabase();
-    agent->setStorage(nullptr);
+    if (!keepStorage) {
+        if (storage.isOpen()) storage.closeDatabase();
+        agent->setStorage(nullptr);
+        totalPromptTokens_.store(0, std::memory_order_relaxed);
+        totalCompletionTokens_.store(0, std::memory_order_relaxed);
+    }
     agent->clearSession();
-    chatHistory.clear();
-    lastMessageId_ = 0;
-    totalPromptTokens_.store(0, std::memory_order_relaxed);
-    totalCompletionTokens_.store(0, std::memory_order_relaxed);
+    // System prompt first: buildChatRequest() inserts its dynamic system block
+    // right after the fixed system messages, so the session must start with one.
     {
         std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
         agent->setSystemPrompt(sp);
         agent->addPersistedMessage(Message::System(sp));
     }
+    injectWorkspaceContext();
+    if (keepStorage) {
+        // "/clear" keeps the session file and the on-screen history; the model
+        // simply starts from an empty context again.
+        return;
+    }
+    chatHistory.clear();
+    lastMessageId_ = 0;
     buildBubblesFromMessages();
 }
 

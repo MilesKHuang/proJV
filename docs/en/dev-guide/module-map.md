@@ -13,9 +13,15 @@ the code disagree, the code wins.
   `src/tui/app_tui.cpp`. `setupTools()` is where every tool gets registered.
 - **Data flow.** key event -> `TuiApp` -> agent or skill; agent callbacks ->
   `ChatView` bubbles + status bar.
+- **Fixed context injection.** The directory tree and `AGENTS.md` both come from
+  `TuiApp::injectWorkspaceContext()`; startup, `F3` and `/clear` share it (`/clear`
+  goes through `reinitConversation(true)` and keeps the session file). The dynamic
+  todo/overview messages are inserted by `Agent::buildChatRequest()` right after
+  the fixed system block, so the prefix cache stays stable.
 - **Read together with.** `chat_view.*`, `status_bar.*`, `status_line.*`,
-  `approval_logic.*`, `config_view.*`, `skill_trigger.*`.
-- **Tests.** `tests/golden/*`, `test_approval_logic.cpp`, `test_skill_trigger.cpp`.
+  `approval_logic.*`, `config_view.*`, `skill_trigger.*`, `core/turn_requests.h`.
+- **Tests.** `tests/golden/*`, `test_approval_logic.cpp`, `test_skill_trigger.cpp`,
+  `test_agents_md.cpp`, `test_turn_end.cpp`.
 
 ## 2. Markdown rendering
 

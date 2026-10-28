@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -15,6 +17,18 @@ constexpr const char* PROJECT_CONTEXT_PREFIX =
     "[PROJECT CONTEXT] Workspace directory structure -- use these paths with read_file:\n"
     "Workspace: ";
 constexpr const char* PROJECT_CONTEXT_SUFFIX = "\n[END PROJECT CONTEXT]";
+
+// -- AGENTS.md ---------------------------------------------------------------
+constexpr const char* AGENTS_MD_PREFIX =
+    "[AGENTS.MD] Project instructions from the repository owner. Follow them unless the user "
+    "says otherwise.\n";
+constexpr const char* AGENTS_MD_SUFFIX = "\n[END AGENTS.MD]";
+constexpr size_t kAgentsMdMaxBytes = 16 * 1024;
+
+fs::path workspaceRoot(const std::string& workspacePath, std::error_code& ec) {
+    if (workspacePath.empty()) return fs::current_path(ec);
+    return fs::absolute(workspacePath, ec);
+}
 
 } // namespace
 
@@ -180,4 +194,42 @@ std::string buildProjectContext(const std::string& workspacePath) {
 
     out << PROJECT_CONTEXT_SUFFIX;
     return out.str();
+}
+
+std::string buildAgentsMdContext(const std::string& workspacePath) {
+    std::error_code ec;
+    const fs::path root = workspaceRoot(workspacePath, ec);
+    if (ec || root.empty()) return "";
+
+    const fs::path file = root / "AGENTS.md";
+    if (!fs::is_regular_file(file, ec) || ec) return "";
+
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return "";
+    std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+
+    // Drop a UTF-8 BOM and leading blank lines so the wrapper stays first.
+    if (body.size() >= 3 && static_cast<unsigned char>(body[0]) == 0xEF &&
+        static_cast<unsigned char>(body[1]) == 0xBB &&
+        static_cast<unsigned char>(body[2]) == 0xBF)
+        body.erase(0, 3);
+    const size_t first = body.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return ""; // empty file: inject nothing
+    body.erase(0, first);
+
+    bool truncated = false;
+    if (body.size() > kAgentsMdMaxBytes) {
+        body.resize(kAgentsMdMaxBytes);
+        // Never cut a UTF-8 sequence in half: drop trailing continuation bytes.
+        while (!body.empty() && (static_cast<unsigned char>(body.back()) & 0xC0) == 0x80)
+            body.pop_back();
+        truncated = true;
+    }
+
+    std::string out = AGENTS_MD_PREFIX;
+    out += body;
+    if (truncated) out += "\n[... truncated, read AGENTS.md for the rest]";
+    out += AGENTS_MD_SUFFIX;
+    return out;
 }
