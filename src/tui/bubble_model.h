@@ -23,6 +23,8 @@ struct Bubble {
     bool hasReasoning = false;
     std::string speaker; // skill role: "Sheldon" | "Penny" | "Leonard" (else empty)
     bool isVote = false; // true for a "**[Role vote]**" line
+    // The framework injected this user message (view_image round), not the user.
+    bool synthetic = false;
 };
 
 // Format a tool message into (bubbleRole, displayText). Pure function.

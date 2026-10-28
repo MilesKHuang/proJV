@@ -43,4 +43,14 @@ inline size_t imageTokens(size_t count) {
     return count * kImageTokens;
 }
 
+// Resolve + validate + encode an explicit list of paths (files, or directories
+// that expand to their top-level images). This is the entry point for callers
+// that already have paths -- the view_image tool -- so it goes through exactly
+// the same count / per-file / total / mime checks as the "@path" markers and the
+// two can never disagree.
+// Relative paths resolve against `workspacePath`. On failure `err` carries the
+// reason and `out` is left empty: nothing is sent.
+bool loadAttachments(const std::vector<std::string>& paths, const std::string& workspacePath,
+                     std::vector<ImageAttachment>& out, std::string& err);
+
 } // namespace image_input

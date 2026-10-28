@@ -139,6 +139,7 @@ bool Storage::ensureTables() {
                 name              TEXT DEFAULT '',
                 token_count       INTEGER DEFAULT 0,
                 image_paths       TEXT DEFAULT '',
+                synthetic         INTEGER DEFAULT 0,
                 created_at        TEXT NOT NULL DEFAULT (datetime('now'))
             );
         )");
@@ -151,6 +152,13 @@ bool Storage::ensureTables() {
         // Migration: image_paths (vision attachments, JSON array of paths).
         try {
             writeDb_->exec("ALTER TABLE messages ADD COLUMN image_paths TEXT DEFAULT ''");
+        } catch (const SQLite::Exception&) {
+            // Column already exists -- safe to ignore
+        }
+        // Migration: synthetic (1 = the framework injected this message, not the
+        // user; e.g. the image round requested by the view_image tool).
+        try {
+            writeDb_->exec("ALTER TABLE messages ADD COLUMN synthetic INTEGER DEFAULT 0");
         } catch (const SQLite::Exception&) {
             // Column already exists -- safe to ignore
         }
@@ -213,8 +221,8 @@ int64_t Storage::insertMessage(const Message& msg) {
         size_t tokens = estimateTokensForText(msg.content);
 
         SQLite::Statement stmt(*writeDb_, "INSERT INTO messages (role, content, reasoning_content, "
-                                          "tool_call_id, name, token_count, image_paths) "
-                                          "VALUES (?, ?, ?, ?, ?, ?, ?)");
+                                          "tool_call_id, name, token_count, image_paths, synthetic) "
+                                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         stmt.bind(1, msg.role);
         stmt.bind(2, msg.content);
         stmt.bind(3, msg.reasoningContent);
@@ -222,6 +230,7 @@ int64_t Storage::insertMessage(const Message& msg) {
         stmt.bind(5, msg.name);
         stmt.bind(6, static_cast<int64_t>(tokens));
         stmt.bind(7, imagePathsToJson(msg.images));
+        stmt.bind(8, msg.synthetic ? 1 : 0);
         stmt.exec();
 
         int64_t messageId = writeDb_->execAndGet("SELECT last_insert_rowid()").getInt64();
@@ -250,7 +259,7 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
     try {
         SQLite::Statement stmt(*readDb_,
                                "SELECT id, role, content, reasoning_content, tool_call_id, name, "
-                               "COALESCE(image_paths, '') "
+                               "COALESCE(image_paths, ''), COALESCE(synthetic, 0) "
                                "FROM messages WHERE id > ? ORDER BY id");
         stmt.bind(1, sinceId);
 
@@ -264,6 +273,7 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
             msg.toolCallId = stmt.getColumn(4).getString();
             msg.name = stmt.getColumn(5).getString();
             msg.images = imagePathsFromJson(stmt.getColumn(6).getString());
+            msg.synthetic = stmt.getColumn(7).getInt() != 0;
 
             // Load tool calls for assistant messages
             if (msg.role == "assistant") {

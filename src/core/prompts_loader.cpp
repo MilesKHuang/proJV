@@ -39,7 +39,7 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "\n"
     "## 3. Available Tools\n"
     "tools available: read_file, write_file, exec_shell, grep_files, edit_file, file_search, "
-    "web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill\n"
+    "web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill, view_image\n"
     "\n"
     "- `exec_shell` accepts an optional `timeout_ms` (number, milliseconds). Default is 1800000 "
     "(30 min), which is also the hard cap; pass a smaller value only to fail faster. Long silent "
@@ -49,6 +49,9 @@ static constexpr const char* PROMPT_DEFAULT_CODER =
     "- `run_skill` starts an installed multi-agent skill (see the skill list in the workspace) and "
     "blocks until the whole workflow finishes -- it is expensive and slow (minutes). Use it only "
     "for explicitly complex multi-role tasks, never for something you can do with a normal tool.\n"
+    "- `view_image` lets you look at images on disk (Flash models only). The images arrive as a "
+    "user message in the NEXT turn, so call it on its own: it ends the current turn. Never batch "
+    "it with edits, shell commands or `run_skill`.\n"
     "\n";
 
 // ============================================================================
@@ -209,16 +212,31 @@ static const char* kCoderToolsOld =
 static std::string upgradeCoderText(std::string content) {
     const std::string oldLine = kCoderToolsOld;
     const size_t pos = content.find(oldLine);
-    if (pos == std::string::npos) return content;
-
-    // The upgraded line contains the old one as a prefix -- require a line end
-    // right after the match so the upgrade stays idempotent.
-    const size_t after = pos + oldLine.size();
-    if (after < content.size()) {
-        const char c = content[after];
-        if (c != '\r' && c != '\n') return content;
+    if (pos != std::string::npos) {
+        // The upgraded line contains the old one as a prefix -- require a line end
+        // right after the match so the upgrade stays idempotent.
+        const size_t after = pos + oldLine.size();
+        if (after >= content.size() || content[after] == '\r' || content[after] == '\n')
+            content.insert(after, ", run_skill");
     }
-    content.insert(after, ", run_skill");
+    // v0.6.3: view_image joined the tool line. Anchored on a "run_skill" that
+    // ends its line, so a hand-edited prompt whose tool list stops elsewhere is
+    // left alone, and a second pass does nothing.
+    {
+        static const std::string kDone = "run_skill, view_image";
+        if (content.find(kDone) == std::string::npos) {
+            static const std::string kAnchor = "run_skill";
+            size_t p = content.find(kAnchor);
+            while (p != std::string::npos) {
+                const size_t after = p + kAnchor.size();
+                if (after >= content.size() || content[after] == '\r' || content[after] == '\n') {
+                    content.insert(after, ", view_image");
+                    break;
+                }
+                p = content.find(kAnchor, after);
+            }
+        }
+    }
     return content;
 }
 

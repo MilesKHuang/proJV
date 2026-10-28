@@ -24,7 +24,8 @@ TEST_CASE("prompt upgrade: old coder tool list gains run_skill exactly once") {
     const std::string once = upgradeSeededPrompt("coder.md", oldText);
 
     CHECK(once != oldText);
-    CHECK(once.find(std::string(kOldCoderLine) + ", run_skill\n") != std::string::npos);
+    CHECK(once.find(std::string(kOldCoderLine) + ", run_skill, view_image\n") !=
+          std::string::npos);
 
     // Idempotent: the upgraded line starts with the old one, so a naive
     // find() would append a second run_skill. It must not.
@@ -39,6 +40,15 @@ TEST_CASE("prompt upgrade: old coder tool list gains run_skill exactly once") {
         pos += 9;
     }
     CHECK(hits == 1);
+}
+
+TEST_CASE("prompt upgrade: an install that already has run_skill gains view_image once") {
+    const std::string withRun = coderWith(std::string(kOldCoderLine) + ", run_skill");
+    const std::string up = upgradeSeededPrompt("coder.md", withRun);
+
+    CHECK(up.find("run_skill, view_image\n") != std::string::npos);
+    CHECK(upgradeSeededPrompt("coder.md", up) == up); // idempotent
+    CHECK(up.find("view_image, view_image") == std::string::npos);
 }
 
 TEST_CASE("prompt upgrade: a hand-edited tool list is left alone") {

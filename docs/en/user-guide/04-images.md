@@ -40,6 +40,25 @@ that directory, up to 8 per message. It does not recurse.
 Images are sent as base64 content blocks; large images cost tokens. Screenshot
 tags and other tools produce PNGs you can attach the same way.
 
+## The model can fetch an image itself
+
+On a Flash model the agent also has the `view_image` tool: instead of asking you
+to paste a path, it calls `view_image(paths=[...])` itself (for instance after a
+screenshot tool wrote a file).
+
+The API only accepts images in `user` messages, so proJV does not return pixels
+to the tool. It registers an image round, ends the current turn, and appends a
+synthetic user message carrying the attachments; the next turn can see them.
+
+- The message is marked `(auto)` in the chat, and stored with
+  `synthetic = 1`, so a replayed history never looks like you typed it.
+- The tool must be called alone. Other tools in the same round still run and
+  their results are kept, but the round stops right after them.
+- `view_image` and `run_skill` cannot be queued in the same round; the second
+  one is refused.
+- Outside the workspace, non-images, more than 8 files or an oversized file are
+  refused before anything is sent.
+
 ---
 
 Next -> [05 daily use](05-daily.md) | Want to change it -> [image input](../dev-guide/module-map.md)

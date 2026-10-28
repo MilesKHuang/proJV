@@ -97,16 +97,19 @@ void TuiApp::setupTools() {
 
             {
                 std::lock_guard<std::mutex> lk(skillMutex_);
-                if (pendingSkill_)
-                    return "Error: skill '" + pendingSkill_->name +
-                           "' is already queued for this turn";
-                if (lastSkillThisTurn_ == folder)
+                if (!turnRequest_.claim(turn_requests::Kind::Skill))
+                    return std::string("Error: ") + turnRequest_.refusedMessage();
+                if (lastSkillThisTurn_ == folder) {
+                    turnRequest_.release();
                     return "Error: skill '" + folder +
                            "' already ran in this turn. Its output "
                            "is above -- read the produced files and report it instead of "
                            "re-running the workflow.";
-                if (skillCallsThisTurn_ >= 2)
+                }
+                if (skillCallsThisTurn_ >= 2) {
+                    turnRequest_.release();
                     return "Error: at most 2 skills per turn. Ask the user how to continue.";
+                }
                 pendingSkill_ = PendingSkill{folder, topic};
                 lastSkillThisTurn_ = folder;
                 ++skillCallsThisTurn_;
@@ -121,6 +124,66 @@ void TuiApp::setupTools() {
                    "' started. It runs as its own phase now; its "
                    "narration and final document will be above your next turn. Ending this "
                    "turn loses nothing.";
+        });
+    }
+
+    // view_image: the model asks to look at images on disk. The tool returns no
+    // pixels -- it registers an image round and ends the turn, exactly like
+    // run_skill. runAgentTurnLoop then appends a synthetic user message carrying
+    // the attachments (the API only accepts images in user messages), so the next
+    // turn can actually see them.
+    {
+        ToolDefinition def;
+        def.name = "view_image";
+        def.description =
+            "Look at images stored on disk (screenshots, diagrams, photos). The images "
+            "arrive in the NEXT turn as a user message, because this tool ends the current "
+            "turn -- so call it alone: do not batch it with file edits, shell commands or "
+            "run_skill. Other tools in the same round still execute and their results are "
+            "kept, but the round stops afterwards. Requires a vision model (the Flash "
+            "line); on other models it returns an error.";
+        def.parameters = {
+            {"paths", "array",
+             "Image files or directories (top-level images expand). Absolute paths, or "
+             "paths relative to the workspace; must stay inside the workspace.",
+             true}};
+        tools.registerTool(def, [this, ws](const std::string& args) -> std::string {
+            if (!modelSupportsVision(config.model))
+                return "Error: model '" + config.model +
+                       "' cannot read images. Switch to a Flash model (F10) first.";
+
+            const std::vector<std::string> rawPaths = extractStringArrayArg(args, "paths");
+            if (rawPaths.empty()) return "Error: missing 'paths' array";
+
+            // Same workspace guard as every other file tool, then the same
+            // count / size / total / mime checks the "@path" markers use.
+            std::vector<std::string> resolved;
+            resolved.reserve(rawPaths.size());
+            for (const auto& p : rawPaths) {
+                std::string full;
+                std::string pathErr = validateToolPath(p, ws, full);
+                if (!pathErr.empty()) return pathErr;
+                resolved.push_back(full);
+            }
+            std::vector<ImageAttachment> images;
+            std::string imgErr;
+            if (!image_input::loadAttachments(resolved, ws, images, imgErr)) return imgErr;
+
+            const size_t count = images.size();
+            {
+                std::lock_guard<std::mutex> lk(skillMutex_);
+                if (!turnRequest_.claim(turn_requests::Kind::Image))
+                    return std::string("Error: ") + turnRequest_.refusedMessage();
+                pendingImages_ = PendingImages{std::move(images)};
+            }
+            if (onStreamingTick) onStreamingTick();
+
+            // End the turn after this tool round; runAgentTurnLoop injects the
+            // images and starts the follow-up turn.
+            tools.requestTurnEnd();
+            return "[image] " + std::to_string(count) +
+                   " image(s) queued. They arrive as a user message in the next turn; this "
+                   "turn ends here, nothing is lost.";
         });
     }
 
@@ -435,6 +498,7 @@ void TuiApp::runAgentTurnLoop() {
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         lastSkillThisTurn_.clear();
+        turnRequest_.release();
     }
 
     for (;;) {
@@ -445,12 +509,36 @@ void TuiApp::runAgentTurnLoop() {
         // so this check has to happen before the next iteration starts.
         if (tools.isCancelled()) break;
 
+        // An image round (view_image) wins over a skill if both somehow queued;
+        // turnRequest_ makes that impossible, this is just the consume order.
+        std::optional<PendingImages> images;
+        {
+            std::lock_guard<std::mutex> lk(skillMutex_);
+            if (pendingImages_) {
+                images = std::move(pendingImages_);
+                pendingImages_.reset();
+                turnRequest_.release();
+            }
+        }
+        if (images) {
+            // Synthetic user message: images are only legal in a user message, so
+            // the framework speaks on the model's behalf. No turn nudge -- after
+            // this round the model should keep working like after any user message.
+            Message msg = Message::User("View the attached image(s) and continue the task.");
+            msg.images = std::move(images->images);
+            msg.synthetic = true;
+            agent->addPersistedMessage(msg);
+            if (tools.isCancelled()) break;
+            continue; // next iteration calls newTurn() + run()
+        }
+
         PendingSkill sk;
         {
             std::lock_guard<std::mutex> lk(skillMutex_);
             if (!pendingSkill_) break;
             sk = std::move(*pendingSkill_);
             pendingSkill_.reset();
+            turnRequest_.release();
         }
 
         const bool skillOk = runSkillBlocking(sk.name, sk.topic, std::string());
@@ -478,6 +566,8 @@ void TuiApp::runAgentTurnLoop() {
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         pendingSkill_.reset();
+        pendingImages_.reset();
+        turnRequest_.release();
         lastSkillThisTurn_.clear();
     }
     skillCallsThisTurn_ = 0;
@@ -627,6 +717,8 @@ void TuiApp::cancelTurn() {
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         pendingSkill_.reset(); // drop a queued-but-not-started skill
+        pendingImages_.reset();
+        turnRequest_.release();
         if (skillRunner_) skillRunner_->cancel();
     }
     if (agent) agent->cancel();

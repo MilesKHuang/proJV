@@ -127,7 +127,9 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, bool rea
         Element block;
         if (b.role == "user") {
             block = ftxui::vbox({
-                label("── You ──", P.text),
+                // "[auto]" marks the synthetic image round the model asked for,
+                // so a replayed session never looks like the user typed it.
+                label(b.synthetic ? "── You (auto) ──" : "── You ──", P.text),
                 markdown_view::renderPlainText(b.content) | ftxui::color(P.text),
             });
         } else if (b.role == "assistant" && b.hasReasoning && b.content.empty()) {

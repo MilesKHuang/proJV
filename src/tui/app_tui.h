@@ -7,6 +7,7 @@
 #include "client/deepseek.h"
 #include "core/agent.h"
 #include "core/skill_runner.h"
+#include "core/turn_requests.h"
 #include "tools/registry.h"
 #include "tools/python_tool_manager.h"
 #include "tui/bubble_model.h"
@@ -201,6 +202,14 @@ class TuiApp {
         std::string topic;
     };
     std::optional<PendingSkill> pendingSkill_;
+    // Image round requested by the view_image tool. Same lifecycle and the same
+    // mutex as pendingSkill_; turnRequest_ guarantees only one of the two can be
+    // queued per tool round.
+    struct PendingImages {
+        std::vector<ImageAttachment> images;
+    };
+    std::optional<PendingImages> pendingImages_;
+    turn_requests::State turnRequest_;
     int skillCallsThisTurn_ = 0; // hard cap per user turn (run_skill loop guard)
     // Last skill that already ran in this user turn. Re-running it is refused:
     // the model may read the produced files, but not redo the whole workflow.

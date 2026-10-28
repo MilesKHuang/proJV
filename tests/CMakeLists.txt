@@ -30,6 +30,7 @@ set(TEST_SOURCES
     unit/test_skill_budget.cpp
     unit/test_token_estimate.cpp
     unit/test_agents_md.cpp
+    unit/test_view_image.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp

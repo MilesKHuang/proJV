@@ -72,6 +72,10 @@ struct Message {
     // drops them for every other role (the API returns 400 otherwise).
     std::vector<ImageAttachment> images;
 
+    // True for messages the framework injected on the model's own request
+    // (view_image). Persisted so a replay can tell them apart from what the user
+    // actually typed; never sent to the API (to_json ignores it).
+    bool synthetic = false;
     // Constructor helpers
     static Message System(std::string content);
     static Message User(std::string content);

@@ -129,6 +129,7 @@ std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string
     Bubble cb;
     cb.role = msg.role;
     cb.content = msg.content;
+    cb.synthetic = msg.synthetic;
     // Vision: list the attached images under the user's text, e.g.
     //   "what is this?\n[Image] a.png\n[Image] b.png"
     if (msg.role == "user" && !msg.images.empty()) {

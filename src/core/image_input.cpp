@@ -180,6 +180,28 @@ bool expandMarker(const std::string& rawPath, const std::string& workspacePath,
 
 } // namespace
 
+bool loadAttachments(const std::vector<std::string>& paths, const std::string& workspacePath,
+                     std::vector<ImageAttachment>& out, std::string& err) {
+    out.clear();
+    err.clear();
+    if (paths.empty()) {
+        err = "[image] no paths given";
+        return false;
+    }
+    for (const auto& raw : paths) {
+        if (raw.empty()) continue;
+        if (!expandMarker(raw, workspacePath, out, err)) {
+            out.clear(); // refuse the whole batch, never send a partial set
+            return false;
+        }
+    }
+    if (out.empty()) {
+        err = "[image] none of the given paths is a supported image";
+        return false;
+    }
+    return true;
+}
+
 ParseResult parseMarkers(const std::string& text, const std::string& workspacePath) {
     ParseResult out;
     std::string cleaned;
