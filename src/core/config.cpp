@@ -17,6 +17,22 @@ std::string getExeDir() {
     return SystemUtil::Instance().GetExeDir();
 }
 
+// Workspace == the launch directory. One source for every file tool, the shell
+// CWD, the pytool sandbox and the project/AGENTS.md context, on both platforms:
+//     cd WORKDIR && projv_tui      -> WORKDIR
+//     double-click projv_tui.exe   -> the exe dir (Windows default start dir)
+// If the launch directory cannot be resolved (deleted, unreadable, exotic
+// cwd), fall back to the exe dir -- the pre-existing default.
+std::string getWorkspaceDir() {
+    std::error_code ec;
+    const fs::path cwd = fs::current_path(ec);
+    if (ec || cwd.empty()) return getExeDir();
+    std::error_code ec2;
+    const fs::path canon = fs::weakly_canonical(cwd, ec2);
+    if (ec2 || canon.empty()) return cwd.lexically_normal().string();
+    return canon.string();
+}
+
 std::string getProjvDir() {
     return (fs::path(getExeDir()) / "projv_files").string();
 }
@@ -53,6 +69,9 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
     try {
         auto tbl = toml::parse_file(configPath);
 
+        if (tbl.contains("workspace_path"))
+            debugLog("[Config] workspace_path is retired (the workspace is the launch dir)");
+
         cfg.apiKey = tbl["api_key"].value_or<std::string>("");
         cfg.model = tbl["model"].value_or<std::string>("deepseek-v4-flash");
         cfg.baseUrl = tbl["base_url"].value_or<std::string>("https://api.deepseek.com");
@@ -63,7 +82,6 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
             debugLog("[Config] Migrated legacy max_tokens 16384 -> 65536");
         }
         cfg.temperature = tbl["temperature"].value_or<double>(0.0);
-        cfg.workspacePath = tbl["workspace_path"].value_or<std::string>("");
         cfg.cppCompilerPath = tbl["cpp_compiler_path"].value_or<std::string>("");
         cfg.pythonPath = tbl["python_path"].value_or<std::string>("");
         cfg.clangFormatPath = tbl["clang_format_path"].value_or<std::string>("");
@@ -99,10 +117,9 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         }
 
         debugLogf("[Config] Loaded: apiKey=%s model=%s baseUrl=%s maxTokens=%d temperature=%.1f "
-                  "workspace=%s cpp=%s python=%s",
+                  "cpp=%s python=%s",
                   cfg.apiKey.empty() ? "(empty)" : "***", cfg.model.c_str(), cfg.baseUrl.c_str(),
                   cfg.maxTokens, cfg.temperature,
-                  cfg.workspacePath.empty() ? "(default=exe dir)" : cfg.workspacePath.c_str(),
                   cfg.cppCompilerPath.empty() ? "(not set)" : cfg.cppCompilerPath.c_str(),
                   cfg.pythonPath.empty() ? "(not set)" : cfg.pythonPath.c_str());
     } catch (const toml::parse_error& e) {
@@ -170,7 +187,6 @@ bool saveApiKey(const std::string& key) {
         if (!tbl.contains("base_url")) tbl.insert_or_assign("base_url", "https://api.deepseek.com");
         if (!tbl.contains("max_tokens")) tbl.insert_or_assign("max_tokens", 65536);
         if (!tbl.contains("temperature")) tbl.insert_or_assign("temperature", 0.0);
-        if (!tbl.contains("workspace_path")) tbl.insert_or_assign("workspace_path", "");
         if (!tbl.contains("cpp_compiler_path")) tbl.insert_or_assign("cpp_compiler_path", "");
         if (!tbl.contains("python_path")) tbl.insert_or_assign("python_path", "");
         if (!tbl.contains("clang_format_path")) tbl.insert_or_assign("clang_format_path", "");
@@ -217,7 +233,9 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("base_url", cfg.baseUrl);
     tbl.insert_or_assign("max_tokens", cfg.maxTokens);
     tbl.insert_or_assign("temperature", cfg.temperature);
-    tbl.insert_or_assign("workspace_path", cfg.workspacePath);
+    // Retired key: the workspace is the launch directory (getWorkspaceDir).
+    // Erase it so an old file cannot suggest the key still has an effect.
+    tbl.erase("workspace_path");
     tbl.insert_or_assign("cpp_compiler_path", cfg.cppCompilerPath);
     tbl.insert_or_assign("python_path", cfg.pythonPath);
     tbl.insert_or_assign("clang_format_path", cfg.clangFormatPath);

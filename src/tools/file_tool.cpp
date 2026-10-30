@@ -36,7 +36,8 @@ static constexpr const char* WS_VIOLATION_PREFIX_INTERNAL = "__WORKSPACE_VIOLATI
 static constexpr const char* WS_VIOLATION_VALIDATE_ERROR = " Path '";
 static constexpr const char* WS_VIOLATION_VALIDATE_MIDDLE =
     "' is outside the workspace. Only files inside the workspace can be accessed. "
-    "Use /workspace to check current workspace, or set workspace_path in config.toml.";
+    "Use /workspace to check the current workspace, which is the directory proJV was "
+    "launched from.";
 
 #include <sstream>
 #include <filesystem>

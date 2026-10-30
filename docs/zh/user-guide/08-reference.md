@@ -68,7 +68,6 @@
 | `max_tokens` | 单次回复预算（默认 65536） |
 | `temperature` | 默认 0.0（思考模式下官方不生效） |
 | `reasoning_effort` | 思考强度：`none` / `low` / `high` / `max`，默认 `max`；`none` 表示关闭思考（官方默认强度为 `high`） |
-| `workspace_path` | 文件工具唯一可访问的目录；留空 = 可执行文件所在目录 |
 | `context_window` | 0 = 自动 |
 | `theme` | 当前主题名 |
 | `cpp_compiler_path` | 可选，编译类任务用 |
@@ -90,7 +89,7 @@
 
 | 现象 | 原因 |
 |------|------|
-| `outside the workspace` | 路径不在 `workspace_path` 下 |
+| `outside the workspace` | 路径不在启动目录（即工作区）下 |
 | 技能里工具报 "not allowed" | 该技能的 `tools` 列表没包含它 |
 | `cannot dispatch to a driver agent` | 派活只有一层，这是设计如此 |
 | `[skill] config: unknown key 'x'` | `config.json` 里写错了键名，值被忽略 |

@@ -31,10 +31,9 @@ TuiApp::~TuiApp() {
 }
 
 void TuiApp::setupTools() {
-    std::string ws = config.workspacePath;
-    if (ws.empty()) {
-        ws = fs::absolute(fs::path(getExeDir())).string();
-    }
+    // The workspace is the launch directory (getWorkspaceDir): every file tool,
+    // the shell CWD and the pytool sandbox root there.
+    std::string ws = getWorkspaceDir();
 
     registerShellTool(tools, ws, procRunner_);
     registerFileTools(tools, ws);
@@ -63,7 +62,8 @@ void TuiApp::setupTools() {
             "final document will appear in this conversation, and you will get a follow-up "
             "turn to report the result. EXPENSIVE and SLOW (minutes, many model calls) -- "
             "use it only when the task needs a multi-role workflow the skill is designed "
-            "for. Call it at most once per task; never call it again to 'check' the result.";
+            "for. Different skills may be chained in one turn (at most 4 per turn); never "
+            "re-run the same skill to 'check' its result -- read the produced files instead.";
         def.parameters = {{"name", "string",
                            "Installed skill name (use the exact folder name; see /skill list).",
                            true},
@@ -106,9 +106,9 @@ void TuiApp::setupTools() {
                            "is above -- read the produced files and report it instead of "
                            "re-running the workflow.";
                 }
-                if (skillCallsThisTurn_ >= 2) {
+                if (skillCallsThisTurn_ >= 4) {
                     turnRequest_.release();
-                    return "Error: at most 2 skills per turn. Ask the user how to continue.";
+                    return "Error: at most 4 skills per turn. Ask the user how to continue.";
                 }
                 pendingSkill_ = PendingSkill{folder, topic};
                 lastSkillThisTurn_ = folder;
@@ -214,7 +214,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setReasoningEffort(config.reasoningEffort);
-    agent->setWorkspacePath(config.workspacePath);
+    agent->setWorkspacePath(getWorkspaceDir());
     agent->setModel(config.model);
     agent->setContextWindow(config.contextWindow);
 
@@ -351,8 +351,7 @@ void TuiApp::sendMessage(const std::string& text) {
 
     // /workspace: frontend-only display of the workspace path (like legacy).
     if (trimmed == "/workspace") {
-        std::string ws = config.workspacePath;
-        if (ws.empty()) ws = fs::absolute(fs::path(getExeDir())).string();
+        std::string ws = getWorkspaceDir();
         bubble_model::Bubble cb;
         cb.role = "system";
         cb.content = "[Workspace] " + ws;
@@ -447,7 +446,7 @@ void TuiApp::sendMessage(const std::string& text) {
     std::string turnText = trimmed;
     std::vector<ImageAttachment> images;
     {
-        auto parsed = image_input::parseMarkers(trimmed, config.workspacePath);
+        auto parsed = image_input::parseMarkers(trimmed, getWorkspaceDir());
         if (!parsed.ok()) {
             bubble_model::Bubble cb;
             cb.role = "system";
@@ -546,20 +545,24 @@ void TuiApp::runAgentTurnLoop() {
         // ESC during the skill run: do not resume the conversation.
         if (tools.isCancelled()) break;
 
-        // One-shot System message for the follow-up turn. Kept as short as the
-        // hard rules in the system prompt: three bullets, no restating.
+        // One-shot System message for the follow-up turn. A skill's output is
+        // raw material, not a verdict: pipelines like avenger -> steve -> musk
+        // need the main agent to review the produced document and say what is
+        // weak before moving on, so the wrap-up is NOT capped to a few lines.
         agent->setTurnNudge(
             skillOk ? "[skill done] '" + sk.name +
-                          "' finished -- its narration and final "
-                          "document are the messages above.\n"
-                          "- Read the produced files if you need exact details.\n"
-                          "- Do not call run_skill again; report what came out.\n"
-                          "- 3-5 lines: result, where it is, single next step. Point at the "
-                          "document above instead of repeating it.\n"
+                          "' finished -- its narration and final document are the messages above.\n"
+                          "- Never call run_skill again for this same skill to 'check' its "
+                          "result; read the produced files instead.\n"
+                          "- Review what came out against what the user asked: what it decided, "
+                          "what is weak or unproven, whether the document is complete.\n"
+                          "- Then report normally -- as thorough as the task deserves: result, "
+                          "where it is on disk, the real gaps, and the next step. A pipeline "
+                          "stage that has not run yet should be named here.\n"
                     : "[skill stopped] '" + sk.name +
                           "' did not finish -- cancelled or failed.\n"
                           "- Do not retry unless the user asks.\n"
-                          "- 3-5 lines: what happened, next step.\n");
+                          "- Say what happened, what was already produced, and the next step.\n");
         // Loop: one more turn consumes the nudge and reports the result.
     }
 
@@ -759,7 +762,7 @@ status_bar::Data TuiApp::getStatusBarData() const {
     d.promptTokens = totalPromptTokens_.load(std::memory_order_relaxed);
     d.completionTokens = totalCompletionTokens_.load(std::memory_order_relaxed);
     d.status = getStatus();
-    d.workspace = config.workspacePath;
+    d.workspace = getWorkspaceDir();
     d.cost = totalPromptTokens_.load() * lookupModelPrice(config.modelPrices, config.model, true) *
                  1e-6 +
              totalCompletionTokens_.load() *
@@ -796,14 +799,12 @@ void TuiApp::saveApiKeyAndConnect(const std::string& apiKey) {
 }
 
 void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUrl, int maxTokens,
-                            double temperature, const std::string& workspace,
-                            const std::string& compiler, const std::string& python,
-                            const std::string& model) {
+                            double temperature, const std::string& compiler,
+                            const std::string& python, const std::string& model) {
     config.apiKey = apiKey;
     config.baseUrl = baseUrl;
     config.maxTokens = maxTokens;
     config.temperature = temperature;
-    config.workspacePath = workspace;
     config.cppCompilerPath = compiler;
     config.pythonPath = python;
     config.model = model;
@@ -833,7 +834,7 @@ void TuiApp::injectWorkspaceContext() {
     // Directory tree: the LLM knows where files actually live instead of
     // guessing wrong paths.
     {
-        std::string ctx = buildProjectContext(config.workspacePath);
+        std::string ctx = buildProjectContext(getWorkspaceDir());
         if (!ctx.empty()) {
             agent->addPersistedMessage(Message::System(ctx));
             debugLogf("[TuiApp] Injected project context (%zu chars)", ctx.size());
@@ -842,7 +843,7 @@ void TuiApp::injectWorkspaceContext() {
     // AGENTS.md: the repository owner's instructions for agents. Editing the file
     // takes effect in the next conversation (F3) or after "/clear".
     {
-        std::string md = buildAgentsMdContext(config.workspacePath);
+        std::string md = buildAgentsMdContext(getWorkspaceDir());
         if (!md.empty()) {
             agent->addPersistedMessage(Message::System(md));
             debugLogf("[TuiApp] Injected AGENTS.md (%zu chars)", md.size());

@@ -207,7 +207,6 @@ struct AppConfig {
     // "none" turns thinking off. Invalid values fall back to "high".
     std::string reasoningEffort = "max";
     std::string configPath;
-    std::string workspacePath;   // file access whitelist; empty = exe dir
     std::string cppCompilerPath; // C++ compiler path (e.g. MSBuild.exe, cl.exe)
     std::string pythonPath;      // Python interpreter path
     std::string clangFormatPath; // clang-format binary for the format_file tool (empty = PATH)

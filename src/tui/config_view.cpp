@@ -19,7 +19,6 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     auto apiKey = std::make_shared<std::string>(cfg.apiKey);
     auto baseUrl = std::make_shared<std::string>(cfg.baseUrl);
     auto model = std::make_shared<std::string>(cfg.model);
-    auto workspace = std::make_shared<std::string>(cfg.workspacePath);
     auto compiler = std::make_shared<std::string>(cfg.cppCompilerPath);
     auto python = std::make_shared<std::string>(cfg.pythonPath);
     auto maxTokens = std::make_shared<std::string>(std::to_string(cfg.maxTokens));
@@ -38,12 +37,11 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     Component modelInput = Input(model.get(), singleLine);
     Component maxTokensInput = Input(maxTokens.get(), singleLine);
     Component tempInput = Input(temperature.get(), singleLine);
-    Component wsInput = Input(workspace.get(), singleLine);
     Component cppInput = Input(compiler.get(), singleLine);
     Component pyInput = Input(python.get(), singleLine);
 
     Component saveBtn = Button("Save & Connect", [&app, onClose, apiKey, baseUrl, maxTokens,
-                                                  temperature, workspace, compiler, python, model] {
+                                                  temperature, compiler, python, model] {
         int mt = 0;
         try {
             mt = std::stoi(*maxTokens);
@@ -62,7 +60,7 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
         if (t < 0.0) t = 0.0;
         if (t > 2.0) t = 2.0;
 
-        app.saveFullConfig(*apiKey, *baseUrl, mt, t, *workspace, *compiler, *python, *model);
+        app.saveFullConfig(*apiKey, *baseUrl, mt, t, *compiler, *python, *model);
         onClose();
     });
     Component cancelBtn = Button("Cancel", onClose);
@@ -73,7 +71,6 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
         modelInput,
         maxTokensInput,
         tempInput,
-        wsInput,
         cppInput,
         pyInput,
         Container::Horizontal({saveBtn, cancelBtn}),
@@ -93,8 +90,6 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
                          maxTokensInput->Render() | size(WIDTH, EQUAL, 44)}),
                    hbox({text("Temperature: ") | size(WIDTH, EQUAL, 16),
                          tempInput->Render() | size(WIDTH, EQUAL, 44)}),
-                   hbox({text("Workspace: ") | size(WIDTH, EQUAL, 16),
-                         wsInput->Render() | size(WIDTH, EQUAL, 44)}),
                    hbox({text("C++ Compiler: ") | size(WIDTH, EQUAL, 16),
                          cppInput->Render() | size(WIDTH, EQUAL, 44)}),
                    hbox({text("Python: ") | size(WIDTH, EQUAL, 16),

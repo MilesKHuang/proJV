@@ -12,15 +12,23 @@
 The key is stored in `projv_files/config.toml` (`api_key = "..."`). That file
 is git-ignored and deliberately excluded from release packages.
 
-## 2. Set the workspace (optional but recommended)
+## 2. Start it in the project directory
 
-The workspace is the only directory the file tools may touch.
+The workspace is the only directory the file tools may touch, and it is simply
+**the directory you launch proJV from** -- there is no setting for it.
 
+```
+cd D:\ws\myproject && D:\tools\proJV_tui.exe     # workspace = D:\ws\myproject
+```
+
+- On Linux/macOS the same thing works: `cd ~/proj && /opt/projv/projv_tui`.
+- Double-clicking the executable gives you the folder it sits in (Windows
+  default start directory).
+- If the launch directory cannot be resolved, proJV falls back to the folder the
+  executable sits in.
 - `/workspace` prints the current one.
-- `F2` (configuration) edits it.
-- Empty means "the directory the executable sits in".
 
-Set it to the project you want the agent to work on, not to your home folder.
+So start it in the project, not in your home folder.
 
 ## 3. Send a message
 
@@ -68,7 +76,7 @@ dialog shows the tool name and its arguments.
 | Symptom | Cause |
 |---------|-------|
 | "does not accept image input" on `@path` | images need the Flash line; switch to `deepseek-v4-flash` (`F10`) |
-| every tool call is rejected with "outside the workspace" | workspace is set to a parent folder that does not contain the file |
+| every tool call is rejected with "outside the workspace" | proJV was launched from a parent folder that does not contain the file -- `cd` into the project first |
 | no answer, spinner forever | network / key problem; check `projv_files/logs` |
 
 ---

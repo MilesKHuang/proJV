@@ -66,7 +66,6 @@
 | `max_tokens` | reply budget (default 65536) |
 | `temperature` | 0.0 by default (no effect in thinking mode, per the API docs) |
 | `reasoning_effort` | thinking depth: `none` / `low` / `high` / `max`, default `max`; `none` turns thinking off (the API default level is `high`) |
-| `workspace_path` | the only tree the file tools may touch; empty = exe dir |
 | `context_window` | 0 = auto |
 | `theme` | active theme name |
 | `cpp_compiler_path` | optional, for build tasks |
@@ -88,7 +87,7 @@
 
 | Symptom | Cause |
 |---------|-------|
-| `outside the workspace` | the path is not under `workspace_path` |
+| `outside the workspace` | the path is not under the launch directory (the workspace) |
 | tools "not allowed" in a skill | the skill's `tools` list does not include them |
 | `cannot dispatch to a driver agent` | dispatch is one layer deep by design |
 | `[skill] config: unknown key 'x'` | typo in `config.json`; the value was ignored |
