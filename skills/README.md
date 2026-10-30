@@ -31,6 +31,16 @@ and any release that ships `projv_files/` carries them automatically.
     /skill bigbang <topic>
     /skill monica <project-root>
 
+## Write your own
+
+A skill is a folder, not code: `config.json` + one `.md` prompt per agent +
+`tools/*.json`. The complete authoring reference - every config key, the
+template variables and the traps, the driver rule, the two modes, two worked
+examples and a pre-flight checklist - is
+[docs/en/dev-guide/skills-authoring.md](../docs/en/dev-guide/skills-authoring.md)
+(mirror: [docs/zh/dev-guide/skills-authoring.md](../docs/zh/dev-guide/skills-authoring.md)).
+It is written so an agent can produce a working skill without reading the C++.
+
 ## Skills in this folder
 
 | Folder | What it does |

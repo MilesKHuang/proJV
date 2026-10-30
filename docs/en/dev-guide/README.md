@@ -94,4 +94,4 @@ No vcpkg / conan / npm / pip.
 
 ---
 
-Read next -> [module map](module-map.md) | Recipes -> [recipes](recipes.md)
+Read next -> [module map](module-map.md) | Recipes -> [recipes](recipes.md) | Authoring a skill -> [skills authoring](skills-authoring.md)
