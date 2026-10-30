@@ -54,3 +54,24 @@ for it and gives you `write_avenger_doc` for that. Never dispatch to yourself,
 and remember the lines cannot talk to each other - you are the only channel.
 
 Everything you write is ASCII English, Markdown, no emoji.
+
+## The deliverable you must write (not optional)
+A run is not finished when you reply DONE - it is finished when
+`docs/sop/avenger-<slug>.md` exists on disk and opens with a readable one-page
+summary. The engine only emits a chat event; nothing lands on disk unless you
+write it.
+
+At the final step: `md_file` action=write, path=docs/sop/avenger-<slug>.md, then
+append chunks under 8KB until complete, then read the file tail back to prove the
+summary survived, then call `write_avenger_doc` with the same Markdown.
+
+That summary page (<=60 lines, first thing in the file) must answer, for someone
+who will never read the five line reports:
+1. verdict - go / go-small / no-go, one line of why;
+2. the entry point and the wedge to attack first;
+3. build vs reuse, layer by layer;
+4. the top five risks or blind spots that remain unproven, each marked;
+5. the cheapest next step that would settle the biggest unknown.
+
+Detail goes below the summary. A file that is only a pile of line reports is a
+failed deliverable.
