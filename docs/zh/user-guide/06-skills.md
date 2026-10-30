@@ -46,6 +46,26 @@ projv_files/skills/monica/
 死代码只报告、不删除。worker 没有 shell，格式化走 `format_file`（装了
 clang-format 就用真格式化，没装就退化成空白清理）。
 
+### SOP pipeline：avenger -> steve -> musk
+
+三个技能串成一条商业化落地流水线，也正好演示技能编排的两种方式：
+
+1. **avenger** —— 市场调研。Stark 是唯一 driver：一条回复里并行派发 市场 / 用户 /
+   开源生态 三条线，可按需点启 技术 / 合规 / 商业模式 三条可选线，对抗性审阅每份
+   报告，最后 `DONE` 收口。产出 `docs/sop/avenger_<slug>.md`。
+2. **steve** —— 产品设计。**没有 driver**：七个角色全写进剧本（4 设计师 -> PM ->
+   QA -> 全体投票），由**引擎**编排。`converge=all_agree` 让"全员同意"由引擎数票
+   决定而不是嘴上说；一条异议就把方案退回 PM 修订。产出 `docs/sop/steve_<slug>.md`。
+3. **musk** —— 执行。Musk 带着每任务一句 DoD 驱动 dev x test 结对，凭引用出的证据
+   裁决，同一任务退回超过三次就升级。产出 `docs/sop/musk_<slug>.md`。
+
+    /avenger 小商家电子发票归档工具
+    /steve   小商家电子发票归档工具
+    /musk    按 docs\sop\steve_e-invoice-archiving.md 在 D:\ws\sop-test 里做
+
+选型口诀：阵容固定、要机械全票 -> 引擎编排（steve、bigbang）；阵容要临场定 ->
+一个 driver（monica、avenger、musk）。
+
 ## agent 侧边栏
 
 技能运行时，右侧面板列出每个角色：状态、消息数、当前是否在忙。worker 会同时亮

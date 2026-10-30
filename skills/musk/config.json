@@ -1,0 +1,34 @@
+{
+  "name": "musk",
+  "description": "Kanban execution with dev x test antagonism: Musk is the only driver -- it reads the design plan, splits the board into tasks with a one-line DoD each, pairs every task with a developer and an independent verifier, judges pass/return on evidence, escalates after three returns, and writes the execution record to docs/sop/musk_<slug>.md",
+  "thinking": "on",
+  "tools": ["read_file", "write_file", "edit_file", "md_file", "grep_files", "file_search", "list_dir", "exec_shell"],
+  "tool_mode": "auto",
+  "dynamic_dispatch": true,
+  "dispatch_tool": "work_turn",
+  "max_tool_iters": 120,
+  "submit_reserve": 2,
+  "max_parallel": 4,
+  "max_rounds": 10,
+  "converge": "none",
+  "stop_when": {"slot": "kanban", "equals": "DONE"},
+  "agents": [
+    {"id": "musk",   "display_name": "Musk (Lead)",   "prompt": "musk.md", "thinking": "on"},
+    {"id": "dev_1",  "display_name": "Dev 1",         "prompt": "dev.md",  "thinking": "off"},
+    {"id": "dev_2",  "display_name": "Dev 2",         "prompt": "dev.md",  "thinking": "off"},
+    {"id": "test_1", "display_name": "Test 1",        "prompt": "test.md", "thinking": "off"},
+    {"id": "test_2", "display_name": "Test 2",        "prompt": "test.md", "thinking": "off"}
+  ],
+  "round_steps": [
+    {"progress": "Round {{round}}/{{max_rounds}} - Musk: kanban, dispatch, judge", "actions": [
+      {"agent": "musk", "tool": "emit", "capture": "summary", "into": "kanban", "emit": "message",
+       "message": "Job: {{topic}}\n\nBoard line you left last round (empty in round 1):\n{{kanban.prev}}\n\nRun the board this round. Round 1: read the design plan (docs/sop/steve_<slug>.md -- if the job names a different plan, use that), write the board to docs/sop/musk_<slug>.md, then start the first wave. Every dispatch carries a one-line DoD. Pair every task: dev implements, then an independent test verifies against the DoD. Judge on evidence only. When every task is done and verified, emit exactly DONE; otherwise emit ONE line (done/total, what is in flight, what you will do next)."}
+    ]}
+  ],
+  "on_converge": [
+    {"progress": "Writing the execution record", "actions": [
+      {"agent": "musk", "tool": "write_musk_doc", "capture": "doc_markdown", "emit": "document",
+       "message": "Job: {{topic}}\n\nYour last board line (may be empty):\n{{kanban.prev}}\n\nWrite the FINAL execution record as ONE Markdown document, from the board and the reports in this session (read files back with read_file if you need detail):\n1. Outcome: what exists now, and how to run it\n2. Board: every task - DoD | owner | verify | status | return count\n3. Evidence: the commands that proved each task, with their result lines\n4. What was removed or rejected (deletion judgment) and why\n5. What is not done, and the honest reason\n6. Residual risks for the next iteration\nCall write_musk_doc with the full Markdown. Do not reply only with a summary."}
+    ]}
+  ]
+}

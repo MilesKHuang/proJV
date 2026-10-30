@@ -1,0 +1,72 @@
+{
+  "name": "steve",
+  "description": "Multi-expert product design, script mode (no driver): Steve states the core value, four designers (UX / UI / backend / algorithm) work in parallel, PM unifies the plan, QA writes the acceptance criteria, then all seven vote -- unanimous agreement is enforced by the engine (converge=all_agree); a dissent sends the plan back to PM for revision; the final executable plan is written to docs/sop/steve_<slug>.md",
+  "thinking": "on",
+  "tools": ["read_file", "grep_files", "file_search", "list_dir", "md_file", "web_search"],
+  "tool_mode": "auto",
+  "max_tool_iters": 40,
+  "submit_reserve": 2,
+  "max_parallel": 4,
+  "max_rounds": 6,
+  "converge": "all_agree",
+  "loop_detect": "design_pm",
+  "agents": [
+    {"id": "steve",          "display_name": "Steve (Design Lead)", "prompt": "steve.md",          "thinking": "on"},
+    {"id": "design_ux",      "display_name": "UX",                  "prompt": "design_ux.md",      "thinking": "on"},
+    {"id": "design_ui",      "display_name": "UI",                  "prompt": "design_ui.md",      "thinking": "on"},
+    {"id": "design_backend", "display_name": "Backend",             "prompt": "design_backend.md", "thinking": "on"},
+    {"id": "design_algo",    "display_name": "Algorithm",           "prompt": "design_algo.md",    "thinking": "on"},
+    {"id": "design_pm",      "display_name": "PM",                  "prompt": "design_pm.md",      "thinking": "on"},
+    {"id": "design_qa",      "display_name": "QA",                  "prompt": "design_qa.md",      "thinking": "on"}
+  ],
+  "round_steps": [
+    {"when": "round==1", "progress": "Round {{round}}/{{max_rounds}} - Steve: core value + brief", "actions": [
+      {"agent": "steve", "tool": "design_turn", "capture": "text", "into": "steve", "emit": "message",
+       "message": "Topic: {{topic}}\n\nRead the upstream research first if it exists (try docs/sop/avenger_*.md via design_turn file_requests, one call). Then produce the brief, at most 12 lines:\n1. The ONE sentence of core user value (the sentence every later design decision is judged against)\n2. Scope: what is in the first shippable version, and the explicit non-goals\n3. The 3-5 questions the four designers must answer\nCall design_turn(kind=\"brief\", text=...)."}
+    ]},
+    {"when": "round==1", "parallel": true, "progress": "Round {{round}}/{{max_rounds}} - stage A: four designers in parallel", "actions": [
+      {"agent": "design_ux", "tool": "design_turn", "capture": "text", "into": "design_ux", "emit": "message",
+       "message": "Topic: {{topic}}\n\nSteve's brief:\n{{steve.current}}\n\nDesign the user experience for the first shippable version: user stories, information architecture, the critical path end to end, and the two or three moments where it could break. Hold your stance (user experience). At most 40 lines. Call design_turn(kind=\"design\", text=...)."},
+      {"agent": "design_ui", "tool": "design_turn", "capture": "text", "into": "design_ui", "emit": "message",
+       "message": "Topic: {{topic}}\n\nSteve's brief:\n{{steve.current}}\n\nDesign the visual layer: design system, colour and type roles, the key components, states, and the front-end constraints that follow (layout, density, what a terminal or web UI must do). Hold your stance (visual consistency and implementability). At most 40 lines. Call design_turn(kind=\"design\", text=...)."},
+      {"agent": "design_backend", "tool": "design_turn", "capture": "text", "into": "design_backend", "emit": "message",
+       "message": "Topic: {{topic}}\n\nSteve's brief:\n{{steve.current}}\n\nDesign the back end: technology choice with the reason, service and module split, data model, API surface, storage and deployment shape for the first version. Hold your stance (architectural soundness, no over-engineering). At most 40 lines. Call design_turn(kind=\"design\", text=...)."},
+      {"agent": "design_algo", "tool": "design_turn", "capture": "text", "into": "design_algo", "emit": "message",
+       "message": "Topic: {{topic}}\n\nSteve's brief:\n{{steve.current}}\n\nDesign the algorithmic core: which algorithm, complexity, accuracy target, the fallback when it fails, and a feasibility check (data needed, offline vs online). If there is no real algorithm in this product, say so in two lines and pivot to the hardest technical risk instead. Hold your stance (feasibility). At most 40 lines. Call design_turn(kind=\"design\", text=...)."}
+    ]},
+    {"when": "round==1", "progress": "Round {{round}}/{{max_rounds}} - stage B: PM unifies the plan", "actions": [
+      {"agent": "design_pm", "tool": "design_turn", "capture": "text", "into": "design_pm", "emit": "message",
+       "message": "Topic: {{topic}}\n\nSteve's brief:\n{{steve.current}}\n\n=== UX ===\n{{design_ux.current}}\n\n=== UI ===\n{{design_ui.current}}\n\n=== BACKEND ===\n{{design_backend.current}}\n\n=== ALGO ===\n{{design_algo.current}}\n\nUnify these into ONE executable plan: milestones, task breakdown (each task small enough for one developer turn), schedule and dependencies, tech choices, and the module file layout. Where a designer asked for something you cannot schedule, cut it or defer it and say so in one line (you hold the executability stance). At most 80 lines. Call design_turn(kind=\"plan\", text=...)."}
+    ]},
+    {"when": "round==1", "progress": "Round {{round}}/{{max_rounds}} - stage B: QA test plan", "actions": [
+      {"agent": "design_qa", "tool": "design_turn", "capture": "text", "into": "design_qa", "emit": "message",
+       "message": "Topic: {{topic}}\n\nSteve's brief:\n{{steve.current}}\n\nPlan under design:\n{{design_pm.current}}\n\nWrite the test plan and the acceptance criteria: per milestone, the checks a verifier will run, the concrete command or action, and the pass condition. Name any requirement in the plan that cannot be verified -- that is a finding, not a detail (you hold the testability stance). At most 40 lines. Call design_turn(kind=\"acceptance\", text=...)."}
+    ]},
+    {"when": "round>1", "progress": "Round {{round}}/{{max_rounds}} - PM revises the plan against the dissent", "actions": [
+      {"agent": "design_pm", "tool": "design_turn", "capture": "text", "into": "design_pm", "emit": "message",
+       "message": "Topic: {{topic}}\n\nPlan currently on the table:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nDissent from the last vote (this is what you must resolve):\n{{residual_concerns}}\n\nRevise the plan: resolve every dissent above by changing the plan, or reject it with one line of reasoning that answers the concern directly. Do not water down the product to buy votes, and do not silently drop a concern. Output the FULL revised plan (not a diff), at most 80 lines, same structure as before. Call design_turn(kind=\"revision\", text=...)."}
+    ]},
+    {"parallel": true, "progress": "Round {{round}}/{{max_rounds}} - vote (all seven, unanimous required)", "actions": [
+      {"agent": "design_ux", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Plan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the UX stance: does the experience hold end to end, is any journey broken or loading the user with work? A [high] concern forbids agree. Call design_vote."},
+      {"agent": "design_ui", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Plan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the UI stance: can this be built and stay visually coherent, is any screen or state unspecified? A [high] concern forbids agree. Call design_vote."},
+      {"agent": "design_backend", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Plan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the backend stance: is the architecture sound without being over-built, do the data model and API hold? A [high] concern forbids agree. Call design_vote."},
+      {"agent": "design_algo", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Plan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the feasibility stance: can the algorithmic core really be built as planned, is the fallback honest? A [high] concern forbids agree. Call design_vote."},
+      {"agent": "design_pm", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Plan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the executability stance: can a dev team actually deliver this schedule, are dependencies and task sizes real? A [high] concern forbids agree. Call design_vote."},
+      {"agent": "design_qa", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Plan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the testability stance: can every requirement be verified by a concrete check, are the acceptance criteria complete? A [high] concern forbids agree. Call design_vote."},
+      {"agent": "steve", "tool": "design_vote", "shape": "vote", "emit": "vote",
+       "message": "Topic: {{topic}}\n\nYour brief:\n{{steve.current}}\n\nPlan under vote:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nVote as the product itself: does this deserve to exist, does it keep its one core value, is anything in it decoration? Walk your six criteria, put the reasoning in concerns, and be willing to say no. A [high] concern forbids agree. Call design_vote."}
+    ]}
+  ],
+  "on_converge": [
+    {"progress": "Writing the executable design plan", "actions": [
+      {"agent": "design_pm", "tool": "write_steve_doc", "capture": "doc_markdown", "emit": "document",
+       "message": "Topic: {{topic}}\n\nFIRST persist the document. Call md_file with action=write, path=docs/sop/steve-<slug>.md, content=<the full Markdown>; if it exceeds 8KB, continue with action=append chunks until every section is on disk. Verify the file is complete, THEN call write_steve_doc with the same Markdown.\n\nFinal agreed plan:\n{{design_pm.current}}\n\nAcceptance criteria:\n{{design_qa.current}}\n\nResidual concerns (empty means the vote was unanimous):\n{{residual_concerns}}\n\nWrite the FINAL executable design plan as ONE Markdown document: (1) core user value in one sentence, (2) scope and non-goals, (3) tech choices with reasons, (4) milestones with dependencies, (5) task breakdown sized for one developer turn each, (6) module / file layout, (7) acceptance criteria per milestone with the concrete check, (8) open risks and residual concerns. Call write_steve_doc with the full Markdown. Do not reply only with a summary."}
+    ]}
+  ]
+}

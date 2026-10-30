@@ -16,6 +16,7 @@ set(TEST_SOURCES
     unit/test_skill_engine.cpp
     unit/test_skill_maker.cpp
     unit/test_skill_monica.cpp
+    unit/test_skill_sop.cpp
     unit/test_skill_trigger.cpp
     unit/test_web_api.cpp
     unit/test_image_input.cpp

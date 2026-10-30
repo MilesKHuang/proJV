@@ -1,0 +1,1 @@
+{"name":"emit","description":"Report one line and finish this turn.","parameters":[{"name":"summary","type":"string","description":"ONE line of board state (done/total, in flight, next); exactly DONE only when every task is done and verified","required":true}]}

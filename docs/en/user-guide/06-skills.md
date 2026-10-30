@@ -48,6 +48,31 @@ Project tidy-up for 50-200 file repositories:
 Dead code is only ever reported. Workers have no shell; formatting goes through
 `format_file` (clang-format when installed, a whitespace pass otherwise).
 
+### The SOP pipeline: avenger -> steve -> musk
+
+Three skills that chain into one commercialisation pipeline, and they show the
+two ways a skill can be orchestrated:
+
+1. **avenger** - market research. Stark is the only driver: it dispatches the
+   market / users / open-source lines in parallel, may wake the optional lines
+   (tech / compliance / money), audits every report, and stops on `DONE`. Writes
+   `docs/sop/avenger_<slug>.md`.
+2. **steve** - product design. No driver at all: seven roles sit in the script
+   (four designers -> PM -> QA -> everyone votes) and the **engine** runs it.
+   `converge=all_agree` means unanimity is counted, not claimed; one dissent
+   sends the plan back to PM. Writes `docs/sop/steve_<slug>.md`.
+3. **musk** - execution. Musk drives dev x test pairs against a one-line DoD
+   each, judges on quoted evidence, escalates after three returns. Writes
+   `docs/sop/musk_<slug>.md`.
+
+    /avenger e-invoice archiving for small shops
+    /steve   e-invoice archiving for small shops
+    /musk    build docs\sop\steve_e-invoice-archiving.md in D:\ws\sop-test
+
+Rule of thumb: a fixed cast that must vote unanimously -> let the engine
+orchestrate (steve, bigbang); a cast that must be picked at runtime -> one
+driver (monica, avenger, musk).
+
 ## The agent sidebar
 
 While a skill runs, the right-hand panel lists every role with its status,

@@ -37,3 +37,6 @@ and any release that ships `projv_files/` carries them automatically.
 |--------|--------------|
 | `bigbang/` | three-role engineering debate (propose / integrate / vote) -> one execution doc |
 | `monica/`  | supervisor-driven project tidy-up: format, translate comments, audit dead code |
+| `avenger/` | SOP 1/3: market research swarm - Stark dispatches parallel research lines, audits them, writes `docs/sop/avenger_<slug>.md` |
+| `steve/`   | SOP 2/3: multi-expert product design - script mode, no driver, seven roles vote and `all_agree` is engine-enforced |
+| `musk/`    | SOP 3/3: kanban execution - Musk pairs dev x test against a one-line DoD and judges on quoted evidence |

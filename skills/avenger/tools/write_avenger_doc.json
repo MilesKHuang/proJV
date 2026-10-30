@@ -1,0 +1,1 @@
+{"name":"write_avenger_doc","description":"Final step only: emit the consolidated research report.","parameters":[{"name":"doc_markdown","type":"string","description":"the full consolidated report, Markdown","required":true}]}

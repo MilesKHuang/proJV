@@ -1,0 +1,1 @@
+{"name":"write_steve_doc","description":"After convergence, emit the final executable design plan.","parameters":[{"name":"doc_markdown","type":"string","description":"the full plan document, Markdown","required":true}]}

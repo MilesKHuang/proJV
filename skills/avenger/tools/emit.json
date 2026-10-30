@@ -1,0 +1,1 @@
+{"name":"emit","description":"Report one line and finish this turn.","parameters":[{"name":"summary","type":"string","description":"ONE line for a normal round; exactly DONE only when the whole research job is finished and reviewed","required":true}]}

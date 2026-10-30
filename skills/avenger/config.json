@@ -1,0 +1,36 @@
+{
+  "name": "avenger",
+  "description": "Ant-colony market research: Stark is the only driver -- it dispatches the core three research lines in parallel (market / users / open-source), may wake the optional lines (tech / compliance / money), adversarially reviews every report and closes with a go/no-go judgment, then merges everything into docs/sop/avenger_<slug>.md",
+  "thinking": "on",
+  "tools": ["web_search", "fetch_url", "read_file", "grep_files", "file_search", "md_file"],
+  "tool_mode": "auto",
+  "dynamic_dispatch": true,
+  "dispatch_tool": "research_turn",
+  "max_tool_iters": 60,
+  "submit_reserve": 2,
+  "max_parallel": 6,
+  "max_rounds": 8,
+  "converge": "none",
+  "stop_when": {"slot": "judgment", "equals": "DONE"},
+  "agents": [
+    {"id": "stark",         "display_name": "Stark (Lead)",         "prompt": "stark.md",         "thinking": "on"},
+    {"id": "research_mkt",  "display_name": "Market",               "prompt": "research_mkt.md",  "thinking": "off"},
+    {"id": "research_user", "display_name": "Users",                "prompt": "research_user.md", "thinking": "off"},
+    {"id": "research_oss",  "display_name": "Open Source",          "prompt": "research_oss.md",  "thinking": "off"},
+    {"id": "research_tech", "display_name": "Tech Trends",          "prompt": "research_tech.md", "thinking": "off"},
+    {"id": "research_comp", "display_name": "Compliance",           "prompt": "research_comp.md", "thinking": "off"},
+    {"id": "research_money","display_name": "Business Model",       "prompt": "research_money.md","thinking": "off"}
+  ],
+  "round_steps": [
+    {"progress": "Round {{round}}/{{max_rounds}} - Stark: dispatch, review, decide", "actions": [
+      {"agent": "stark", "tool": "emit", "capture": "summary", "into": "judgment", "emit": "message",
+       "message": "Topic: {{topic}}\n\n=== Round {{round}}/{{max_rounds}} ===\n\nYour own line from the previous round (empty in round 1):\n{{judgment.prev}}\n\nROUND 1: pick the ASCII slug, then in ONE reply send three parallel request_agent calls (research_mkt, research_user, research_oss) and any optional line the topic really needs. Every dispatch message must contain: the topic, the ASCII slug, the exact report path docs/sop/avenger_<slug>_<line>.md, your sharpened questions, and the source-grade rules. Then emit ONE line: what you dispatched.\n\nROUND 2+: run the adversarial review from your system prompt on everything that came back (does it answer the business question / what is missing / what hidden link is worth chasing). Blind spot -> re-dispatch that line with a sharper question. All qualified -> emit exactly DONE."}
+    ]}
+  ],
+  "on_converge": [
+    {"progress": "Writing the consolidated report", "actions": [
+      {"agent": "stark", "tool": "write_avenger_doc", "capture": "doc_markdown", "emit": "document",
+       "message": "Topic: {{topic}}\n\nFIRST persist the report. Call md_file with action=write, path=docs/sop/avenger-<slug>.md, content=<the full consolidated Markdown>; if it exceeds 8KB, continue with action=append chunks until every section is on disk. Then call write_avenger_doc with the same Markdown.\n\nYour judgment line from the last review round (may be empty if you converged in round 1):\n{{judgment.prev}}\n\nWrite the FINAL consolidated research report as ONE Markdown document, merging the line reports you have in this session (and read docs/sop/avenger_<slug>_*.md with file_requests if you need the details back):\n1. Verdict: go / no-go / go-small, and why (3-5 bullets)\n2. Entry point and the wedge you would attack first\n3. Build vs reuse: what to write yourself, what to take from open source\n4. Risks and blind spots that remain unproven (mark them)\n5. Evidence table: conclusion | source grade | confidence | source\n6. One condensed section per research line (its own summary + unknowns)\nThen call write_avenger_doc with the full Markdown. Do not reply only DONE."}
+    ]}
+  ]
+}

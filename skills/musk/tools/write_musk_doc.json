@@ -1,0 +1,1 @@
+{"name":"write_musk_doc","description":"Final step only: emit the execution record.","parameters":[{"name":"doc_markdown","type":"string","description":"the full execution record, Markdown","required":true}]}
