@@ -68,6 +68,7 @@
 | `reasoning_effort` | thinking depth: `none` / `low` / `high` / `max`, default `max`; `none` turns thinking off (the API default level is `high`) |
 | `context_window` | 0 = auto |
 | `theme` | active theme name |
+| `osc_status` | `true` (default): report `working` / `blocked` / `done` / `error` to the hosting terminal over OSC 7501; hosts that do not know it ignore it, and a redirected stdout gets no extra bytes. `PROJV_NO_OSC=1` forces it off |
 | `cpp_compiler_path` | optional, for build tasks |
 | `python_path` | interpreter for pytool; empty = `python` |
 | `clang_format_path` | binary used by `format_file`; empty = PATH |

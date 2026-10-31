@@ -1,8 +1,11 @@
-# Authoring a skill - the sub-agent orchestra, without reading the source
+# 09 - Authoring a skill: the sub-agent orchestra, without reading the source
+
+> [中文](../../zh/user-guide/09-skills-authoring.md) | **English**
 
 > Audience: a person or an agent that must produce a **working** skill folder.
 > Everything you need is on this page. No C++ knowledge required.
-> Sibling pages: [module map](module-map.md) (where the engine lives), [recipes](recipes.md).
+> Deep dive: [module map](../dev-guide/module-map.md) (where the engine lives),
+> [recipes](../dev-guide/recipes.md).
 
 ---
 

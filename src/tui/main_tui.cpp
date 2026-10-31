@@ -14,6 +14,7 @@
 #include "theme_map.h"
 #include "platform/isystem_util.h"
 #include "platform/iprocess_runner.h"
+#include "core/terminal_status.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
@@ -645,6 +646,10 @@ int main() {
 
     // Apply the theme background across the whole screen.
     Component themed_root = Renderer(root, [root] {
+        // Only writer of the OSC 7501 status sequence: the UI thread, once per
+        // frame, just before FTXUI flushes its own frame. The agent thread only
+        // records state (terminal_status::working/blocked/...).
+        terminal_status::flushIfDirty();
         const auto& T = ThemeManager::instance().current();
         return root->Render() | flex | bgcolor(theme_map::hexToColor(T.windowBg)) |
                color(theme_map::hexToColor(T.text));
@@ -653,6 +658,9 @@ int main() {
     screen.Loop(themed_root);
 
     app.shutdown();
+    // Backstop for exit paths that skip TuiApp::shutdown (e.g. an exception
+    // unwinding out of the loop): the host must not keep a zombie status.
+    terminal_status::shutdown();
     delete procRunner;
     return 0;
 }

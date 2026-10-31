@@ -16,6 +16,7 @@ run multi-agent skills.
 | 06 | [skills](06-skills.md) | Run `bigbang` / `monica`, read the agent sidebar, author your own |
 | 07 | [pytool](07-pytool.md) | Write a Python tool the agent can call |
 | 08 | [reference](08-reference.md) | Every shortcut, `/` command and `config.toml` key |
+| 09 | [authoring a skill](09-skills-authoring.md) | Define your own workflow: a skill folder with agents, rounds and verb tools |
 
 ## What it needs
 

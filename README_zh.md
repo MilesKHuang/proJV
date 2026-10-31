@@ -92,6 +92,7 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 |------|-----|
 | 日常使用 | [用户指南](docs/zh/user-guide/README.md) |
 | 跑 / 写技能 | [技能](docs/zh/user-guide/06-skills.md) |
+| 自定义自己的流程 | [编写 skill](docs/zh/user-guide/09-skills-authoring.md) |
 | 改代码 | [开发指南](docs/zh/dev-guide/README.md) · [模块地图](docs/zh/dev-guide/module-map.md) · [改动配方](docs/zh/dev-guide/recipes.md) |
 | 参与贡献 | [CONTRIBUTING_zh](CONTRIBUTING_zh.md) |
 

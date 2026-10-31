@@ -17,6 +17,7 @@ proJV 是用原生 C++ 写的终端 AI agent（TUI，DeepSeek）。装上就能�
 | 06 | [技能](06-skills.md) | 跑 `bigbang` / `monica`，看懂侧边栏，写自己的技能 |
 | 07 | [pytool](07-pytool.md) | 写一个 Python 工具让 AI 调用 |
 | 08 | [参考](08-reference.md) | 所有快捷键、`/` 命令、`config.toml` 配置项 |
+| 09 | [编写 skill](09-skills-authoring.md) | 自己定义一个流程：一个目录就是一套 agent、轮次与动作工具 |
 
 ## 需要什么
 

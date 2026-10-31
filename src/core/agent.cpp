@@ -102,6 +102,94 @@ void Agent::startTurn(const std::string& text, std::vector<ImageAttachment> imag
     approvalDone_ = false;
 }
 
+// --- Phase bookkeeping -----------------------------------------------------
+namespace {
+// The first JSON string value in `json` -- for a shell tool that is the
+// command, which is exactly what a host terminal should show next to
+// "waiting for approval". Falls back to the raw head of the arguments.
+std::string firstJsonValue(const std::string& json) {
+    for (size_t i = 0; i + 1 < json.size(); ++i) {
+        if (json[i] != ':' || json[i + 1] != '"') continue;
+        std::string out;
+        size_t j = i + 2;
+        while (j < json.size() && json[j] != '"') {
+            if (json[j] == '\\' && j + 1 < json.size()) {
+                out += json[j + 1];
+                j += 2;
+                continue;
+            }
+            out += json[j++];
+        }
+        return out;
+    }
+    return json;
+}
+
+// Single line, control characters flattened, hard cap. Hosts show this in a
+// tab or a notification body, never in a multi-line box.
+std::string oneLine(const std::string& in, size_t maxLen = 120) {
+    std::string out;
+    out.reserve(in.size());
+    bool prevSpace = false;
+    for (char ch : in) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        const bool space = (c < 0x20 || c == 0x7f);
+        if (space) {
+            if (!prevSpace && !out.empty()) out += ' ';
+            prevSpace = true;
+            continue;
+        }
+        prevSpace = false;
+        out += ch;
+        if (out.size() >= maxLen) break;
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+} // namespace
+
+std::string Agent::approvalSummary() const {
+    if (pendingApprovalCalls_.empty()) return "approval needed";
+    const ToolCall& c = pendingApprovalCalls_.front();
+    std::string detail = oneLine(firstJsonValue(c.arguments), 80);
+    std::string s = "approve " + c.name;
+    if (!detail.empty()) s += ": " + detail;
+    return oneLine(s, 120);
+}
+
+void Agent::setPhase(AgentPhase p, const std::string& msgIn) {
+    phase_.store(p);
+    if (!phaseCallback_) return;
+    std::string msg = msgIn;
+    if (msg.empty()) {
+        switch (p) {
+        case AgentPhase::Streaming:
+            msg = "thinking";
+            break;
+        case AgentPhase::ExecutingTools: {
+            std::lock_guard<std::mutex> lk(snapshotMutex_);
+            msg = status_.currentToolName.empty() ? "tool" : ("tool: " + status_.currentToolName);
+            break;
+        }
+        case AgentPhase::AwaitApproval:
+            msg = approvalSummary();
+            break;
+        case AgentPhase::Error: {
+            std::lock_guard<std::mutex> lk(snapshotMutex_);
+            std::string e = status_.errorMessage;
+            const size_t nl = e.find('\n');
+            if (nl != std::string::npos) e = e.substr(0, nl);
+            msg = e.empty() ? "error" : oneLine(e);
+            break;
+        }
+        case AgentPhase::Idle:
+            msg = "turn finished";
+            break;
+        }
+    }
+    phaseCallback_(p, msg);
+}
+
 void Agent::run() {
     debugLog("[Agent] run: BEGIN");
 
@@ -114,7 +202,7 @@ void Agent::run() {
     }
 
     if (compactRequested_.exchange(false)) {
-        phase_ = AgentPhase::Streaming;
+        setPhase(AgentPhase::Streaming);
         updateSnapshot();
         size_t before = getEstimatedContextTokens();
         debugLogf("[Compact] request: before=%zu tokens, %zu msgs", before, session.messageCount());
@@ -131,13 +219,13 @@ void Agent::run() {
                                                "**Saved:** ~" +
                                                std::to_string(before > after ? before - after : 0) +
                                                " tok\n"));
-        phase_ = AgentPhase::Idle;
+        setPhase(AgentPhase::Idle);
     } else {
         doCompaction();
         checkContextWarning();
         toolCallDepth_ = 0;
         reasoningLengthRetries_ = 0;
-        phase_ = AgentPhase::Streaming;
+        setPhase(AgentPhase::Streaming);
         updateSnapshot();
     }
 
@@ -207,15 +295,17 @@ void Agent::run() {
                             if (hasImages) failMsg += IMAGE_400_HINT;
                         }
                         addPersistedMessage(Message::Assistant(failMsg));
-                        phase_ = AgentPhase::Idle;
+                        setPhase(AgentPhase::Idle);
                         break;
                     }
                 } else {
-                    phase_ = AgentPhase::Error;
+                    // Error text first: the phase callback reads status_.errorMessage
+                    // to build the one-line report for the host terminal.
                     {
                         std::lock_guard<std::mutex> lk(snapshotMutex_);
                         status_.errorMessage = err;
                     }
+                    setPhase(AgentPhase::Error);
                     break;
                 }
             }
@@ -245,7 +335,7 @@ void Agent::run() {
 
                 if (hasD && !destructiveApproved_.load()) {
                     pendingApprovalCalls_ = pendingToolCalls_;
-                    phase_ = AgentPhase::AwaitApproval;
+                    setPhase(AgentPhase::AwaitApproval);
                     updateSnapshot();
                     std::unique_lock<std::mutex> lk(approvalMutex_);
                     approvalCv_.wait(lk,
@@ -253,18 +343,18 @@ void Agent::run() {
                     if (cancelRequested_.load()) break;
                     if (!approvalGranted_) {
                         session.clearLastToolCalls(USER_REJECTED_PREFIX);
-                        phase_ = AgentPhase::Streaming;
+                        setPhase(AgentPhase::Streaming);
                         updateSnapshot();
                         break;
                     }
                 }
-                phase_ = AgentPhase::ExecutingTools;
+                setPhase(AgentPhase::ExecutingTools);
                 updateSnapshot();
             } else if (!currentContent_.empty()) {
                 Message asst = Message::Assistant(currentContent_);
                 asst.reasoningContent = currentReasoning_;
                 addPersistedMessage(asst);
-                phase_ = AgentPhase::Idle;
+                setPhase(AgentPhase::Idle);
                 updateSnapshot();
             } else if (!currentReasoning_.empty()) {
                 // Stream finished with reasoning but no content.
@@ -281,7 +371,7 @@ void Agent::run() {
                         "Answer the user's request now with a concise final response. "
                         "Do NOT produce a long chain of thought. Keep thinking to a few "
                         "lines and output the final answer directly."));
-                    phase_ = AgentPhase::Streaming;
+                    setPhase(AgentPhase::Streaming);
                     updateSnapshot();
                     break;
                 }
@@ -292,10 +382,10 @@ void Agent::run() {
                     Message::Assistant("[Stream ended after reasoning - no response generated]");
                 asst.reasoningContent = currentReasoning_;
                 addPersistedMessage(asst);
-                phase_ = AgentPhase::Idle;
+                setPhase(AgentPhase::Idle);
                 updateSnapshot();
             } else {
-                phase_ = AgentPhase::Idle;
+                setPhase(AgentPhase::Idle);
                 updateSnapshot();
             }
             break;
@@ -317,6 +407,9 @@ void Agent::run() {
                     status_.currentToolName = call.name;
                     status_.state = AgentState::ExecutingTool;
                 }
+                // Per-tool report ("tool: read_file") -- the host can show which
+                // tool is running instead of a generic "working".
+                setPhase(AgentPhase::ExecutingTools, "tool: " + call.name);
                 ToolResult r = executeTool(call);
                 toolResults_.push_back(r);
                 ++toolIndex_;
@@ -358,7 +451,7 @@ void Agent::run() {
                 debugLog("[Agent] turn end requested by a tool -- stopping after this round");
                 pendingToolCalls_.clear();
                 toolResults_.clear();
-                phase_ = AgentPhase::Idle;
+                setPhase(AgentPhase::Idle);
                 updateSnapshot();
                 break;
             }
@@ -394,7 +487,7 @@ void Agent::run() {
                 toolCallDepth_ = 0;
                 session.stripOrphanedToolCalls();
                 addPersistedMessage(Message::System(ERROR_CONSECUTIVE_FAILURES));
-                phase_ = AgentPhase::Streaming;
+                setPhase(AgentPhase::Streaming);
                 pendingToolCalls_.clear();
                 toolResults_.clear();
                 updateSnapshot();
@@ -406,19 +499,19 @@ void Agent::run() {
             session.validateToolCallPairs();
             pendingToolCalls_.clear();
             toolResults_.clear();
-            phase_ = AgentPhase::Streaming;
+            setPhase(AgentPhase::Streaming);
             updateSnapshot();
             break;
         }
 
         case AgentPhase::AwaitApproval:
         case AgentPhase::Error:
-            phase_ = AgentPhase::Idle;
+            setPhase(AgentPhase::Idle);
             updateSnapshot();
             break;
         }
     }
-    phase_ = AgentPhase::Idle;
+    setPhase(AgentPhase::Idle);
     {
         std::lock_guard<std::mutex> lk(snapshotMutex_);
         status_.state = AgentState::Idle;
@@ -480,7 +573,7 @@ void Agent::clearSession() {
     contextTokensDirty_ = true;
     toolCallDepth_ = 0;
     destructiveApproved_.store(false);
-    phase_ = AgentPhase::Idle;
+    setPhase(AgentPhase::Idle);
     {
         // R2: new session must not carry over overview/TODO/user-request context.
         // Previously only the message session was cleared; todoData survived and

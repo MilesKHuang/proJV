@@ -223,6 +223,11 @@ struct AppConfig {
     // Otherwise, switch to this theme on startup.  Saved to config.toml [theme].
     std::string themeName;
 
+    // Report working/blocked/done state to the hosting terminal over OSC 7501
+    // ("Program Status Protocol"). Hosts that do not know the sequence drop it
+    // silently, so this can be on by default; PROJV_NO_OSC=1 forces it off.
+    bool oscStatus = true;
+
     bool loaded = false;
     std::string loadError;
 

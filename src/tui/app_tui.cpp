@@ -6,6 +6,7 @@
 #include "core/project_context.h"
 #include "core/image_input.h"
 #include "core/skill_trigger.h"
+#include "core/terminal_status.h"
 #include "tui/theme_manager.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
@@ -198,6 +199,9 @@ void TuiApp::setupTools() {
 bool TuiApp::initialize(IProcessRunner* procRunner) {
     procRunner_ = procRunner;
     loadTomlConfig(config, "");
+    // OSC 7501: tell the hosting terminal what we are doing. No-op when the
+    // config switch is off, PROJV_NO_OSC=1, or stdout is not a TTY.
+    terminal_status::init(config.oscStatus);
     client.setConfig(config);
     setupTools();
     skillsDir_ = getProjvDir() + "/skills";
@@ -211,6 +215,29 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     agent->onStreamingTick = [this] {
         if (onStreamingTick) onStreamingTick();
     };
+    // Mirror the agent loop into the host terminal. This runs on the agent
+    // thread, so it only records the state; the UI thread writes it (see
+    // terminal_status::flushIfDirty in the render callback).
+    agent->setPhaseCallback([this](AgentPhase p, const std::string& msg) {
+        switch (p) {
+        case AgentPhase::Streaming:
+        case AgentPhase::ExecutingTools:
+            terminal_status::working(msg);
+            break;
+        case AgentPhase::AwaitApproval:
+            // blocked+permission is the one record a host must surface: a human
+            // is genuinely required. It is the only blocking reason proJV has.
+            terminal_status::blocked("permission", msg);
+            break;
+        case AgentPhase::Error:
+            terminal_status::error(msg);
+            break;
+        case AgentPhase::Idle:
+            terminal_status::done(msg);
+            break;
+        }
+        if (onStreamingTick) onStreamingTick(); // wake the UI thread
+    });
     agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setReasoningEffort(config.reasoningEffort);
@@ -640,6 +667,9 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
         std::lock_guard<std::mutex> lk(skillMutex_);
         skillStatus_ = "Preparing skill...";
     }
+    // The main loop is Idle during a skill phase, so the state has to be
+    // reported from here or the host would show "idle" while a debate runs.
+    terminal_status::working("skill: " + name);
     if (onStreamingTick) onStreamingTick();
 
     SkillRunner::Callbacks cbs;
@@ -684,6 +714,7 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
         skillRunner_.reset();
         skillStatus_.clear();
     }
+    terminal_status::done("skill: " + name + " finished");
     if (onTurnComplete) onTurnComplete();
     return !tools.isCancelled();
 }
@@ -741,6 +772,8 @@ void TuiApp::shutdown() {
     agent = nullptr;
     // Explicitly close the DB and checkpoint the WAL on exit (bug fix).
     storage.closeDatabase();
+    // Drop the host-side status record so no zombie "working" stays behind.
+    terminal_status::shutdown();
 }
 
 void TuiApp::emergencyShutdown() {
@@ -754,6 +787,7 @@ void TuiApp::emergencyShutdown() {
     // Do not join the models thread: it never touches the DB and might be
     // blocked on the network. Close the DB now; the OS reclaims the rest.
     storage.closeDatabase();
+    terminal_status::shutdown(); // idempotent; keeps the host list clean
 }
 
 status_bar::Data TuiApp::getStatusBarData() const {

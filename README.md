@@ -97,6 +97,7 @@ surface in plain files instead of a plugin registry.
 |-------------|-------|
 | use it daily | [user guide](docs/en/user-guide/README.md) |
 | run or write skills | [skills](docs/en/user-guide/06-skills.md) |
+| define your own workflow | [authoring a skill](docs/en/user-guide/09-skills-authoring.md) |
 | change the code | [dev guide](docs/en/dev-guide/README.md) · [module map](docs/en/dev-guide/module-map.md) · [recipes](docs/en/dev-guide/recipes.md) |
 | contribute | [CONTRIBUTING](CONTRIBUTING.md) |
 

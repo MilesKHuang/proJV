@@ -1,7 +1,9 @@
-# 编写 skill —— 不看源码也能搭出 sub-agent 编排
+# 09 - 编写 skill：不看源码也能搭出 sub-agent 编排
+
+> [English](../../en/user-guide/09-skills-authoring.md) | **中文**
 
 > 读者：需要产出一个**能跑**的 skill 目录的人或 agent。看完这一页就够，不需要读 C++。
-> 姊妹页：[模块地图](module-map.md)（引擎在哪）、[常见做法](recipes.md)。
+> 想深入引擎：[模块地图](../dev-guide/module-map.md)、[常见做法](../dev-guide/recipes.md)。
 
 ---
 

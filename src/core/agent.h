@@ -80,6 +80,13 @@ class Agent {
     // Called (from the agent thread) whenever streamed reasoning/content
     // updates the status snapshot. The TUI uses it to post a redraw event.
     std::function<void()> onStreamingTick;
+    // Called (from the agent thread) on every loop phase change, so the TUI can
+    // mirror the state into the hosting terminal (OSC 7501). `msg` is a short,
+    // single-line, human-readable summary; empty means "use the phase default".
+    // core/ must not depend on tui/, so this is a plain callback.
+    void setPhaseCallback(std::function<void(AgentPhase, const std::string&)> cb) {
+        phaseCallback_ = std::move(cb);
+    }
     Session::ContextBudget contextBudget;
 
     TodoData copyTodoData() const {
@@ -100,6 +107,9 @@ class Agent {
     ToolResult executeTool(const ToolCall& call);
     void repairSession();
     void updateSnapshot();
+    // Single writer for phase_: keeps the loop and the OSC 7501 report in sync.
+    void setPhase(AgentPhase p, const std::string& msg = std::string());
+    std::string approvalSummary() const;
     size_t effectiveContextWindow() const {
         if (configContextWindow > 0) return configContextWindow;
         return contextWindowForModel(model_);
@@ -113,6 +123,7 @@ class Agent {
     std::atomic<AgentPhase> phase_{AgentPhase::Idle};
     AgentStatus status_;
     mutable std::mutex snapshotMutex_;
+    std::function<void(AgentPhase, const std::string&)> phaseCallback_;
 
     std::string currentContent_;
     std::string currentReasoning_;

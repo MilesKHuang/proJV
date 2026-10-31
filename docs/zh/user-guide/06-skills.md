@@ -89,4 +89,4 @@ clang-format 就用真格式化，没装就退化成空白清理）。
 
 ---
 
-下一篇 -> [07 pytool](07-pytool.md) | 想改它 -> [技能引擎](../dev-guide/module-map.md)
+下一篇 -> [07 pytool](07-pytool.md) | 想自己设计流程 -> [09 编写 skill](09-skills-authoring.md) | 想看引擎 -> [模块地图](../dev-guide/module-map.md)

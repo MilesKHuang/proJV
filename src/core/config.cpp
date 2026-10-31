@@ -87,6 +87,9 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         cfg.clangFormatPath = tbl["clang_format_path"].value_or<std::string>("");
         cfg.contextWindow = tbl["context_window"].value_or<size_t>(0);
         cfg.themeName = tbl["theme"].value_or<std::string>("");
+        // OSC 7501 status reporting: on by default, off via osc_status = false
+        // or the PROJV_NO_OSC=1 environment variable (checked in terminal_status).
+        cfg.oscStatus = tbl["osc_status"].value_or<bool>(true);
         // Reasoning effort: official values none/low/high/max (aliases are
         // normalized). Anything else falls back to the official default "high"
         // instead of being sent to the API.
@@ -193,6 +196,7 @@ bool saveApiKey(const std::string& key) {
         if (!tbl.contains("context_window")) tbl.insert_or_assign("context_window", 0);
         if (!tbl.contains("reasoning_effort"))
             tbl.insert_or_assign("reasoning_effort", kReasoningEffortDefault());
+        if (!tbl.contains("osc_status")) tbl.insert_or_assign("osc_status", true);
     } catch (const std::exception& e) {
         debugLogf("[Config] Error updating config table: %s", e.what());
         return false;
@@ -241,6 +245,7 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("clang_format_path", cfg.clangFormatPath);
     tbl.insert_or_assign("context_window", static_cast<int64_t>(cfg.contextWindow));
     tbl.insert_or_assign("reasoning_effort", cfg.reasoningEffort);
+    tbl.insert_or_assign("osc_status", cfg.oscStatus);
     if (!cfg.themeName.empty()) tbl.insert_or_assign("theme", cfg.themeName);
 
     std::ofstream ofs(configPath);

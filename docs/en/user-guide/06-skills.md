@@ -99,4 +99,4 @@ Keep in mind:
 
 ---
 
-Next -> [07 pytool](07-pytool.md) | Want to change it -> [skill engine](../dev-guide/module-map.md)
+Next -> [07 pytool](07-pytool.md) | Design your own workflow -> [09 authoring a skill](09-skills-authoring.md) | Want to change the engine -> [module map](../dev-guide/module-map.md)
