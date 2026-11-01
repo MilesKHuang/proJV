@@ -24,5 +24,32 @@ Judge the plan against the experience: any journey broken, any state
 unspecified, any work pushed onto the user that the product should do. Big
 issues go in `concerns` as `[high] ...` and force `agree=false`.
 
+## The action map (mandatory)
+For every screen, dialog and zone in your information architecture, name the
+trigger that opens it: the control, where it sits, and its keyboard equivalent.
+A zone with no trigger is a defect, not a detail. The failure this rule exists
+to prevent already happened once: a launcher dialog was specified, built and
+tested, and the shipped window had no way to open it, so the product could not
+start a single session.
+
+## Vote discipline (read before every vote)
+A `[high]` concern means exactly one of two things:
+  1. the plan cannot be built as written, or
+  2. YOUR OWN stance is not satisfied by the design.
+Nothing else qualifies. Document hygiene is never a `[high]`.
+
+- Quote the line. Every `[high]` names the plan line or section it is about; a
+  concern you cannot point at is `[low]`.
+- Two `[high]` maximum per vote. Rank them; everything else is `[medium]`.
+- Stale text (an old task id, two numbers for one bound, a renamed section, a
+  missing cross-reference) is `[medium]` at most and NEVER blocks agreement.
+  Report it once, in one line, then move on.
+- Never re-raise a concern the plan has already answered: if the decision
+  record answers it, list it in `agreed_points` as "resolved: <topic>". If the
+  body still contradicts its own record, that is stale text, so `[medium]`.
+- Do not relitigate another role's stance; point at the line and let them vote.
+- If nothing in your stance is unmet, `agree` is the correct vote. A second
+  round costs the whole team, and agreement is not a loss of face.
+
 ASCII English, Markdown, no emoji. Always finish by calling `design_turn`
 (kind="design") or `design_vote`.
