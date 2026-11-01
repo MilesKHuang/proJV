@@ -49,7 +49,7 @@ Windows may warn about the unsigned binary (SmartScreen -> "More info" ->
 "Run anyway"). Linux needs `libcurl4-openssl-dev` if you build from source.
 
 Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
-
+Put `projv` on PATH, one command and no admin -> the install guide's section "Put `projv` on your PATH"; the full design (user-level prefix, forwarder, copy rules, `--uninstall` / `--purge`) is in [`docs/archive/projv-install.md`](docs/archive/projv-install.md) and the behaviour that shipped lives in `src/platform/install_shim.*`.
 ---
 
 ## What it can do
@@ -63,6 +63,7 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | **1M context** | the full DeepSeek V4 1M-token window, with automatic compression when pressure builds |
 | **Web** | DeepSeek's own Search and Fetch APIs (structured results, Markdown pages) |
 | **Sessions** | SQLite per conversation, crash-safe, `/compress` to shrink long ones |
+| **Terminal status** | reports `working` / `blocked` / `done` to the host terminal over **OSC 7501** (Program Status Protocol), so Windows Terminal, Ghostty or Ostlr can show a tab badge; a redirected stdout gets no extra bytes, `osc_status = false` or `PROJV_NO_OSC=1` turns it off |
 | **Themes** | 2 built-in + 6 curated, visual editor with live preview, JSON import/export |
 | **Python tools** | drop a folder with `tool.json` + `main.py` and the agent can call it |
 | **Cost awareness** | live token counts and a price estimate from `config.toml` |

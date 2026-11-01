@@ -1,0 +1,63 @@
+digraph projv {
+  graph [rankdir=LR, fontname="Helvetica", nodesep=0.28, ranksep=0.55, bgcolor="white"];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, color="#4a5568", fillcolor="#eef2f7"];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a5568", arrowsize=0.7];
+
+  subgraph cluster_tui {
+    label="src/tui  (TUI thread, owns FTXUI)"; style="rounded,dashed"; color="#8e9bb3";
+    MAIN  [label="main_tui.cpp\nkeys / F1-F10 / modals"];
+    APP   [label="app_tui.cpp\nTuiApp: threads, sessions,\nskill + image turn requests", fillcolor="#dbe7f6"];
+    VIEW  [label="chat_view / bubble_model\nmarkdown_view / theme_*\nstatus_line / todo_view"];
+    MAIN -> APP -> VIEW;
+  }
+
+  subgraph cluster_core {
+    label="src/core  (no tui dependency)"; style="rounded,dashed"; color="#8e9bb3";
+    AGENT [label="Agent\nturn loop: build req -> stream\n-> approve -> tools -> persist\n-> compact", fillcolor="#dcecdc"];
+    SESS  [label="Session\nmessages + context budget\npressure / compaction plan"];
+    STORE [label="Storage\nSQLite per session"];
+    PLOAD [label="prompts_loader\ncoder / designer / analyzer / compactor"];
+    PCTX  [label="project_context\ndir tree + AGENTS.md"];
+    AGENT -> SESS; AGENT -> STORE; SESS -> STORE;
+  }
+
+  subgraph cluster_skill {
+    label="skill engine (data, not code)"; style="rounded,dashed"; color="#8e9bb3";
+    RUN  [label="SkillRunner\nrounds / actions / slots / votes\nparallel groups <= max_parallel", fillcolor="#f6ecd9"];
+    SUB  [label="SubAgent\none LLM loop per role\n(scripted responders in tests)"];
+    RUN -> SUB;
+  }
+
+  subgraph cluster_client {
+    label="src/client"; style="rounded,dashed"; color="#8e9bb3";
+    CLI  [label="DeepSeekClient\nbuildRequestBody / SSE / retry /\nsearch + fetch formatting", fillcolor="#f2dce4"];
+  }
+
+  subgraph cluster_tools {
+    label="src/tools"; style="rounded,dashed"; color="#8e9bb3";
+    REG  [label="ToolRegistry\nJSON schemas + executors\ncancel / turn-end flags"];
+    IMPL [label="file_tool, edit_file, file_search,\nformat_file, md_file, shell_tool,\nweb_tools, todo_tool, python_tool_manager"];
+    REG -> IMPL;
+  }
+
+  subgraph cluster_platform {
+    label="src/platform"; style="rounded,dashed"; color="#8e9bb3";
+    PRUN [label="IProcessRunner\none child at a time"];
+    INST [label="install_shim\n--install / --uninstall"];
+  }
+
+  API [label="DeepSeek API\nchat completions + search / fetch", shape=box, style="filled", fillcolor="#e6e6e6"];
+
+  APP  -> AGENT [label="startTurn()"];
+  APP  -> RUN   [label="run_skill phase"];
+  AGENT -> CLI  [label="ChatRequest"];
+  SUB   -> CLI;
+  RUN   -> REG  [label="verb tools"];
+  CLI   -> API  [style=dashed];
+  AGENT -> REG  [label="layer-1 tools"];
+  IMPL  -> PRUN [label="subprocess"];
+  PLOAD -> AGENT [style=dotted, label="system prompt"];
+  PCTX  -> AGENT [style=dotted, label="fixed context"];
+  AGENT -> VIEW  [style=dotted, label="status snapshot"];
+  RUN   -> VIEW  [style=dotted, label="onEvent: [Role]"];
+}

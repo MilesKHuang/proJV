@@ -1,0 +1,25 @@
+Microsoft (R) Build Engine version 16.11.2+f32259642 for .NET Framework
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+  screen.vcxproj -> D:\ws\proJV\build\ftxui\Release\ftxui-screen.lib
+  sqlite3.vcxproj -> D:\ws\proJV\build\SQLiteCpp\sqlite3\Release\sqlite3.lib
+  SQLiteCpp.vcxproj -> D:\ws\proJV\build\SQLiteCpp\Release\SQLiteCpp.lib
+  libcurl_object.vcxproj -> D:\ws\proJV\build\external\curl-8.21.0\lib\libcurl_object.dir\Release\libcurl_object.lib
+  dom.vcxproj -> D:\ws\proJV\build\ftxui\Release\ftxui-dom.lib
+  libcurl_static.vcxproj -> D:\ws\proJV\build\external\curl-8.21.0\lib\Release\libcurl.lib
+  component.vcxproj -> D:\ws\proJV\build\ftxui\Release\ftxui-component.lib
+  proJV_lib.vcxproj -> D:\ws\proJV\build\Release\proJV_lib.lib
+  proJV_tests.vcxproj -> D:\ws\proJV\build\tests\Release\proJV_tests.exe
+Microsoft (R) Build Engine version 16.11.2+f32259642 for .NET Framework
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+  sqlite3.vcxproj -> D:\ws\proJV\build\SQLiteCpp\sqlite3\Release\sqlite3.lib
+  screen.vcxproj -> D:\ws\proJV\build\ftxui\Release\ftxui-screen.lib
+  dom.vcxproj -> D:\ws\proJV\build\ftxui\Release\ftxui-dom.lib
+  SQLiteCpp.vcxproj -> D:\ws\proJV\build\SQLiteCpp\Release\SQLiteCpp.lib
+  libcurl_object.vcxproj -> D:\ws\proJV\build\external\curl-8.21.0\lib\libcurl_object.dir\Release\libcurl_object.lib
+  component.vcxproj -> D:\ws\proJV\build\ftxui\Release\ftxui-component.lib
+  libcurl_static.vcxproj -> D:\ws\proJV\build\external\curl-8.21.0\lib\Release\libcurl.lib
+  proJV_lib.vcxproj -> D:\ws\proJV\build\Release\proJV_lib.lib
+  proJV_tui.vcxproj -> D:\ws\proJV\build\Release\proJV_tui.exe
+  Deploying example skills -^> projv_files/skills/
