@@ -49,7 +49,17 @@ Windows may warn about the unsigned binary (SmartScreen -> "More info" ->
 "Run anyway"). Linux needs `libcurl4-openssl-dev` if you build from source.
 
 Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
-Put `projv` on PATH, one command and no admin -> the install guide's section "Put `projv` on your PATH"; the full design (user-level prefix, forwarder, copy rules, `--uninstall` / `--purge`) is in [`docs/archive/projv-install.md`](docs/archive/projv-install.md) and the behaviour that shipped lives in `src/platform/install_shim.*`.
+
+---
+
+## Installs as a command, reports to the terminal
+
+| What | Why you care |
+|---|---|
+| **`projv` on PATH** | `proJV_tui --install` writes a four-line forwarder - no admin rights - so `projv` runs from any directory in cmd, PowerShell or a shell. `--uninstall` removes only the forwarder, `--purge` the install directory; your config and sessions are never touched. Design notes: [`docs/archive/projv-install.md`](docs/archive/projv-install.md) |
+| **OSC 7501 status** | proJV reports `working` / `blocked` / `done` to the host terminal, so Windows Terminal, Ghostty or cmux can paint it on the tab. A redirected stdout gets no extra bytes; `osc_status = false` or `PROJV_NO_OSC=1` switches it off |
+| **Ostlr** | the companion multi-window agent manager reads that same status, so a proJV session shows up there as a first-class agent - no glue code on either side |
+
 ---
 
 ## What it can do

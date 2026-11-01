@@ -50,6 +50,16 @@ Linux 鑷缂栬瘧鏃堕渶瑕?`libcurl4-openssl-dev`銆?
 
 ---
 
+## 装成一条命令，还能向终端汇报状态
+
+| 什么 | 为什么值得在意 |
+|---|---|
+| **把 `projv` 装进 PATH** | `proJV_tui --install` 只写一个四行转发器，不需要管理员权限；之后在 cmd、PowerShell 或任意 shell、任意目录敲 `projv` 就能起来。`--uninstall` 只删转发器，`--purge` 删安装目录；你的配置和会话永远不动。设计文档：[`docs/archive/projv-install.md`](docs/archive/projv-install.md) |
+| **OSC 7501 状态** | proJV 把 `working` / `blocked` / `done` 报给宿主终端，Windows Terminal、Ghostty、cmux 可以直接画在标签上。输出被重定向时一个字节都不多写；`osc_status = false` 或 `PROJV_NO_OSC=1` 可关闭 |
+| **配套 Ostlr** | 多窗口 agent 管理器，读的就是这份状态：proJV 会话在 Ostlr 里是原生可见的 agent，两边都不需要胶水代码 |
+
+---
+
 ## 鑳藉仛浠€涔?
 
 | 鑳藉姏 | 璇存槑 |
