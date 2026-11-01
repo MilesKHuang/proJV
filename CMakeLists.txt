@@ -366,7 +366,11 @@ install(CODE [[
 # and a failed shim must never fail the install itself.
 install(CODE [[
   set(_exe "${CMAKE_INSTALL_PREFIX}/proJV_tui${CMAKE_EXECUTABLE_SUFFIX}")
-  if(EXISTS "${_exe}")
+  # CPack stages into *_CPack_Packages/*: packaging must never create a command
+  # in the machine or profile that builds the package.
+  if("${CMAKE_INSTALL_PREFIX}" MATCHES "_CPack_Packages")
+    message(STATUS "cpack staging: skipping the shim step (install it on the target machine)")
+  elseif(EXISTS "${_exe}")
     execute_process(COMMAND "${_exe}" --post-install
                     RESULT_VARIABLE _shim_result
                     OUTPUT_VARIABLE _shim_output)
