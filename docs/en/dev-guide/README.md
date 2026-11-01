@@ -53,7 +53,7 @@ src/
 └── platform/   process runner and system utilities (Windows / Linux)
 tests/          doctest unit tests + golden render tests
 skills/         example skills (bigbang, monica) deployed next to the binary
-projv_files/    runtime data: fonts, theme, pytool, skills (config/prompts/
+projv_files/    runtime data: theme, pytool, skills (config/prompts/
                 sessions are created at first launch and never packaged)
 external/       vendored deps: FTXUI, SQLiteCpp, curl, json, toml++, loguru, doctest
 ```

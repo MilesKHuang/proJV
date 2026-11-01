@@ -103,7 +103,7 @@ proJV_tui.exe --install
 | 内容 | 第二次安装时怎么处理 |
 |---|---|
 | `proJV_tui.exe`、README、LICENSE | 覆盖（新版本必须生效） |
-| `projv_files/fonts、theme、pytool、skills` | 只在缺失时补，你改过的保留 |
+| `projv_files/theme、pytool、skills` | 只在缺失时补，你改过的保留 |
 | `projv_files/config.toml、sessions、logs、prompts` | **绝不触碰**（这是你的 Key 和聊天记录） |
 
 ```

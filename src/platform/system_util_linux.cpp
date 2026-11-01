@@ -30,25 +30,6 @@ class SystemUtilLinux : public ISystemUtil {
 
     std::string GetUserConfigDir() override { return GetExeDir() + "/projv_files"; }
 
-    std::string GetSystemFontPath(const std::string& fontName) override {
-        // 1. Try bundled font
-        std::string bundled = GetExeDir() + "/assets/" + fontName;
-        if (fs::exists(bundled)) return bundled;
-
-        // 2. Try common system CJK font paths
-        static const char* paths[] = {"/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                                      "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                                      "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-                                      "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-                                      "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-                                      "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-                                      nullptr};
-        for (const char** p = paths; *p; ++p) {
-            if (fs::exists(*p)) return *p;
-        }
-        return "";
-    }
-
     void InstallCrashHandler() override {
         struct sigaction sa;
         std::memset(&sa, 0, sizeof(sa));

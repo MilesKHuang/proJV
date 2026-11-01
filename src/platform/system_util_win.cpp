@@ -26,18 +26,6 @@ class SystemUtilWin : public ISystemUtil {
 
     std::string GetUserConfigDir() override { return GetExeDir() + "\\projv_files"; }
 
-    std::string GetSystemFontPath(const std::string& fontName) override {
-        // 1. Try bundled font
-        std::string bundled = GetExeDir() + "\\assets\\" + fontName;
-        if (fs::exists(bundled)) return bundled;
-
-        // 2. Try C:/Windows/Fonts/
-        std::string sysPath = "C:/Windows/Fonts/" + fontName;
-        if (fs::exists(sysPath)) return sysPath;
-
-        return "";
-    }
-
     void InstallCrashHandler() override {
         GetModuleFileNameA(nullptr, crashExePath_, MAX_PATH);
         SetUnhandledExceptionFilter(UnhandledHandler);

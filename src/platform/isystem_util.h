@@ -14,13 +14,11 @@ class ISystemUtil {
     // Config directory: {exeDir}/projv_files/
     virtual std::string GetUserConfigDir() = 0;
 
-    // Find a system font by name. Returns empty string if not found.
-    // NOTE: the four methods below are implemented on both platforms but are
-    // currently unused by the TUI (no caller in src/ or tests/). They are part
-    // of the platform abstraction and stay deliberately -- deleting them means
-    // also deleting their helpers (SEH handler, sigaction handler, crashExePath_)
-    // and the next person would rewrite all of it. Callers: none as of v0.6.0.
-    virtual std::string GetSystemFontPath(const std::string& fontName) = 0;
+    // NOTE: InstallCrashHandler / GetPathSeparator / OpenUrl have no caller in
+    // src/ or tests/ today; only InstallExitHandler is wired up (main_tui). They
+    // are part of the platform abstraction and stay deliberately -- deleting
+    // them means also deleting their helpers (SEH handler, sigaction handler,
+    // crashExePath_) and the next person would rewrite all of it.
 
     // Install global crash handler (SEH on Win, sigaction on Linux).
     virtual void InstallCrashHandler() = 0;

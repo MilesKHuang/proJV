@@ -142,8 +142,8 @@ CopyRule copy_rule(const std::string& relativePath) {
 
 bool is_keep_if_missing_tree(const std::string& relativePath) {
     const std::string p = lowerCopy(normalizeSlashes(relativePath));
-    return startsWith(p, "projv_files/fonts") || startsWith(p, "projv_files/theme") ||
-           startsWith(p, "projv_files/pytool") || startsWith(p, "projv_files/skills");
+    return startsWith(p, "projv_files/theme") || startsWith(p, "projv_files/pytool") ||
+           startsWith(p, "projv_files/skills");
 }
 
 std::string shim_cmd(const std::string&, const std::string& exePath) {

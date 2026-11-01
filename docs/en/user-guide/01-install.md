@@ -107,7 +107,7 @@ Rules that keep an upgrade safe:
 | Content | Behaviour on a second install |
 |---|---|
 | `proJV_tui.exe`, README, LICENSE | replaced (a new version must win) |
-| `projv_files/fonts, theme, pytool, skills` | only added when missing - your edits survive |
+| `projv_files/theme, pytool, skills` | only added when missing - your edits survive |
 | `projv_files/config.toml, sessions, logs, prompts` | **never touched** (this is your key and your history) |
 
 ```

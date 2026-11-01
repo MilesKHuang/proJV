@@ -52,7 +52,7 @@ src/
 └── platform/   进程 runner 与系统工具（Windows / Linux）
 tests/          doctest 单测 + golden 渲染测试
 skills/         示例技能（bigbang、monica），构建时部署到可执行文件旁
-projv_files/    运行时数据：fonts、theme、pytool、skills（config/prompts/
+projv_files/    运行时数据：theme、pytool、skills（config/prompts/
                 sessions 首次启动时生成，永不打包）
 external/       内置依赖：FTXUI、SQLiteCpp、curl、json、toml++、loguru、doctest
 ```

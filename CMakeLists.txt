@@ -312,7 +312,7 @@ endif()
 # Layout produced by `cpack` (and `cmake --install`):
 #   proJV_v<VER>_win64/
 #     proJV_tui.exe
-#     projv_files/{fonts,pytool,theme,skills}   <- copy this next to the exe
+#     projv_files/{pytool,theme,skills}   <- copy this next to the exe
 #     README.md, README_zh.md, LICENSE
 # A user only needs to keep proJV_tui.exe + projv_files/ together and run.
 # The dependencies contribute no install() rules (see cmake/third_party/), so

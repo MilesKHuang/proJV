@@ -22,7 +22,7 @@ constexpr const char* kMarker = "projv-shim v1";
 // What to do with one file of the package when installing over an existing tree.
 enum class CopyRule {
     Overwrite,      // the binary and the docs: a new version must win
-    KeepIfMissing,  // fonts / theme / pytool / skills: never clobber user edits
+    KeepIfMissing,  // theme / pytool / skills: never clobber user edits
     Never           // config.toml, sessions, logs, prompts: user data
 };
 
