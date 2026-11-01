@@ -14,6 +14,7 @@
 #include "theme_map.h"
 #include "platform/isystem_util.h"
 #include "platform/iprocess_runner.h"
+#include "platform/install_shim.h"
 #include "core/terminal_status.h"
 
 #include <ftxui/component/component.hpp>
@@ -181,9 +182,38 @@ class SpinnerTicker : public ftxui::ComponentBase {
 
 } // namespace
 
-int main() {
-    tui::initTerminal();
+// Install / shim subcommands (docs/projv-install.md). They run before FTXUI
+// takes over the terminal and never start the TUI: --install is used by people
+// who unpacked a ZIP, --post-install by `cmake --install`. Returns -1 when the
+// arguments are not an install command, so main() falls through to the TUI.
+static int runInstallCommand(int argc, char** argv) {
+    std::string command;
+    std::string packageArg;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--install" || arg == "--post-install" || arg == "--uninstall" ||
+            arg == "--purge") {
+            command = arg;
+            continue;
+        }
+        if (command == "--install" && !arg.empty() && arg[0] != '-') packageArg = arg;
+    }
+    if (command.empty()) return -1;
 
+    install_shim::Options opt = install_shim::current_options();
+    if (!packageArg.empty()) opt.packageArg = packageArg;
+
+    if (command == "--install") return install_shim::run_install(opt);
+    if (command == "--post-install") return install_shim::run_post_install(opt);
+    if (command == "--uninstall") return install_shim::run_uninstall(opt);
+    return install_shim::run_purge(opt);
+}
+
+int main(int argc, char** argv) {
+    const int installExit = runInstallCommand(argc, argv);
+    if (installExit >= 0) return installExit;
+
+    tui::initTerminal();
     ISystemUtil* sys = CreateSystemUtil();
     SystemUtil::Init(sys);
     IProcessRunner* procRunner = CreateProcessRunner();

@@ -82,6 +82,44 @@ Same rules as CI: ZIP + `windows-x64` on Windows, TGZ + `linux-x64` on Linux.
 `config.toml`, `sessions/` and `prompts/` are excluded on purpose, so a local
 package never ships your API key or history.
 
+## Put `projv` on your PATH (one command, no admin)
+
+Two routes, same result. Both write a small forwarder so you can type `projv`
+from any project directory.
+
+```
+# after `cmake --build build --config Release --target install`
+#   -> the install step calls --post-install for you
+
+# or, from an unpacked ZIP:
+proJV_tui.exe --install
+```
+
+Where things go:
+
+| | Windows | Linux |
+|---|---|---|
+| install dir | `%LOCALAPPDATA%\Programs\projv` | `~/.local/share/projv` |
+| command | `projv.cmd` + `projv_tui.cmd` in `%LOCALAPPDATA%\Microsoft\WindowsApps` (already on PATH) | symlink in `~/.local/bin` (falls back to a `#!/bin/sh` script with `exec`) |
+
+Rules that keep an upgrade safe:
+
+| Content | Behaviour on a second install |
+|---|---|
+| `proJV_tui.exe`, README, LICENSE | replaced (a new version must win) |
+| `projv_files/fonts, theme, pytool, skills` | only added when missing - your edits survive |
+| `projv_files/config.toml, sessions, logs, prompts` | **never touched** (this is your key and your history) |
+
+```
+projv_tui --uninstall      # removes only the forwarder (it checks its marker), keeps your data
+projv_tui --purge          # deletes the install directory; refuses if your shell is inside it
+```
+
+If `%LOCALAPPDATA%\Microsoft\WindowsApps` is not writable on your machine, the
+forwarder goes to `<install dir>\bin` and the output says
+`(in PATH: no)` plus the one line you need to add. Nothing is installed
+machine-wide and no administrator rights are involved.
+
 ## Check it worked
 
 ```bash

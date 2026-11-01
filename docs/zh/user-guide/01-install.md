@@ -79,6 +79,41 @@ cpack --config build/CPackConfig.cmake -B dist
 和 CI 规则一致：Windows 出 ZIP + `windows-x64`，Linux 出 TGZ + `linux-x64`。
 `config.toml`、`sessions/`、`prompts/` 被显式排除，本地打包不会把 Key 和聊天记录带出去。
 
+## 把 projv 放进 PATH（一条命令，不要管理员）
+
+两条路，结果一样，都是写一个小的转发器，之后在任意项目目录里敲 `projv` 就能用。
+
+```
+# 走 cmake 的话：cmake --build build --config Release --target install
+#   安装步骤会自动调用 --post-install
+
+# 或者：解压 ZIP 之后
+proJV_tui.exe --install
+```
+
+放到哪：
+
+| | Windows | Linux |
+|---|---|---|
+| 安装目录 | `%LOCALAPPDATA%\Programs\projv` | `~/.local/share/projv` |
+| 命令 | `%LOCALAPPDATA%\Microsoft\WindowsApps` 里的 `projv.cmd` + `projv_tui.cmd`（本来就在 PATH 上） | `~/.local/bin` 里的符号链接（建不了就退化为带 `exec` 的 `#!/bin/sh` 脚本） |
+
+升级时的规矩：
+
+| 内容 | 第二次安装时怎么处理 |
+|---|---|
+| `proJV_tui.exe`、README、LICENSE | 覆盖（新版本必须生效） |
+| `projv_files/fonts、theme、pytool、skills` | 只在缺失时补，你改过的保留 |
+| `projv_files/config.toml、sessions、logs、prompts` | **绝不触碰**（这是你的 Key 和聊天记录） |
+
+```
+projv_tui --uninstall      # 只删那个转发器（会先认它自己的标记），数据保留
+projv_tui --purge          # 删掉整个安装目录；如果当前 shell 就在里面会拒绝执行
+```
+
+如果 `%LOCALAPPDATA%\Microsoft\WindowsApps` 在你机器上不可写，转发器会落到
+`<安装目录>\bin`，输出里会写 `(in PATH: no)` 以及你需要加的那一行。全程不写系统目录、不需要管理员。
+
 ## 怎么确认成功
 
 应用启动后有输入框和状态栏。如果一闪就退，请在终端里手动运行，看错误信息。

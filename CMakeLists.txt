@@ -109,6 +109,10 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/skill_runner.cpp
     ${SRC_DIR}/core/skills_builtin.cpp
     ${SRC_DIR}/core/terminal_status.cpp
+    # Install / shim management (--install / --post-install / --uninstall /
+    # --purge). Cross-platform: std::filesystem plus a few #ifdef blocks, so the
+    # unit tests link it from here.
+    ${SRC_DIR}/platform/install_shim.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -128,6 +132,7 @@ set(HEADERS
     ${SRC_DIR}/core/skill_runner.h
     ${SRC_DIR}/core/skills_builtin.h
     ${SRC_DIR}/core/terminal_status.h
+    ${SRC_DIR}/platform/install_shim.h
     ${SRC_DIR}/tools/file_tool.h
     ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h
@@ -291,6 +296,19 @@ if(PROJV_BUILD_TESTS)
 endif()
 
 # ── Release payload: install rules + CPack ───────────────────────────────
+# Default install prefix: a user-level directory, so `cmake --install` needs no
+# administrator rights (docs/projv-install.md D.3). An explicit
+# -DCMAKE_INSTALL_PREFIX always wins; we only replace CMake's own default.
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    if(WIN32)
+        set(CMAKE_INSTALL_PREFIX "$ENV{LOCALAPPDATA}/Programs/projv" CACHE PATH "" FORCE)
+    elseif(APPLE)
+        set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/Library/Application Support/projv" CACHE PATH "" FORCE)
+    else()
+        set(CMAKE_INSTALL_PREFIX "$ENV{HOME}/.local/share/projv" CACHE PATH "" FORCE)
+    endif()
+endif()
+
 # Layout produced by `cpack` (and `cmake --install`):
 #   proJV_v<VER>_win64/
 #     proJV_tui.exe
@@ -340,6 +358,25 @@ install(CODE [[
       file(REMOVE_RECURSE "${CMAKE_INSTALL_PREFIX}/${_dep_dir}")
     endif()
   endforeach()
+]])
+
+# Last step: let the just-installed binary write the `projv` shim, so the
+# download-a-ZIP route and the cmake route end in the same state. Only a
+# warning: a packaged / cross-compiled staging tree may not be runnable here,
+# and a failed shim must never fail the install itself.
+install(CODE [[
+  set(_exe "${CMAKE_INSTALL_PREFIX}/proJV_tui${CMAKE_EXECUTABLE_SUFFIX}")
+  if(EXISTS "${_exe}")
+    execute_process(COMMAND "${_exe}" --post-install
+                    RESULT_VARIABLE _shim_result
+                    OUTPUT_VARIABLE _shim_output)
+    if(NOT _shim_result EQUAL 0)
+      message(WARNING "proJV installed, but the `projv` command was not created "
+                      "(run it yourself: \"${_exe}\" --post-install)")
+    else()
+      message(STATUS "${_shim_output}")
+    endif()
+  endif()
 ]])
 
 # ── CPack: one-click package (ZIP on Windows, TGZ on Linux) ──────────────
