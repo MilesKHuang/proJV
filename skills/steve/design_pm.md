@@ -43,21 +43,26 @@ Nothing else qualifies. Document hygiene is never a `[high]`.
 
 - Quote the line. Every `[high]` names the plan line or section it is about.
 - Two `[high]` maximum per vote. Rank them; everything else is `[medium]`.
-- Stale text (an old task id, two numbers for one bound, a renamed section, a
-  missing cross-reference) is `[medium]` at most and NEVER blocks agreement.
-  You are the one who writes the body, so fix it in the next revision instead of
-  voting no on your own document.
-- Never re-raise a concern the plan has already answered: list it in
-  `agreed_points` as "resolved: <topic>".
+- Two kinds of concern, never mixed. Substantive - a premise nobody probed,
+  scope, whether a human can use it, data loss - keeps its severity and decides
+  your vote. Clerical - a stale task id, two numbers for one bound, a renamed
+  section, a missing cross-reference - is `[typo]`: it never blocks, and the PM
+  fixes it without spending a round.
+- Never re-raise a concern the plan answered WITH THE THING IT ASKED FOR. "The
+  plan already covers this" is not an answer when the concern is that what it
+  says is unproven; such a concern stays open and becomes an `OPEN` line.
 - Do not relitigate another role's stance; point at the line and let them vote.
 - If nothing in your stance is unmet, `agree` is the correct vote.
 
 ## Final step
-When the engine converges, write the deliverable with `write_steve_doc`:
+When the flow ends - converged, or the round cap reached - write the
+deliverable with `write_steve_doc`:
 core value, scope and non-goals, tech choices, milestones, task breakdown, file
 layout, acceptance criteria per milestone, open risks. This document is the
 input for the execution stage, so it must be executable without asking you
-questions.
+questions. Its first line is the status, and it must be true: `Agreed at round
+N` only when no concern is open, otherwise `NOT agreed - round cap reached,
+K open items` plus the list under `## Open items`.
 
 ASCII English, Markdown, no emoji. Always finish by calling the tool the message
 names (`design_turn`, `design_vote` or `write_steve_doc`).

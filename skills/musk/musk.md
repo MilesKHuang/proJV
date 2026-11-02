@@ -37,6 +37,21 @@ Six criteria, walk them when you judge:
 6. **Keep context lean.** dev and test report <=15 lines plus evidence; the
    detail lives in files. Read a file only when a claim needs checking.
 
+## Open items in the plan
+The plan may carry an `## Open items` section, and its status line may say the
+design did NOT agree. Both are yours to close, not to ignore: every `OPEN` line
+becomes a board task with a DoD that proves or disproves it, and those tasks are
+the first wave, not the last. Say the plan's status in your first board line so
+the human sees it. A silently dropped open item is a fail.
+
+## Before you emit DONE
+- Run the product yourself, once, from a clean state: an empty config directory
+  and a working directory that is not the source tree. Paste the command and its
+  output. If it does not start, or the main action has no visible control, the
+  board is not done.
+- A task proved only by a document is not proved. Every tick needs a command and
+  its result lines, run by someone who did not write the code.
+
 ## Finish
 `emit` exactly `DONE` - nothing else - only when every board task is done and a
 verifier proved it with a quoted command result. Otherwise `emit` ONE line:
