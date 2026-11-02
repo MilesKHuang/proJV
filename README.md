@@ -1,24 +1,34 @@
-# proJV
+<h1 align="center">proJV</h1>
 
 <p align="center">
   <img src="assets/social-preview.png" width="780" alt="proJV: native C++ terminal AI agent for DeepSeek"/>
 </p>
 
-[简体中文](README_zh.md) | **English**
+<p align="center">
+  <b>English</b> | <a href="README_zh.md">简体中文</a>
+</p>
 
-`proJV = Project Just Vibing` — a native C++ AI agent for the terminal, built on
-DeepSeek.
+<p align="center">
+  A native C++ AI agent for the terminal, built on DeepSeek.<br/>
+  <code>proJV = Project Just Vibing</code>
+</p>
 
-![CI](https://img.shields.io/github/actions/workflow/status/MilesKHuang/proJV/ci.yml?branch=main&label=CI)
-![Release](https://img.shields.io/github/v/release/MilesKHuang/proJV)
-![License](https://img.shields.io/github/license/MilesKHuang/proJV)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
-![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
-![Binary](https://img.shields.io/badge/binary-~3.4%20MB-green)
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/MilesKHuang/proJV/ci.yml?branch=main&amp;label=CI" alt="CI"/>
+  <img src="https://img.shields.io/github/v/release/MilesKHuang/proJV" alt="Release"/>
+  <img src="https://img.shields.io/github/license/MilesKHuang/proJV" alt="License"/>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
+  <img src="https://img.shields.io/badge/C%2B%2B-20-blue" alt="C++20"/>
+  <img src="https://img.shields.io/badge/binary-~3.4%20MB-green" alt="Binary"/>
+</p>
 
-![proJV demo](assets/demo.gif)
+<p align="center">
+  <img src="assets/demo.gif" alt="proJV demo"/>
+</p>
 
-**Every line of code in proJV was written by proJV.**
+<p align="center">
+  <b>Every line of code in proJV was written by proJV.</b>
+</p>
 
 ---
 

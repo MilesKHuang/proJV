@@ -1,23 +1,34 @@
-# proJV
+<h1 align="center">proJV</h1>
 
 <p align="center">
   <img src="assets/social-preview.png" width="780" alt="proJV：原生 C++ 终端 AI agent"/>
 </p>
 
-**简体中文** | [English](README.md)
+<p align="center">
+  <b>简体中文</b> | <a href="README.md">English</a>
+</p>
 
-`proJV = Project Just Vibing` —— 一个原生的 C++ 终端 AI agent，基于 DeepSeek。
+<p align="center">
+  一个原生的 C++ 终端 AI agent，基于 DeepSeek。<br/>
+  <code>proJV = Project Just Vibing</code>
+</p>
 
-![CI](https://img.shields.io/github/actions/workflow/status/MilesKHuang/proJV/ci.yml?branch=main&label=CI)
-![Release](https://img.shields.io/github/v/release/MilesKHuang/proJV)
-![License](https://img.shields.io/github/license/MilesKHuang/proJV)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
-![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
-![Binary](https://img.shields.io/badge/binary-~3.4%20MB-green)
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/MilesKHuang/proJV/ci.yml?branch=main&amp;label=CI" alt="CI"/>
+  <img src="https://img.shields.io/github/v/release/MilesKHuang/proJV" alt="Release"/>
+  <img src="https://img.shields.io/github/license/MilesKHuang/proJV" alt="License"/>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
+  <img src="https://img.shields.io/badge/C%2B%2B-20-blue" alt="C++20"/>
+  <img src="https://img.shields.io/badge/binary-~3.4%20MB-green" alt="Binary"/>
+</p>
 
-![proJV 演示](assets/demo.gif)
+<p align="center">
+  <img src="assets/demo.gif" alt="proJV 演示"/>
+</p>
 
-**proJV 里的每一行代码都是 proJV 自己写的。**
+<p align="center">
+  <b>proJV 里的每一行代码都是 proJV 自己写的。</b>
+</p>
 
 ---
 
