@@ -48,6 +48,27 @@ std::string readFileAt(const fs::path& p) {
     return ss.str();
 }
 
+// The shim name is platform data, not a test constant: `projv.cmd` on Windows,
+// an extension-less script everywhere else (install_shim::writeShim). Asking the
+// same question the implementation asks is what keeps this file green on both.
+std::string shimFile(const std::string& base) {
+#ifdef _WIN32
+    return base + ".cmd";
+#else
+    return base;
+#endif
+}
+
+// The installed binary follows the same rule: `.exe` on Windows, bare elsewhere
+// (CMake installs `proJV_tui${CMAKE_EXECUTABLE_SUFFIX}`).
+std::string exeName() {
+#ifdef _WIN32
+    return "proJV_tui.exe";
+#else
+    return "proJV_tui";
+#endif
+}
+
 } // namespace
 
 TEST_CASE("install: copy rules protect user data and upgrade the binary") {
@@ -98,16 +119,28 @@ TEST_CASE("install: the marker decides what --uninstall may delete") {
 }
 
 TEST_CASE("install: PATH merge happens once and keeps the existing order") {
+#ifdef _WIN32
     const std::string dir = "C:\\Users\\a\\AppData\\Local\\Microsoft\\WindowsApps";
     const std::string other = "C:\\Windows;C:\\Windows\\System32";
+    const std::string trailing = dir + "\\";
+    const std::string downcased = "c:\\users\\a\\appdata\\local\\microsoft\\windowsapps";
+#else
+    // The separator is ':' here, and a Windows-style path carries a colon of its
+    // own, so the sample data has to be native: a Windows list would be split in
+    // the wrong places and prove nothing about this host.
+    const std::string dir = "/home/a/.local/bin";
+    const std::string other = "/usr/local/bin:/usr/bin";
+    const std::string trailing = dir + "/";
+    const std::string downcased = "/HOME/a/.local/bin";
+#endif
 
     CHECK_FALSE(path_contains(other, dir));
     const std::string merged = merge_path(other, dir);
     CHECK(path_contains(merged, dir));
     CHECK(merged.compare(0, other.size(), other) == 0); // no reordering
     CHECK(merge_path(merged, dir) == merged);           // idempotent
-    CHECK(path_contains(merged, dir + "\\"));           // trailing separator
-    CHECK(path_contains(merged, "c:\\users\\a\\appdata\\local\\microsoft\\windowsapps"));
+    CHECK(path_contains(merged, trailing));             // trailing separator
+    CHECK(path_contains(merged, downcased));            // case is compared folded
     CHECK(merge_path("", dir) == dir);
 }
 
@@ -139,7 +172,7 @@ TEST_CASE("install: a second install upgrades the binary and keeps user files") 
 
     // A package as a downloaded ZIP would look: binary, docs, theme, and a
     // config the developer happened to have locally.
-    writeFileAt(package.path / "proJV_tui.exe", "v1");
+    writeFileAt(package.path / exeName(), "v1");
     writeFileAt(package.path / "README.md", "readme v1");
     writeFileAt(package.path / "projv_files" / "theme" / "forest.json", "theme v1");
     writeFileAt(package.path / "projv_files" / "config.toml", "api_key = SECRET");
@@ -147,59 +180,68 @@ TEST_CASE("install: a second install upgrades the binary and keeps user files") 
     Options opt;
     opt.home = target.str();
     opt.shimDir = shims.str();
-    opt.exePath = (package.path / "proJV_tui.exe").string();
+    opt.exePath = (package.path / exeName()).string();
     opt.exeDir = package.str();
 
     REQUIRE(run_install(opt) == 0);
-    CHECK(readFileAt(target.path / "proJV_tui.exe") == "v1");
+    CHECK(readFileAt(target.path / exeName()) == "v1");
     CHECK(readFileAt(target.path / "projv_files" / "theme" / "forest.json") == "theme v1");
     // The developer's key is never copied into the install.
     CHECK_FALSE(fs::exists(target.path / "projv_files" / "config.toml"));
     // Both shim names exist.
-    CHECK(fs::exists(shims.path / "projv.cmd"));
-    CHECK(fs::exists(shims.path / "projv_tui.cmd"));
+    CHECK(fs::exists(shims.path / shimFile("projv")));
+    CHECK(fs::exists(shims.path / shimFile("projv_tui")));
 
     // The user edits a theme and gains a session; a second install keeps both.
     writeFileAt(target.path / "projv_files" / "theme" / "forest.json", "user edit");
     writeFileAt(target.path / "projv_files" / "sessions" / "chat.db", "history");
-    writeFileAt(package.path / "proJV_tui.exe", "v2");
+    writeFileAt(package.path / exeName(), "v2");
 
     REQUIRE(run_install(opt) == 0);
-    CHECK(readFileAt(target.path / "proJV_tui.exe") == "v2"); // upgraded
+    CHECK(readFileAt(target.path / exeName()) == "v2"); // upgraded
     CHECK(readFileAt(target.path / "projv_files" / "theme" / "forest.json") == "user edit");
     CHECK(readFileAt(target.path / "projv_files" / "sessions" / "chat.db") == "history");
 
     // --uninstall removes only our shims and keeps the data.
     REQUIRE(run_uninstall(opt) == 0);
-    CHECK_FALSE(fs::exists(shims.path / "projv.cmd"));
+    CHECK_FALSE(fs::exists(shims.path / shimFile("projv")));
     CHECK(fs::exists(target.path / "projv_files" / "sessions" / "chat.db"));
 }
 
 TEST_CASE("install: --uninstall refuses a foreign file with the same name") {
     TempDir target;
     TempDir shims;
-    writeFileAt(shims.path / "projv.cmd", "@echo off\r\n\"C:\\other\\thing.exe\" %*\r\n");
+    // Somebody else's file with our name: no marker, so uninstall must not touch it.
+    writeFileAt(shims.path / shimFile("projv"), "@echo off\r\n\"C:\\other\\thing.exe\" %*\r\n");
 
     Options opt;
     opt.home = target.str();
     opt.shimDir = shims.str();
 
     CHECK(run_uninstall(opt) == 1); // refused, non-zero
-    CHECK(fs::exists(shims.path / "projv.cmd"));
+    CHECK(fs::exists(shims.path / shimFile("projv")));
 }
 
 TEST_CASE("install: --post-install only writes the shims") {
     TempDir target;
     TempDir shims;
-    writeFileAt(target.path / "proJV_tui.exe", "installed by cmake");
+    writeFileAt(target.path / exeName(), "installed by cmake");
 
     Options opt;
     opt.home = target.str();
     opt.shimDir = shims.str();
     REQUIRE(run_post_install(opt) == 0);
-    REQUIRE(fs::exists(shims.path / "projv.cmd"));
-    CHECK(readFileAt(shims.path / "projv.cmd").find((target.path / "proJV_tui.exe").string()) !=
-          std::string::npos);
+
+    // The shim has to point at the binary the install just dropped. On POSIX
+    // writeShim prefers a symlink, so the link target is the answer there; where
+    // a symlink cannot be created it is a script that mentions the path.
+    const fs::path shim = shims.path / shimFile("projv");
+    REQUIRE(fs::exists(shim));
+    const std::string want = (target.path / exeName()).string();
+    if (fs::is_symlink(shim))
+        CHECK(fs::read_symlink(shim).string() == want);
+    else
+        CHECK(readFileAt(shim).find(want) != std::string::npos);
 }
 
 TEST_CASE("install: --purge removes the tree but refuses from inside it") {
@@ -210,7 +252,7 @@ TEST_CASE("install: --purge removes the tree but refuses from inside it") {
     Options opt;
     opt.home = target.str();
     opt.shimDir = shims.str();
-    opt.exePath = (fs::temp_directory_path() / "elsewhere" / "proJV_tui.exe").string();
+    opt.exePath = (fs::temp_directory_path() / "elsewhere" / exeName()).string();
 
     const fs::path saved = fs::current_path();
     fs::current_path(target.path); // stand inside the install directory

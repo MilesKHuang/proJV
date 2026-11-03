@@ -35,6 +35,17 @@ std::string normalizeSlashes(std::string s) {
     return s;
 }
 
+// CMake's install rule drops `proJV_tui${CMAKE_EXECUTABLE_SUFFIX}`, so the shim
+// must point at that same file. Spelling ".exe" unconditionally wrote a Linux
+// shim that exec'd a path nothing had created.
+const char* installedExeName() {
+#ifdef _WIN32
+    return "proJV_tui.exe";
+#else
+    return "proJV_tui";
+#endif
+}
+
 bool startsWith(const std::string& s, const std::string& p) {
     return s.size() >= p.size() && s.compare(0, p.size(), p) == 0;
 }
@@ -331,7 +342,7 @@ int run_install(const Options& optIn) {
             report.add("warning: could not copy " + relText);
     }
 
-    const fs::path installedExe = fs::path(opt.home) / "proJV_tui.exe";
+    const fs::path installedExe = fs::path(opt.home) / installedExeName();
     const std::string shim = writeShim(opt.shimDir, "projv", installedExe.string());
     const std::string shim2 = writeShim(opt.shimDir, "projv_tui", installedExe.string());
     if (shim.empty() || shim2.empty())
@@ -355,7 +366,7 @@ int run_post_install(const Options& optIn) {
     Options opt = optIn;
     if (opt.home.empty()) opt.home = default_home();
     Report report;
-    const fs::path exe = fs::path(opt.home) / "proJV_tui.exe";
+    const fs::path exe = fs::path(opt.home) / installedExeName();
     if (!fs::exists(exe))
         report.add("warning: " + exe.string() + " not found; run --install from the package");
     const std::string shim = writeShim(opt.shimDir, "projv", exe.string());

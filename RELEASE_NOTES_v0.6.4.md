@@ -81,6 +81,10 @@ could never change that.
 
 - `fix(skill,config)`: the main agent now reviews a skill's output, and the
   workspace is the launch directory instead of the exe directory.
+- `fix(install)`: on Linux the shim pointed at `proJV_tui.exe`, a name the
+  install never creates (`CMakeLists.txt` installs `proJV_tui`). The shim now
+  names the same file the install rule drops, and the tests ask the platform for
+  the shim and binary names instead of hardcoding the Windows spelling.
 - `skills/steve`: explicit vote discipline and an action inventory; a
   substantive dissent cannot be reasoned away (`skills/musk`).
 - README and README_zh rewritten: one centered header block in both languages,
