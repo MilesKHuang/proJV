@@ -47,3 +47,7 @@ Linux (needs `libcurl4-openssl-dev`):
 - Never commit an API key, `config.toml`, `projv_files/sessions/` or logs.
 - `CONTRIBUTING.md` / `CONTRIBUTING_zh.md` stay the full human-facing guide; this file is the
   short version for agents. When build steps or prohibitions change there, change them here too.
+- `docs/archive/` is gitignored design notes: never commit it (no `git add -f`,
+  no `!` exception) and never link it from a committed file (`README*`, code
+  comments, release notes, CMake comments). Rationale that must be public goes
+  to `docs/en/` + `docs/zh/`.

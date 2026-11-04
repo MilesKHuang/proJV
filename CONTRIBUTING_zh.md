@@ -49,6 +49,9 @@ Linux：先 `sudo apt-get install -y libcurl4-openssl-dev`。
 - 引入 MCP 层、插件注册表或包管理器。
 - 在主题系统之外写死颜色。
 - 让技能删除它自行判定为死代码的东西。死代码只报告，不删除。
+- `docs/archive/` 是被忽略的设计稿：不要提交它（不用 `git add -f`，不开 `!` 例外），
+  也不要在任何提交内的文件（`README*`、代码注释、发布说明、CMake 注释）里链接它。
+  需要公开的理由写到 `docs/en/` 与 `docs/zh/`。
 
 ## 报告问题
 

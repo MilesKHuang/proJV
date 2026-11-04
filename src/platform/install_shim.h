@@ -1,4 +1,4 @@
-// proJV -- user-level install / shim management (docs/projv-install.md).
+// proJV -- user-level install / shim management.
 //
 // The goal is one command and no administrator rights:
 //
@@ -51,7 +51,7 @@ std::string merge_path(const std::string& existing, const std::string& dir);
 // the running binary is inside the directory it is about to delete.
 bool is_inside(const std::string& child, const std::string& parent);
 
-// The self-check block printed after an install (docs/projv-install.md D.4).
+// The self-check block printed after an install.
 // Pure: the paths and the PATH verdict are inputs, not lookups.
 std::string summary(const std::string& installed, const std::string& shimPath,
                     bool shimInPath, const std::string& resolvable,

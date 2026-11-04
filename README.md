@@ -66,7 +66,7 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 
 | What | Why you care |
 |---|---|
-| **`projv` on PATH** | `proJV_tui --install` writes a four-line forwarder - no admin rights - so `projv` runs from any directory in cmd, PowerShell or a shell. `--uninstall` removes only the forwarder, `--purge` the install directory; your config and sessions are never touched. Design notes: [`docs/archive/projv-install.md`](docs/archive/projv-install.md) |
+| **`projv` on PATH** | `proJV_tui --install` writes a four-line forwarder - no admin rights - so `projv` runs from any directory in cmd, PowerShell or a shell. `--uninstall` removes only the forwarder, `--purge` the install directory; your config and sessions are never touched. |
 | **OSC 7501 status** | proJV reports `working` / `blocked` / `done` to the host terminal, so Windows Terminal, Ghostty or cmux can paint it on the tab. A redirected stdout gets no extra bytes; `osc_status = false` or `PROJV_NO_OSC=1` switches it off |
 | **Ostlr** | the companion multi-window agent manager reads that same status, so a proJV session shows up there as a first-class agent - no glue code on either side |
 

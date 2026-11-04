@@ -47,3 +47,7 @@ build_strict/
 
 # local planning archive (never published)
 docs/archive/
+
+# Agent artifacts: design/architecture documents and diagrams written by the
+# designer prompts and the diagram tool. Not repository content.
+/doc/

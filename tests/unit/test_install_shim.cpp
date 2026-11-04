@@ -1,4 +1,4 @@
-// proJV unit tests -- install / shim management (docs/projv-install.md).
+// proJV unit tests -- install / shim management.
 //
 // The rules that decide what an install may touch are pure functions, so they
 // are tested here without writing to a real user profile. The filesystem tests

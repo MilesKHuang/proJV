@@ -57,6 +57,10 @@ Checklist in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md
 - Hardcoding colours outside the theme system.
 - A skill that deletes code it decided was dead. Dead code is reported, never
   removed.
+- `docs/archive/` is gitignored design notes: never commit it (no `git add -f`,
+  no `!` exception) and never link it from a committed file (`README*`, code
+  comments, release notes, CMake comments). Rationale that must be public goes
+  to `docs/en/` + `docs/zh/`.
 
 ## Reporting bugs
 
