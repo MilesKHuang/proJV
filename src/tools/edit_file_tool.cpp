@@ -2,6 +2,7 @@
 #include "shell_tool.h"
 #include "file_tool.h" // validateToolPath -- same guard as every other file tool
 #include "json_utils.h"
+#include "diff_capture.h"
 #include <fstream>
 
 // -- Tool description strings (moved from prompts.h) --------------------
@@ -89,12 +90,18 @@ void registerEditFileTool(ToolRegistry& registry, const std::string& workspacePa
             actualSearchLen++;
         }
 
+        // Keep the pre-edit text: the diff bubble needs both sides and the
+        // original is gone once replace() runs.
+        std::string before = content;
         content.replace(origPos, actualSearchLen, replaceText);
 
         // Write back
         std::ofstream ofs(path, std::ios::binary);
         if (!ofs) return "Error: Cannot write to: " + path;
         ofs.write(content.data(), content.size());
+        ofs.close();
+
+        diff_capture::record(diff_capture::displayPath(path, workspacePath), before, content);
 
         return "Edited " + path + ": replaced " + std::to_string(actualSearchLen) + " chars with " +
                std::to_string(replaceText.size()) + " chars.";

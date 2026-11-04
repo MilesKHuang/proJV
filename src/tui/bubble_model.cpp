@@ -114,6 +114,17 @@ std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string
         cb.role = role;
         cb.content = display;
         out.push_back(cb);
+
+        // A file-writing tool carries the unified diff of what it changed. It
+        // gets its own bubble so the tool block keeps its short summary, and it
+        // must be pushed here (after the result, before the return) or it never
+        // reaches the screen. "diff" is the marker -- no extra Bubble field.
+        if (msg.role == "tool" && !msg.diff.empty()) {
+            Bubble d;
+            d.role = "diff";
+            d.content = msg.diff;
+            out.push_back(d);
+        }
         return out;
     }
 

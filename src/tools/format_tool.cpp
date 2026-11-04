@@ -4,6 +4,7 @@
 #include "file_tool.h"
 #include "registry.h"
 #include "json_utils.h"
+#include "diff_capture.h"
 #include "platform/iprocess_runner.h"
 
 #include <algorithm>
@@ -165,6 +166,9 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
                 std::ofstream ofs(resolved, std::ios::binary | std::ios::trunc);
                 if (!ofs) return "Error: Cannot write: " + resolved;
                 ofs << after;
+                ofs.close();
+                diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before,
+                                     after);
                 const int changed = diffLines(before, after);
                 return "Formatted (whitespace): " + resolved + " - " + std::to_string(changed) +
                        " line(s) changed";
@@ -222,6 +226,7 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
             std::string after;
             if (!readWholeFile(resolved, after)) return "Error: Cannot read back: " + resolved;
             if (after == before) return "No changes: " + resolved + " (already formatted)";
+            diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before, after);
             const int changed = diffLines(before, after);
             return "Formatted (clang-format): " + resolved + " - " + std::to_string(changed) +
                    " line(s) changed";

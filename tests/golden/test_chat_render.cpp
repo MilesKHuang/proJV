@@ -87,6 +87,74 @@ TEST_CASE("chat_view: standalone tool_result keeps Result label") {
     CHECK(out.find("file1") != std::string::npos);
 }
 
+TEST_CASE("chat_view: diff bubble renders its own labelled block") {
+    std::vector<Bubble> b;
+    b.push_back(mk("diff", "@@ -1,1 +1,1 @@\n-old\n+new"));
+    std::string out = renderToString(b, true);
+    CHECK(out.find("── Diff ──") != std::string::npos);
+    CHECK(out.find("-old") != std::string::npos);
+    CHECK(out.find("+new") != std::string::npos);
+    // A diff is not a tool block: no merge, no Result label.
+    CHECK(out.find("── Tool ──") == std::string::npos);
+}
+
+TEST_CASE("chat_view: diff bubble does not swallow the following tool block") {
+    // Order the derivation produces: tool_call, tool_result, diff.
+    std::vector<Bubble> b;
+    b.push_back(mk("tool_call", "write_file: a.txt"));
+    b.push_back(mk("tool_result", "Written 6 bytes"));
+    b.push_back(mk("diff", "@@ -0,0 +1,1 @@\n+hello"));
+    std::string out = renderToString(b, true);
+    CHECK(out.find("── Tool ──") != std::string::npos);
+    CHECK(out.find("Written 6 bytes") != std::string::npos);
+    CHECK(out.find("── Diff ──") != std::string::npos);
+    CHECK(out.find("+hello") != std::string::npos);
+}
+
+namespace {
+
+std::string renderWide(const std::vector<Bubble>& bubbles, int cols) {
+    auto doc = chat_view::renderBubbles(bubbles, true, cols);
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(cols),
+                                       ftxui::Dimension::Fixed(14));
+    ftxui::Render(screen, doc);
+    return screen.ToString();
+}
+
+} // namespace
+
+TEST_CASE("chat_view: a wide chat column splits the diff into two panes") {
+    std::vector<Bubble> b;
+    b.push_back(mk("diff", "--- a/x.cpp\n"
+                           "+++ b/x.cpp\n"
+                           "@@ -13,3 +13,3 @@\n"
+                           " ctx line\n"
+                           "-old line\n"
+                           "+new line\n"));
+    const std::string out = renderWide(b, 140);
+
+    CHECK(out.find("── Diff ──") != std::string::npos);
+    // Both sides of the change are visible on the same row.
+    CHECK(out.find("old line") != std::string::npos);
+    CHECK(out.find("new line") != std::string::npos);
+    CHECK(out.find("ctx line") != std::string::npos);
+    // Removed text sits left of added text, and the old line number is there.
+    CHECK(out.find("old line") < out.find("new line"));
+    CHECK(out.find("13") != std::string::npos);
+    // The file headers are not repeated in the two-column layout.
+    CHECK(out.find("+++ b/") == std::string::npos);
+}
+
+TEST_CASE("chat_view: a narrow chat column keeps the unified block") {
+    std::vector<Bubble> b;
+    b.push_back(mk("diff", "@@ -1,1 +1,1 @@\n-old\n+new"));
+    // 80 columns is below diff_view::kSplitMinWidth: one block, not two panes.
+    const std::string out = renderToString(b, true);
+    CHECK(out.find("── Diff ──") != std::string::npos);
+    CHECK(out.find("-old") != std::string::npos);
+    CHECK(out.find("+new") != std::string::npos);
+}
+
 TEST_CASE("chat_view: streaming bubble shows reasoning and content") {
     AgentStatus st;
     st.reasoningText = "thinking...";

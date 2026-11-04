@@ -154,3 +154,23 @@ TEST_CASE("formatToolMsg: tool_result summary (exec_shell)") {
     // "output line\nmore" = 16 bytes.
     CHECK(text == "exec_shell (16 bytes)  -> output line");
 }
+
+TEST_CASE("deriveBubbles: a tool write with a diff adds a second bubble") {
+    // The tool block keeps its one-line summary; the patch gets its own bubble so
+    // it is not eaten by the 5-line cap in the tool block.
+    Message t = Message::Tool("c1", "write_file", "Written 6 bytes to a.txt");
+    t.diff = "--- a/a.txt\n+++ b/a.txt\n@@ -0,0 +1,1 @@\n+hello\n";
+
+    auto b = deriveBubbles(t);
+    REQUIRE(b.size() == 2);
+    CHECK(b[0].role == "tool_result");
+    CHECK(b[0].content.find("Written 6 bytes to a.txt") != std::string::npos);
+    CHECK(b[1].role == "diff");
+    CHECK(b[1].content.find("+hello") != std::string::npos);
+}
+
+TEST_CASE("deriveBubbles: a tool message without a diff stays a single bubble") {
+    auto b = deriveBubbles(Message::Tool("c1", "read_file", "content"));
+    REQUIRE(b.size() == 1);
+    CHECK(b[0].role == "tool_result");
+}

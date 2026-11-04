@@ -1,6 +1,7 @@
 #include "file_tool.h"
 #include "registry.h"
 #include "json_utils.h"
+#include "diff_capture.h"
 #include <fstream>
 #include <cstdlib>
 #include <functional>
@@ -629,16 +630,29 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 auto parent = fs::path(resolved).parent_path();
                 if (!parent.empty()) fs::create_directories(parent);
 
+                // Snapshot the old text before touching the file: this is the
+                // only moment it is still there. A missing file leaves it empty,
+                // which is exactly the "new file" diff.
+                std::string before;
+                diff_capture::readFileIfExists(resolved, before);
+
                 std::ios::openmode openFlags = std::ios::out;
                 if (appendMode) openFlags |= std::ios::app;
 
                 std::ofstream ofs(resolved, openFlags);
                 if (!ofs) return "Error: Cannot write to: " + resolved;
                 ofs << content;
+                ofs.close();
 
+                // This stream is text mode, so the bytes on disk are CRLF while
+                // `content` is LF. makeUnifiedDiff strips the CR from both sides,
+                // so the in-memory pair is enough and no read-back is needed.
+                const std::string shown = diff_capture::displayPath(resolved, workspacePath);
                 if (appendMode) {
+                    diff_capture::record(shown, before, before + content);
                     return "Appended " + std::to_string(content.size()) + " bytes to " + resolved;
                 }
+                diff_capture::record(shown, before, content);
                 return "Written " + std::to_string(content.size()) + " bytes to " + resolved;
             } catch (const std::exception& e) {
                 return "Error: " + std::string(e.what());

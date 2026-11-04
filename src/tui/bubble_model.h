@@ -17,7 +17,8 @@ namespace bubble_model {
 
 // One rendered chat bubble (equivalent to the legacy ChatBubble).
 struct Bubble {
-    std::string role; // "user" | "assistant" | "system" | "tool_call" | "tool_result"
+    // "user" | "assistant" | "system" | "tool_call" | "tool_result" | "diff"
+    std::string role;
     std::string content;
     std::string reasoningText; // reasoning_content (thinking mode)
     bool hasReasoning = false;

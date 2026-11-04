@@ -6,6 +6,9 @@
 #include "tools/registry.h"
 #include "tools/file_tool.h"
 #include "tools/format_tool.h"
+#include "tools/md_file_tool.h"
+#include "tools/shell_tool.h" // registerEditFileTool
+#include "tools/diff_capture.h"
 #include "platform/iprocess_runner.h"
 #include "json.hpp"
 
@@ -384,4 +387,130 @@ TEST_CASE("format_file: clang mode works when a style is given explicitly") {
     const std::string after = readAt(root, "b.cpp");
     CHECK(after != "int    main(){return 0;}   \n"); // it really rewrote the file
     CHECK(has(after, "int main()"));
+}
+
+// -- diff capture ---------------------------------------------------------
+// Each writing tool snapshots the file around its own write and records the
+// unified diff in the calling thread's slot. The Agent then hangs it on the tool
+// message; see test_bubble_model.cpp and test_chat_render.cpp for that half.
+
+TEST_CASE("diff capture: write_file reports a new file as all additions") {
+    const fs::path root = freshRoot("dif_new");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+
+    diff_capture::reset();
+    run(reg, "write_file", {{"path", "a.txt"}, {"content", "hello\nworld\n"}});
+
+    const diff_capture::Entry e = diff_capture::take();
+    CHECK(e.path == "a.txt"); // workspace-relative, not the absolute path
+    CHECK(has(e.unified, "+++ b/a.txt"));
+    CHECK(has(e.unified, "@@ -0,0 +1,2 @@"));
+    CHECK(has(e.unified, "+hello"));
+    CHECK(has(e.unified, "+world"));
+    CHECK(!has(e.unified, "-hello"));
+
+    // Taken, so the next call sees nothing.
+    CHECK(diff_capture::take().unified.empty());
+}
+
+TEST_CASE("diff capture: write_file overwriting a file shows both sides") {
+    const fs::path root = freshRoot("dif_over");
+    writeAt(root, "a.txt", "one\ntwo\n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+
+    diff_capture::reset();
+    run(reg, "write_file", {{"path", "a.txt"}, {"content", "one\nTWO\n"}});
+
+    const diff_capture::Entry e = diff_capture::take();
+    CHECK(has(e.unified, "-two"));
+    CHECK(has(e.unified, "+TWO"));
+    CHECK(has(e.unified, " one")); // context kept
+}
+
+TEST_CASE("diff capture: write_file append only shows the added lines") {
+    const fs::path root = freshRoot("dif_app");
+    writeAt(root, "log.txt", "a\n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+
+    diff_capture::reset();
+    run(reg, "write_file", {{"path", "log.txt"}, {"content", "b\n"}, {"mode", "append"}});
+
+    const diff_capture::Entry e = diff_capture::take();
+    CHECK(has(e.unified, "+b"));
+    CHECK(!has(e.unified, "-a")); // the old line is context, not a removal
+}
+
+TEST_CASE("diff capture: edit_file reports the replaced text") {
+    const fs::path root = freshRoot("dif_edit");
+    writeAt(root, "e.txt", "keep\nchange me\nkeep too\n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+    registerEditFileTool(reg, root.string());
+
+    diff_capture::reset();
+    const std::string out =
+        run(reg, "edit_file", {{"path", "e.txt"}, {"search", "change me"}, {"replace", "changed"}});
+    REQUIRE(has(out, "Edited")); // the tool is registered and really wrote
+
+    const diff_capture::Entry e = diff_capture::take();
+    CHECK(e.path == "e.txt");
+    CHECK(has(e.unified, "-change me"));
+    CHECK(has(e.unified, "+changed"));
+}
+
+TEST_CASE("diff capture: md_file records on the write and the edit branch") {
+    const fs::path root = freshRoot("dif_md");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+    registerMdFileTool(reg, root.string());
+
+    diff_capture::reset();
+    run(reg, "md_file", {{"action", "write"}, {"path", "doc.md"}, {"content", "# Title\n"}});
+    const diff_capture::Entry w = diff_capture::take();
+    CHECK(w.path == "doc.md");
+    CHECK(has(w.unified, "+# Title"));
+
+    diff_capture::reset();
+    run(reg, "md_file", {{"action", "edit"},
+                         {"path", "doc.md"},
+                         {"search", "# Title"},
+                         {"replace", "# Renamed"}});
+    const diff_capture::Entry ed = diff_capture::take();
+    CHECK(has(ed.unified, "-# Title"));
+    CHECK(has(ed.unified, "+# Renamed"));
+}
+
+TEST_CASE("diff capture: format_file records a real change and nothing else") {
+    const fs::path root = freshRoot("dif_fmt");
+    writeAt(root, "w.txt", "a  \nb\n"); // trailing spaces
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+    registerFormatTool(reg, root.string(), nullptr, "");
+
+    diff_capture::reset();
+    const std::string out = run(reg, "format_file", {{"path", "w.txt"}, {"mode", "whitespace"}});
+    CHECK(has(out, "Formatted (whitespace)"));
+    const diff_capture::Entry e = diff_capture::take();
+    CHECK(has(e.unified, "-a  "));
+    CHECK(has(e.unified, "+a"));
+
+    // Already formatted: "No changes" must not leave a bubble behind.
+    diff_capture::reset();
+    const std::string again = run(reg, "format_file", {{"path", "w.txt"}, {"mode", "whitespace"}});
+    CHECK(has(again, "No changes"));
+    CHECK(diff_capture::take().unified.empty());
+}
+
+TEST_CASE("diff capture: a read-only tool records nothing") {
+    const fs::path root = freshRoot("dif_none");
+    writeAt(root, "a.txt", "x\n");
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+
+    diff_capture::reset();
+    run(reg, "read_file", {{"path", "a.txt"}});
+    CHECK(diff_capture::take().unified.empty());
 }

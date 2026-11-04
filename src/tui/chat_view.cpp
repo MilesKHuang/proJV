@@ -6,6 +6,7 @@
 // legacy GUI text-color mapping (see theme_popup.cpp in the pre-TUI code).
 #include "chat_view.h"
 
+#include "diff_view.h"
 #include "markdown_view.h"
 #include "speaker_colors.h"
 #include "theme_map.h"
@@ -28,6 +29,10 @@ struct Palette {
     Color reasoning;
     Color reasoningBody;
     Color warning;
+    // Diff bubble: reuse existing theme fields, no new ThemeColors member.
+    Color diffAdd;
+    Color diffDel;
+    Color diffHunk;
 };
 Palette g_palette;
 const Palette& P = g_palette;
@@ -41,6 +46,9 @@ void refreshPalette() {
     g_palette.reasoning = theme_map::hexToColor(T.reasoningTextColor);
     g_palette.reasoningBody = theme_map::hexToColor(T.reasoningBodyText);
     g_palette.warning = theme_map::hexToColor(T.todoInProgress);
+    g_palette.diffAdd = theme_map::hexToColor(T.todoDone);
+    g_palette.diffDel = theme_map::hexToColor(T.statusError);
+    g_palette.diffHunk = theme_map::hexToColor(T.textDisabled);
 }
 
 Element label(const std::string& text, Color c) {
@@ -77,6 +85,24 @@ std::string tailLines(const std::string& text, int maxLines) {
         ++pos;
     }
     return text.substr(pos);
+}
+
+// Diff bubbles are capped: a whole-file rewrite is a 200-line patch, and the
+// tool block above already carries the one-line summary. The split / unified
+// choice, the row cap and the gutter widths all live in diff_view.
+constexpr int kDiffMaxRows = 40;
+
+Element diffBlock(const std::string& content, int innerWidth) {
+    diff_view::Colors c;
+    c.added = P.diffAdd;
+    c.removed = P.diffDel;
+    c.hunk = P.diffHunk;
+    c.text = P.text;
+    c.gutter = P.diffHunk;
+    c.title = P.tool;
+    if (innerWidth >= diff_view::kSplitMinWidth)
+        return diff_view::renderSplit(content, c, innerWidth, kDiffMaxRows);
+    return diff_view::renderUnified(content, c, kDiffMaxRows);
 }
 
 std::string collapseBlankLines(const std::string& text) {
@@ -116,8 +142,14 @@ std::string reasoningSummary(const std::string& text) {
 
 } // namespace
 
-Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, bool reasoningExpanded) {
+Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, bool reasoningExpanded,
+                      int width) {
     refreshPalette();
+
+    // Usable content width: the block border costs two columns and the chat
+    // viewport's scroll indicator one more. One column of slack keeps a pasted
+    // wide line from wrapping the whole block.
+    const int innerWidth = width > 8 ? width - 4 : 0;
 
     int total = static_cast<int>(bubbles.size());
     Elements lines;
@@ -178,6 +210,8 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, bool rea
                 els.push_back(markdown_view::renderMarkdown(b.content));
             }
             block = ftxui::vbox(std::move(els));
+        } else if (b.role == "diff") {
+            block = diffBlock(b.content, innerWidth);
         } else if (b.role == "tool_call") {
             std::string title = b.content;
             std::string results;

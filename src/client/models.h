@@ -41,6 +41,11 @@ struct ToolResult {
     std::string content; // result text
     bool isError = false;
     bool isCancelled = false;
+    // Unified diff of the file this call wrote (write_file / edit_file /
+    // md_file / format_file). Display only: it goes into the tool row of the
+    // session database for the TUI bubble and is never part of `content`, so it
+    // never reaches the API.
+    std::string diff;
 };
 
 // --- Images (vision input) ------------------------------------------
@@ -76,6 +81,11 @@ struct Message {
     // (view_image). Persisted so a replay can tell them apart from what the user
     // actually typed; never sent to the API (to_json ignores it).
     bool synthetic = false;
+    // Unified diff of the file a tool call wrote, carried by tool messages only.
+    // Persisted with the row so a replayed session keeps the diff bubble; never
+    // serialized by to_json() and never counted as input tokens -- it exists to
+    // be looked at, not to be read by the model.
+    std::string diff;
     // Constructor helpers
     static Message System(std::string content);
     static Message User(std::string content);

@@ -2,6 +2,7 @@
 #include "prompts.h"
 #include "json.hpp"
 #include "debug_log.h"
+#include "tools/diff_capture.h"
 #include <cstdio>
 #include <algorithm>
 #include <iterator>
@@ -434,7 +435,12 @@ void Agent::run() {
                     if (s != std::string::npos) d = d.substr(s);
                     wvDetails += "  - " + r.name + " -> " + d + "\n";
                 }
-                addPersistedMessage(Message::Tool(r.toolCallId, r.name, r.content, r.isError));
+                // The 4-argument factory does not know about the display-only
+                // diff, so it is attached here; dropping it would break the
+                // bubble silently and no tool-level test would notice.
+                Message toolMsg = Message::Tool(r.toolCallId, r.name, r.content, r.isError);
+                toolMsg.diff = r.diff;
+                addPersistedMessage(toolMsg);
             }
             if (hasWV) {
                 addPersistedMessage(Message::System(
@@ -806,6 +812,10 @@ ToolResult Agent::executeTool(const ToolCall& call) {
     ToolResult r;
     r.toolCallId = call.id;
     r.name = call.name;
+    // Drop anything a previous call left behind on this thread before the tool
+    // runs (the writing tools record into a thread_local slot). Reset before the
+    // allowlist check as well, so the early returns stay clean.
+    diff_capture::reset();
     if (!allowedTools_.empty() &&
         std::find(allowedTools_.begin(), allowedTools_.end(), call.name) == allowedTools_.end()) {
         r.content = "Error: Tool '" + call.name + "' not allowed.";
@@ -815,6 +825,10 @@ ToolResult Agent::executeTool(const ToolCall& call) {
     r.content = toolRegistry.execute(call.name, call.arguments);
     r.isError = (r.content.compare(0, 6, "Error:") == 0);
     if (toolRegistry.isCancelled()) r.isCancelled = true;
+    // A file-writing tool leaves the unified diff of what it changed here. It
+    // rides on the ToolResult and the tool row, never inside `content`.
+    diff_capture::Entry captured = diff_capture::take();
+    if (!captured.unified.empty()) r.diff = std::move(captured.unified);
     return r;
 }
 

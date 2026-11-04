@@ -140,6 +140,7 @@ bool Storage::ensureTables() {
                 token_count       INTEGER DEFAULT 0,
                 image_paths       TEXT DEFAULT '',
                 synthetic         INTEGER DEFAULT 0,
+                diff              TEXT DEFAULT '',
                 created_at        TEXT NOT NULL DEFAULT (datetime('now'))
             );
         )");
@@ -159,6 +160,13 @@ bool Storage::ensureTables() {
         // user; e.g. the image round requested by the view_image tool).
         try {
             writeDb_->exec("ALTER TABLE messages ADD COLUMN synthetic INTEGER DEFAULT 0");
+        } catch (const SQLite::Exception&) {
+            // Column already exists -- safe to ignore
+        }
+        // Migration: diff (unified diff a file-writing tool produced, shown in
+        // its own TUI bubble on replay). Display only -- never sent to the API.
+        try {
+            writeDb_->exec("ALTER TABLE messages ADD COLUMN diff TEXT DEFAULT ''");
         } catch (const SQLite::Exception&) {
             // Column already exists -- safe to ignore
         }
@@ -221,8 +229,9 @@ int64_t Storage::insertMessage(const Message& msg) {
         size_t tokens = estimateTokensForText(msg.content);
 
         SQLite::Statement stmt(*writeDb_, "INSERT INTO messages (role, content, reasoning_content, "
-                                          "tool_call_id, name, token_count, image_paths, synthetic) "
-                                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                                          "tool_call_id, name, token_count, image_paths, "
+                                          "synthetic, diff) "
+                                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         stmt.bind(1, msg.role);
         stmt.bind(2, msg.content);
         stmt.bind(3, msg.reasoningContent);
@@ -231,6 +240,7 @@ int64_t Storage::insertMessage(const Message& msg) {
         stmt.bind(6, static_cast<int64_t>(tokens));
         stmt.bind(7, imagePathsToJson(msg.images));
         stmt.bind(8, msg.synthetic ? 1 : 0);
+        stmt.bind(9, msg.diff);
         stmt.exec();
 
         int64_t messageId = writeDb_->execAndGet("SELECT last_insert_rowid()").getInt64();
@@ -259,7 +269,8 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
     try {
         SQLite::Statement stmt(*readDb_,
                                "SELECT id, role, content, reasoning_content, tool_call_id, name, "
-                               "COALESCE(image_paths, ''), COALESCE(synthetic, 0) "
+                               "COALESCE(image_paths, ''), COALESCE(synthetic, 0), "
+                               "COALESCE(diff, '') "
                                "FROM messages WHERE id > ? ORDER BY id");
         stmt.bind(1, sinceId);
 
@@ -274,6 +285,7 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
             msg.name = stmt.getColumn(5).getString();
             msg.images = imagePathsFromJson(stmt.getColumn(6).getString());
             msg.synthetic = stmt.getColumn(7).getInt() != 0;
+            msg.diff = stmt.getColumn(8).getString();
 
             // Load tool calls for assistant messages
             if (msg.role == "assistant") {

@@ -2,6 +2,7 @@
 #include "file_tool.h" // validateToolPath -- the one shared workspace guard
 #include "registry.h"
 #include "json_utils.h"
+#include "diff_capture.h"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -118,13 +119,21 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 std::ios::openmode openFlags = std::ios::out | std::ios::binary;
                 if (appendMode) openFlags |= std::ios::app;
 
+                // Snapshot before the write; a missing file leaves it empty.
+                std::string before;
+                diff_capture::readFileIfExists(resolved, before);
+
                 std::ofstream ofs(resolved, openFlags);
                 if (!ofs) return "Error: Cannot write to: " + resolved;
                 ofs << content;
+                ofs.close();
 
+                const std::string shown = diff_capture::displayPath(resolved, workspacePath);
                 if (appendMode) {
+                    diff_capture::record(shown, before, before + content);
                     return "Appended " + std::to_string(content.size()) + " bytes to " + resolved;
                 }
+                diff_capture::record(shown, before, content);
                 return "Written " + std::to_string(content.size()) + " bytes to " + resolved;
             } catch (const std::exception& e) {
                 return "Error: " + std::string(e.what());
@@ -182,10 +191,14 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                             origEnd += 1;
                     }
                     size_t origLen = origEnd - origPos;
+                    std::string before = content;
                     content.replace(origPos, origLen, replace);
                     std::ofstream ofs(resolved, std::ios::out | std::ios::trunc | std::ios::binary);
                     if (!ofs) return "Error: Cannot write to: " + resolved;
                     ofs << content;
+                    ofs.close();
+                    diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before,
+                                         content);
                     return "Edited " + resolved + " (match found after LF normalization)";
                 }
                 return "Error: Search text not found in file: " + resolved + "\nSearch text: " +
@@ -205,10 +218,14 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                        "Make the search text more specific to target a single occurrence.";
             }
 
+            std::string before = content;
             content.replace(pos, search.size(), replace);
             std::ofstream ofs(resolved, std::ios::out | std::ios::trunc | std::ios::binary);
             if (!ofs) return "Error: Cannot write to: " + resolved;
             ofs << content;
+            ofs.close();
+            diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before,
+                                 content);
             return "Edited " + resolved;
         } else {
             return "Error: Unknown action '" + action + "'. Must be 'write' or 'edit'.";

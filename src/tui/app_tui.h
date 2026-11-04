@@ -84,6 +84,10 @@ class TuiApp {
     void setChatContentRows(int rows) { chatContentRows_ = rows; }
     // Called by the renderer after layout with the chat's visible (viewport) rows.
     void setChatViewportRows(int rows) { chatViewportRows_ = rows; }
+    // Called by the renderer after layout with the chat column's width in cells.
+    // Diff bubbles split into two panes only when this is wide enough.
+    void setChatContentWidth(int cols) { chatContentWidth_ = cols; }
+    int chatContentWidth() const { return chatContentWidth_; }
     int chatFocusRow() const;
 
     // Incremental sync: pull new DB messages into chatHistory (call per frame).
@@ -178,6 +182,7 @@ class TuiApp {
     bool chatFollowBottom_ = true; // stick to the newest content
     int chatContentRows_ = 0;      // real rendered rows from the last layout
     int chatViewportRows_ = 0;     // visible rows from the last layout
+    int chatContentWidth_ = 0;     // chat column width (cells) from the last layout
     std::string sessionsDir_;
     std::vector<std::string> promptFiles_;
     int activePromptIndex_ = 0;

@@ -64,6 +64,34 @@ ftxui::Element observeHeight(ftxui::Element child, std::function<void(int)> on_h
                                                std::move(on_height));
 }
 
+// Companion of ObserveHeightNode: reports the laid-out width in cells. The chat
+// column is not necessarily the terminal width (the TODO dock takes 36), so the
+// diff bubble has to be told what it actually got.
+class ObserveWidthNode : public ftxui::Node {
+  public:
+    ObserveWidthNode(ftxui::Elements children, std::function<void(int)> on_width)
+        : Node(std::move(children)), on_width_(std::move(on_width)) {}
+
+    void ComputeRequirement() override {
+        Node::ComputeRequirement();
+        requirement_ = children_[0]->requirement();
+    }
+
+    void SetBox(ftxui::Box box) override {
+        if (on_width_) on_width_(box.x_max - box.x_min);
+        Node::SetBox(box);
+        children_[0]->SetBox(box);
+    }
+
+  private:
+    std::function<void(int)> on_width_;
+};
+
+ftxui::Element observeWidth(ftxui::Element child, std::function<void(int)> on_width) {
+    return std::make_shared<ObserveWidthNode>(ftxui::unpack(std::move(child)),
+                                              std::move(on_width));
+}
+
 // Map a subagent activity to the theme color of its state word (mirrors
 // status_line::render for the main agent).
 std::string ThemeColors::*panelActivityColor(SkillRunner::AgentActivity a) {
@@ -182,7 +210,7 @@ class SpinnerTicker : public ftxui::ComponentBase {
 
 } // namespace
 
-// Install / shim subcommands (docs/projv-install.md). They run before FTXUI
+// Install / shim subcommands. They run before FTXUI
 // takes over the terminal and never start the TUI: --install is used by people
 // who unpacked a ZIP, --post-install by `cmake --install`. Returns -1 when the
 // arguments are not an install command, so main() falls through to the TUI.
@@ -463,7 +491,8 @@ int main(int argc, char** argv) {
         els.push_back(separator());
 
         // Chat area (row-granular scrolling via focusPosition).
-        Element chat = chat_view::renderBubbles(app.bubbles(), app.reasoningExpanded());
+        Element chat = chat_view::renderBubbles(app.bubbles(), app.reasoningExpanded(),
+                                               app.chatContentWidth());
 
         // Live streaming: append the in-progress bubble.
         if (app.getPhase() == AgentPhase::Streaming) {
@@ -474,7 +503,10 @@ int main(int argc, char** argv) {
         }
 
         Element chatColumn =
-            observeHeight(observeHeight(chat, [&](int rows) { app.setChatContentRows(rows); }) |
+            observeHeight(observeHeight(observeWidth(chat, [&](int cols) {
+                                          app.setChatContentWidth(cols);
+                                      }),
+                                        [&](int rows) { app.setChatContentRows(rows); }) |
                               focusPosition(0, app.chatFocusRow()) | vscroll_indicator | yframe,
                           [&](int rows) { app.setChatViewportRows(rows); });
 

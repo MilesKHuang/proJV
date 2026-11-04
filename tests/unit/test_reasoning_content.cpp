@@ -76,3 +76,18 @@ TEST_CASE("reasoning_content: an API error notice is a legal assistant message")
     CHECK(j["reasoning_content"] == "");
     CHECK(j["role"] == "assistant");
 }
+
+TEST_CASE("diff: the display-only patch never reaches the API") {
+    // `diff` exists for the TUI bubble and the session row only. Serialization is
+    // the one place that can be asserted without a live model: Release builds
+    // strip the debug log, so a log-based check would prove nothing.
+    Message t = Message::Tool("call_1", "write_file", "Written 6 bytes to a.txt");
+    t.diff = "--- a/a.txt\n+++ b/a.txt\n@@ -0,0 +1,1 @@\n+hello\n";
+
+    nlohmann::json j;
+    to_json(j, t);
+    CHECK_FALSE(j.contains("diff"));
+    CHECK(j["role"] == "tool");
+    CHECK(j["content"] == "Written 6 bytes to a.txt");
+    CHECK(j.dump().find("+hello") == std::string::npos);
+}

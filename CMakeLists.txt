@@ -95,6 +95,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/format_tool.cpp
     ${SRC_DIR}/tools/md_file_tool.cpp
     ${SRC_DIR}/tools/edit_file_tool.cpp
+    ${SRC_DIR}/tools/diff_capture.cpp
     ${SRC_DIR}/tools/file_search_tool.cpp
     ${SRC_DIR}/tools/web_tools.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
@@ -134,6 +135,7 @@ set(HEADERS
     ${SRC_DIR}/core/terminal_status.h
     ${SRC_DIR}/platform/install_shim.h
     ${SRC_DIR}/tools/file_tool.h
+    ${SRC_DIR}/tools/diff_capture.h
     ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h
 )
@@ -204,6 +206,7 @@ add_executable(proJV_tui
     ${SRC_DIR}/tui/terminal.cpp
     ${SRC_DIR}/tui/app_tui.cpp
     ${SRC_DIR}/tui/chat_view.cpp
+    ${SRC_DIR}/tui/diff_view.cpp
     ${SRC_DIR}/tui/bubble_model.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/markdown_text.cpp
@@ -297,7 +300,7 @@ endif()
 
 # ── Release payload: install rules + CPack ───────────────────────────────
 # Default install prefix: a user-level directory, so `cmake --install` needs no
-# administrator rights (docs/projv-install.md D.3). An explicit
+# administrator rights. An explicit
 # -DCMAKE_INSTALL_PREFIX always wins; we only replace CMake's own default.
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     if(WIN32)

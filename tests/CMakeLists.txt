@@ -25,6 +25,9 @@ set(TEST_SOURCES
     unit/test_turn_end.cpp
     unit/test_reasoning_content.cpp
     unit/test_file_tools.cpp
+    unit/test_diff_capture.cpp
+    unit/test_storage_diff.cpp
+    unit/test_diff_parse.cpp
     unit/test_workspace_paths.cpp
     unit/test_skill_thinking.cpp
     unit/test_skill_parallel.cpp
@@ -42,6 +45,7 @@ set(TEST_SOURCES
     ${SRC_DIR}/tui/bubble_model.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
+    ${SRC_DIR}/tui/diff_view.cpp
     ${SRC_DIR}/tui/markdown_text.cpp
     ${SRC_DIR}/tui/markdown_view.cpp
     ${SRC_DIR}/tui/status_line.cpp
@@ -65,6 +69,13 @@ target_include_directories(proJV_tests PRIVATE
 )
 
 target_link_libraries(proJV_tests PRIVATE proJV_lib ftxui::dom ftxui::component)
+
+# proJV_lib links SQLiteCpp PRIVATE, so its headers and symbols do not reach the
+# tests. test_storage_diff opens a database directly to build a pre-migration
+# schema, so it needs both. Scoped to the test target on purpose: making the lib
+# link SQLiteCpp PUBLIC would leak the dependency into every consumer.
+target_include_directories(proJV_tests PRIVATE ${EXTERNAL_DIR}/SQLiteCpp-3.3.3/include)
+target_link_libraries(proJV_tests PRIVATE SQLiteCpp)
 
 # Example skill repos live in <repo>/skills/ (e.g. monica).
 target_compile_definitions(proJV_tests PRIVATE PROJV_EXAMPLE_SKILLS_DIR="${CMAKE_SOURCE_DIR}/skills")
