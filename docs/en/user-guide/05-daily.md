@@ -59,6 +59,23 @@ Shows model, role, token counts, a cost estimate (from `[model_prices]` in
 `config.toml`) and context pressure. When pressure gets high, proJV compacts
 using the `compactor` prompt.
 
+## Diff bubbles
+
+`write_file`, `edit_file`, `md_file` and `format_file` show what they changed: a
+`Diff` block appears under the tool call. When the chat column is at least 100
+cells wide it is a two-column patch - old line numbers and text on the left, new
+ones on the right, a changed line paired with its replacement on the same row.
+Narrower terminals get the single-column unified diff (`+` added, `-` removed,
+`@` hunk header).
+
+- At most 40 rows per block; the full patch stays in the session database.
+- Unchanged context is 2 lines per side, so a screen holds more than one hunk.
+- `format_file` on an already-formatted file shows no block at all.
+- The `F9` TODO dock takes 36 cells; with it open the chat column may drop below
+  the split threshold and the diff falls back to one column.
+- The diff is display-only. It is stored with the tool row, so `F5` replays it,
+  but it is never sent to the model and costs no tokens.
+
 ## Reading the screen
 
 | Element | Meaning |
@@ -66,6 +83,7 @@ using the `compactor` prompt.
 | spinner + "Thinking..." | request in flight |
 | collapsed reasoning line | press `F8` for the full thinking chain |
 | `[Role]` bubbles | multi-agent skill output |
+| `── Diff ──` block | what the last file write changed |
 | agent sidebar | per-role status, message count and live activity |
 
 ---

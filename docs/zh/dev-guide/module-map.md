@@ -27,9 +27,14 @@
 - **职责。** 把流式文本变成带颜色、会折行的行。
 - **入口。** `src/tui/markdown_text.cpp`（分词/折行）、`markdown_view.cpp`
   （FTXUI 元素）、`bubble_model.cpp`（气泡）。
-- **一起看。** `theme_colors.*`（颜色全部来自主题）。
+- **diff 气泡。** `src/tui/diff_view.cpp` 把存下来的 unified diff 重新投影成两栏
+  （左旧行号 | 右新行号，改动行左右同排）；聊天栏宽度不够 `kSplitMinWidth` 时退回
+  单栏块。只有解析和渲染：库里只存 unified diff，所以老会话直接用新布局回放。
+- **一起看。** `theme_colors.*`（颜色全部来自主题）；`chat_view.cpp` 负责把量到的
+  聊天栏宽度传进来。
 - **测试。** `test_markdown_text.cpp`、`test_bubble_model.cpp`、
-  `golden/test_markdown_render.cpp`。
+  `test_diff_parse.cpp`、`golden/test_markdown_render.cpp`、
+  `golden/test_chat_render.cpp`。
 
 ## 3. 主题
 
@@ -67,7 +72,11 @@
   `format_tool.cpp`、`shell_tool.cpp`、`web_tools.cpp`、`todo_tool.cpp`、
   `python_tool_manager.cpp`。
 - **规矩。** 所有路径都过 `validateToolPath`（`file_tool.h`）；工具绝不碰工作区外的文件。
-- **测试。** `test_file_tools.cpp`、`test_web_api.cpp`。
+- **diff 捕获。** 四个写文件的工具在自己的写入前后各拍一次快照，交给
+  `diff_capture::record`（`diff_capture.{h,cpp}`）。这个槽是 `thread_local` 而不是
+  注册表成员——技能 worker 会并行共享同一个注册表。`Agent::executeTool` 在调用前
+  `reset`、调用后 `take`，再挂到 tool 消息上。只用于显示：随消息行进库，永不序列化。
+- **测试。** `test_file_tools.cpp`、`test_diff_capture.cpp`、`test_web_api.cpp`。
 
 ## 7. 技能引擎
 
@@ -89,7 +98,11 @@
 - **职责。** `config.toml` 往返读写、SQLite 会话持久化。
 - **入口。** `src/core/config.cpp`（TOML 读写与默认值）、`src/core/storage.cpp`
   （建库/开库、追加消息、checkpoint）。
-- **测试。** 由各 agent / 技能测试间接覆盖，无独立套件。
+- **表结构。** `messages` 有一列 `diff TEXT`：写文件的工具产出的 unified diff，
+  在 TUI 里单独一个气泡显示。它只用于显示，绝不能进 `to_json`。老库靠与
+  `reasoning_content` / `image_paths` / `synthetic` 同一段 try-`ALTER TABLE` 迁移。
+- **测试。** `test_storage_diff.cpp` 覆盖 `diff` 的存取往返，以及从无 `diff` 列的
+  旧库迁移；其余由技能与 agent 套件间接覆盖。
 
 ## 9. 平台抽象
 

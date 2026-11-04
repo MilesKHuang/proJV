@@ -28,9 +28,16 @@ the code disagree, the code wins.
 - **Responsibility.** Turn streamed text into coloured, wrapped lines.
 - **Entry.** `src/tui/markdown_text.cpp` (tokenise/wrap) and
   `src/tui/markdown_view.cpp` (FTXUI elements), `bubble_model.cpp` for bubbles.
-- **Read together with.** `theme_colors.*` (colours come from the theme).
+- **Diff bubble.** `src/tui/diff_view.cpp` re-projects the stored unified diff
+  into two panes (old line numbers | new line numbers, changes paired on one
+  row) when the chat column is at least `kSplitMinWidth` wide, and into the
+  single-column block otherwise. Parse and render only: the database stores the
+  unified diff and nothing more, so old sessions replay in the new layout.
+- **Read together with.** `theme_colors.*` (colours come from the theme);
+  `chat_view.cpp` passes the measured chat-column width in.
 - **Tests.** `test_markdown_text.cpp`, `test_bubble_model.cpp`,
-  `golden/test_markdown_render.cpp`.
+  `test_diff_parse.cpp`, `golden/test_markdown_render.cpp`,
+  `golden/test_chat_render.cpp`.
 
 ## 3. Theme
 
@@ -76,7 +83,13 @@ the code disagree, the code wins.
   `python_tool_manager.cpp`.
 - **Rule.** Every path goes through `validateToolPath` (`file_tool.h`); a tool
   never touches the filesystem outside the workspace.
-- **Tests.** `test_file_tools.cpp`, `test_web_api.cpp`.
+- **Diff capture.** The four writing tools snapshot the file around their own
+  write and call `diff_capture::record` (`diff_capture.{h,cpp}`). The slot is
+  `thread_local`, not a registry member: skill workers share one registry across
+  parallel threads. `Agent::executeTool` resets it before the call and takes it
+  after, then hangs it on the tool message. Display-only -- it is persisted with
+  the row and never serialized.
+- **Tests.** `test_file_tools.cpp`, `test_diff_capture.cpp`, `test_web_api.cpp`.
 
 ## 7. Skill engine
 
@@ -101,7 +114,13 @@ the code disagree, the code wins.
 - **Responsibility.** `config.toml` round-trip and SQLite session persistence.
 - **Entry.** `src/core/config.cpp` (TOML load/save, defaults),
   `src/core/storage.cpp` (DB create/open, message append, checkpoint).
-- **Tests.** covered indirectly by every skill/agent test; no dedicated suite.
+- **Schema.** `messages` carries a `diff TEXT` column: the unified diff a
+  file-writing tool produced, shown in its own TUI bubble. It is display-only and
+  must never reach `to_json`. Older databases get it through the same
+  try-`ALTER TABLE` block as `reasoning_content` / `image_paths` / `synthetic`.
+- **Tests.** `test_storage_diff.cpp` covers the `diff` round trip and the
+  migration from a pre-`diff` schema; everything else is covered indirectly by
+  the skill and agent suites.
 
 ## 9. Platform
 
