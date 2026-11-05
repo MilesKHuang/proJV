@@ -247,16 +247,16 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
 
     // Prompt files from projv_files/prompts/.
     promptFiles_ = ensureDefaultPrompts();
-    promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
-                       promptFiles_.end());
-    activePromptIndex_ = 0;
-    for (size_t i = 0; i < promptFiles_.size(); ++i) {
-        if (promptFiles_[i] == "coder.md") {
-            activePromptIndex_ = static_cast<int>(i);
-            break;
-        }
-    }
-    std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+    // Not roles: compactor.md is the /compress prompt, and the three legacy role
+    // seeds stay on disk for old installs but must not show up in the Tab cycle
+    // now that assistant.md covers all of them.
+    static const char* const kHiddenPrompts[] = {"compactor.md", "coder.md", "designer.md",
+                                                 "analyzer.md"};
+    for (const char* hidden : kHiddenPrompts)
+        promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), hidden),
+                           promptFiles_.end());
+    activePromptIndex_ = defaultPromptIndex(promptFiles_);
+    std::string sp = activePromptContent();
     agent->setSystemPrompt(sp);
 
     // Sessions dir (lazy-create DB on first message).
@@ -292,7 +292,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     };
 
     // Inject system prompt as first session message.
-    agent->addPersistedMessage(Message::System(loadPromptFile(promptFiles_[activePromptIndex_])));
+    agent->addPersistedMessage(Message::System(activePromptContent()));
 
     // Fixed workspace context: directory tree + AGENTS.md. Same call the F3 and
     // "/clear" paths use, so a conversation always starts with the same prefix.
@@ -898,7 +898,7 @@ void TuiApp::reinitConversation(bool keepStorage) {
     // System prompt first: buildChatRequest() inserts its dynamic system block
     // right after the fixed system messages, so the session must start with one.
     {
-        std::string sp = loadPromptFile(promptFiles_[activePromptIndex_]);
+        std::string sp = activePromptContent();
         agent->setSystemPrompt(sp);
         agent->addPersistedMessage(Message::System(sp));
     }
@@ -960,8 +960,19 @@ void TuiApp::switchPrompt(int index) {
     if (index < 0 || index >= static_cast<int>(promptFiles_.size())) return;
     if (index == activePromptIndex_) return;
     activePromptIndex_ = index;
-    std::string content = loadPromptFile(promptFiles_[activePromptIndex_]);
+    std::string content = activePromptContent();
     agent->replaceSystemPrompt(content);
+}
+
+std::string TuiApp::activePromptContent() const {
+    if (activePromptIndex_ < 0 || activePromptIndex_ >= static_cast<int>(promptFiles_.size())) {
+        // Nothing to load: every prompt file was deleted and seeding failed. An
+        // empty system prompt makes the agent fall back to "all tools allowed",
+        // which is loud in the logs but never crashes on an out-of-range index.
+        debugLog("[TuiApp] No role prompt available -- empty system prompt");
+        return {};
+    }
+    return loadPromptFile(promptFiles_[static_cast<size_t>(activePromptIndex_)]);
 }
 
 void TuiApp::setModel(const std::string& model) {

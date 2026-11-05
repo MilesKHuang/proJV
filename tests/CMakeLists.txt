@@ -22,6 +22,7 @@ set(TEST_SOURCES
     unit/test_image_input.cpp
     unit/test_prompt_upgrade.cpp
     unit/test_prompt_style.cpp
+    unit/test_prompt_seed.cpp
     unit/test_turn_end.cpp
     unit/test_reasoning_content.cpp
     unit/test_file_tools.cpp

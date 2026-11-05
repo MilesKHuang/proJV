@@ -55,7 +55,7 @@ class TuiApp {
         if (agent) agent->approveTool(action);
     }
 
-    // System prompt role switching (coder / designer / analyzer / ...).
+    // System prompt role switching (assistant.md, plus any user-written role).
     const std::vector<std::string>& promptFiles() const { return promptFiles_; }
     int activePromptIndex() const { return activePromptIndex_; }
     void switchPrompt(int index);
@@ -132,6 +132,9 @@ class TuiApp {
   private:
     void setupTools();
     void harvestSpeakers();
+    // Content of the active role prompt; empty when the role list is empty or the
+    // selected file vanished (never an out-of-range read).
+    std::string activePromptContent() const;
     void buildBubblesFromMessages();
     // Inject the fixed workspace context as system messages at the start of a
     // conversation: the directory tree, then the repository's AGENTS.md. Empty

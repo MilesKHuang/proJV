@@ -37,7 +37,9 @@ size_t countSubstr(const std::string& hay, const std::string& needle) {
 } // namespace
 
 TEST_CASE("style upgrade: every seeded variant becomes the two-line rule") {
-    const char* files[] = {"coder.md", "designer.md", "analyzer.md"};
+    // assistant.md is the live seed; the three legacy names stay covered because
+    // upgradeSeededPrompt() still upgrades old installs.
+    const char* files[] = {"assistant.md", "coder.md", "designer.md", "analyzer.md"};
     const char* olds[] = {kOldYou, kOldUser, kOldBare};
 
     for (const char* file : files) {
