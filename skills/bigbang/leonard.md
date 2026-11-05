@@ -54,6 +54,12 @@ Call write_bigbang_doc. doc_markdown MUST include:
 - "NOT included" section: 3 things readers might assume are included but are
   explicitly excluded from this plan.
 
+The document must exist on disk too, not only in the chat: derive an ASCII slug
+from the topic (lowercase, hyphens, <=30 chars), then md_file action=write
+path=docs/sop/bigbang-<slug>.md. Over 8KB: continue with action=append chunks,
+then read the tail back with read_file to prove the file survived. Only then
+call write_bigbang_doc with the same Markdown.
+
 ## Style
 Realistic. No sugar-coating. Match the language of the session and the topic;
 keep file paths, names and numbers exactly as they are. 800-1500 characters.

@@ -104,7 +104,13 @@ TEST_CASE("skill: round-1 unanimous matches golden bytes + events") {
           "Topic: T\n\n=== Round 1 Vote ===\n\nProposal under vote:\nL1\n\nFor reference - Sheldon "
           "position:\nS1\n\nFor reference - Penny position:\nP1\n\nCall bigbang_vote.");
     CHECK(cap[2][2] == "Topic: T\n\nFinal approved proposal:\nL1\n\nResidual "
-                       "concerns:\n(none)\n\n\nCall write_bigbang_doc.");
+                       "concerns:\n(none)\n\n\n"
+                       "FIRST write the deliverable to disk: derive an ASCII slug from the "
+                       "topic (lowercase, hyphens, 30 chars max), then md_file action=write "
+                       "path=docs/sop/bigbang-<slug>.md; if the file exceeds 8KB, continue "
+                       "with action=append chunks, then read the tail back with read_file to "
+                       "prove it survived. Only then call write_bigbang_doc with the same "
+                       "Markdown.");
 
     CHECK(sr.converged());
     CHECK(sr.lastRounds() == 1);
@@ -155,7 +161,13 @@ TEST_CASE("skill: round-2 repeat matches golden bytes") {
           "Topic: T\n\n=== Round 2 Vote ===\n\nProposal under vote:\nL2\n\nFor reference - Sheldon "
           "position:\nS2\n\nFor reference - Penny position:\nP2\n\nCall bigbang_vote.");
     CHECK(cap[2][4] == "Topic: T\n\nFinal approved proposal:\nL2\n\nResidual "
-                       "concerns:\n(none)\n\n\nCall write_bigbang_doc.");
+                       "concerns:\n(none)\n\n\n"
+                       "FIRST write the deliverable to disk: derive an ASCII slug from the "
+                       "topic (lowercase, hyphens, 30 chars max), then md_file action=write "
+                       "path=docs/sop/bigbang-<slug>.md; if the file exceeds 8KB, continue "
+                       "with action=append chunks, then read the tail back with read_file to "
+                       "prove it survived. Only then call write_bigbang_doc with the same "
+                       "Markdown.");
 
     CHECK(sr.converged());
     CHECK(sr.lastRounds() == 2);

@@ -1,7 +1,7 @@
 {
   "name": "bigbang",
   "description": "Three-role debate on any topic (code, hardware, writing, a plan): propose, integrate, vote, emit one plan document.",
-  "tools": ["read_file", "grep_files", "file_search", "web_search", "fetch_url"],
+  "tools": ["read_file", "grep_files", "file_search", "web_search", "fetch_url", "md_file"],
   "agents": [
     {"id": "sheldon", "display_name": "Sheldon", "prompt": "sheldon.md"},
     {"id": "penny",   "display_name": "Penny",   "prompt": "penny.md"},
@@ -52,7 +52,7 @@
     {"progress": "Writing execution document (Leonard)",
      "actions": [
        {"agent": "leonard", "tool": "write_bigbang_doc", "capture": "doc_markdown", "emit": "document",
-        "message": "Topic: {{topic}}\n\nFinal approved proposal:\n{{leonard.current}}\n\nResidual concerns:\n{{residual_concerns}}\n\nCall write_bigbang_doc."}
+        "message": "Topic: {{topic}}\n\nFinal approved proposal:\n{{leonard.current}}\n\nResidual concerns:\n{{residual_concerns}}\n\nFIRST write the deliverable to disk: derive an ASCII slug from the topic (lowercase, hyphens, 30 chars max), then md_file action=write path=docs/sop/bigbang-<slug>.md; if the file exceeds 8KB, continue with action=append chunks, then read the tail back with read_file to prove it survived. Only then call write_bigbang_doc with the same Markdown."}
      ]}
   ]
 }

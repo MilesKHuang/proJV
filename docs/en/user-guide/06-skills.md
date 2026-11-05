@@ -37,6 +37,7 @@ The topic does not have to be software: the rules read "file path / class /
 interface" as "part / step / material / person", so a shop-opening plan or a
 course outline gets the same three reviewers. The skill can search the web, and
 the document opens with five lines a new graduate can follow before any detail.
+Writes `docs/sop/bigbang-<slug>.md`.
 
 ### monica
 
