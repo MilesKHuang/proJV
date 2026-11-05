@@ -66,6 +66,30 @@ TEST_CASE("osc7501: control characters become spaces before encoding") {
     CHECK(seq.find('\t') == std::string::npos);
 }
 
+TEST_CASE("osc7501: C1 controls (U+0080..U+009F) never reach the host") {
+    // The spec bans U+0000..U+001F, U+007F and U+0080..U+009F after decoding.
+    // A byte-wise filter misses the C1 range, which travels as 0xC2 0x80..0x9F;
+    // a host that finds a control codepoint drops the whole record, so the two
+    // bytes must collapse into a single space.
+    std::string msg = "a";
+    msg += "\xC2\x80"; // U+0080
+    msg += "b";
+    msg += "\xC2\x9F"; // U+009F
+    msg += "c";
+
+    const std::string seq = encode("working", "", msg, "projv", "main", -1);
+    // "a b c" -- the same payload the C0 test expects.
+    CHECK(contains(seq, "msg=YSBiIGM="));
+    CHECK(seq.find('\xC2') == std::string::npos);
+}
+
+TEST_CASE("osc7501: non-control UTF-8 above the C1 range survives") {
+    // U+00A0 (0xC2 0xA0) shares the 0xC2 lead byte but is legal payload: the
+    // filter must key on the codepoint, not on the lead byte.
+    const std::string seq = encode("working", "", "a\xC2\xA0" "b", "projv", "main", -1);
+    CHECK(contains(seq, "msg=YcKgYg=="));
+}
+
 TEST_CASE("osc7501: state and kind validation") {
     // Unknown state: nothing is emitted (a host would drop it anyway).
     CHECK(encode("busy", "", "x", "projv", "main", -1).empty());

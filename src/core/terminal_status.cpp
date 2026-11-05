@@ -97,11 +97,31 @@ bool isKnownKind(const std::string& s) {
 // Control characters must not travel even base64-encoded (the decoder on the
 // host side would put a newline in a one-line label). Replace, never strip:
 // stripping would glue words together.
+//
+// The spec forbids U+0000..U+001F, U+007F and U+0080..U+009F after decoding, so
+// this works on codepoints, not bytes: the C1 range arrives as the two-byte
+// sequence 0xC2 0x80..0x9F, and a byte-wise check would let it through. Both
+// bytes then collapse into ONE space -- one control character, one space.
 std::string sanitizeControl(const std::string& in) {
-    std::string out = in;
-    for (auto& ch : out) {
-        const unsigned char c = static_cast<unsigned char>(ch);
-        if (c < 0x20 || c == 0x7f) ch = ' ';
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size();) {
+        const unsigned char c = static_cast<unsigned char>(in[i]);
+        if (c < 0x20 || c == 0x7f) {
+            out.push_back(' ');
+            ++i;
+            continue;
+        }
+        if (c == 0xC2 && i + 1 < in.size()) {
+            const unsigned char c2 = static_cast<unsigned char>(in[i + 1]);
+            if (c2 >= 0x80 && c2 <= 0x9F) { // U+0080..U+009F
+                out.push_back(' ');
+                i += 2;
+                continue;
+            }
+        }
+        out.push_back(in[i]);
+        ++i;
     }
     return out;
 }
