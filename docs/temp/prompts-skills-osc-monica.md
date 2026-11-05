@@ -198,3 +198,21 @@ MCP 实施（见另一篇）
 - `grep -c "web_search" skills/bigbang/config.json` = 1；跑通用题，角色能抓网页
 - avenger 跑非商业题（如"给新手村设计怪物 AI 行为树"），文档开头白话摘要、B 段"单人落地路径"而非"创业"
 - monica 报告落 `docs/temp/monica-baseline.md`（报告，不落代码）
+
+---
+
+## 9. 落地状态（2026-11-05）
+
+| 项 | 状态 | 提交 |
+|---|---|---|
+| C1 码点过滤 | 已落地 + 2 例测试 | `fix(osc): filter C1 controls by codepoint` |
+| C2 每条必带 app | 已落地（clear 分支挪到 app 之后，空 app 回落 `projv`） | `feat(osc): app on every record…` |
+| C3 中断留 error | 已落地（新增 `abandon()`；正常退出仍 clear） | 同上 |
+| A 单角色 assistant.md | 已落地（15 工具行、隐藏旧三份、en+zh 03-roles 重写、`test_prompt_seed.cpp` 6 例） | `feat(prompts): one universal assistant role instead of three` |
+| B bigbang / avenger 通用化 | 已落地（bigbang 加联网+中性措辞+白话开头；avenger 新增 `research_aud` 摸底轮、按地图派线、B 段由地图推导） | `feat(skills): bigbang and avenger work on any subject` |
+| D monica 巡检 | **未跑**：需要真实 API key 与数分钟多智能体运行，且它会改仓库；按本文规则应在分支上人工看 diff | — |
+| 验收 | `ctest -C Release` 全绿（282 用例 / 1471 断言）；三个 skill 的 `config.json` 通过 JSON 解析 + 角色 prompt 存在性 + 动作工具可解析校验 | — |
+
+验收里还没做的两件手工事：跑一题通用题目（如"给新手村设计怪物 AI 行为树"）看 avenger 是否真的先摸底、再按地图派线；以及按 §5 在分支上跑一次 monica。
+
+---
