@@ -70,7 +70,7 @@
 | `reasoning_effort` | 思考强度：`none` / `low` / `high` / `max`，默认 `max`；`none` 表示关闭思考（官方默认强度为 `high`） |
 | `context_window` | 0 = 自动 |
 | `theme` | 当前主题名 |
-| `osc_status` | `true`（默认）：用 OSC 7501 把 `working` / `blocked` / `done` / `error` 上报给宿主终端；不认识的终端会直接忽略，输出被重定向时不多写一个字节。`PROJV_NO_OSC=1` 强制关闭 |
+| `osc_status` | `true`（默认）：用 OSC 7501 把 `working` / `blocked` / `done` / `error` 上报给宿主终端；不认识的终端会直接忽略，输出被重定向时不多写一个字节。正常退出留 `clear`；中断退出（Ctrl-C、关窗口）留 `error`，让这次运行在宿主列表里仍然可见。`PROJV_NO_OSC=1` 强制关闭 |
 | `cpp_compiler_path` | 可选，编译类任务用 |
 | `python_path` | pytool 解释器；留空 = `python` |
 | `clang_format_path` | `format_file` 用的二进制；留空 = 走 PATH |

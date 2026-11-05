@@ -159,6 +159,10 @@ void setState(const std::string& state, const std::string& kind, const std::stri
 
 } // namespace
 
+// Used when a caller passes no app name: the field is mandatory, so a record
+// must never go out without one.
+constexpr const char* kFallbackApp = "projv";
+
 std::string encode(const std::string& state, const std::string& kind, const std::string& msg,
                    const std::string& app, const std::string& id, int progress) {
     if (!isKnownState(state)) {
@@ -182,9 +186,11 @@ std::string encode(const std::string& state, const std::string& kind, const std:
 
     if (!id.empty()) body += ":id=" + truncateUtf8(id, kMaxId);
 
-    if (state == "clear") return wrap(body); // clear carries nothing else
+    // rev 0.4 requires every record to carry `app`, clear included: the host
+    // groups its list by app, and a record without one cannot be attributed.
+    body += ":app=" + truncateUtf8(app.empty() ? kFallbackApp : app, kMaxApp);
 
-    if (!app.empty()) body += ":app=" + truncateUtf8(app, kMaxApp);
+    if (state == "clear") return wrap(body); // clear carries no msg/progress
 
     const std::string plain = truncateUtf8(sanitizeControl(msg), kMaxMsgPlain);
     if (!plain.empty()) {
@@ -248,6 +254,28 @@ void shutdown() {
             return;
         }
         seq = encode("clear", "", "", "projv", "main", -1);
+        s.enabled = false;
+        s.available = false;
+        s.pending = Pending{};
+        s.lastSent.clear();
+    }
+    if (!seq.empty()) emit(seq);
+}
+
+void abandon(const std::string& msg) {
+    auto& s = g();
+    std::string seq;
+    {
+        std::lock_guard<std::mutex> lk(s.mutex);
+        if (!s.enabled || !s.available) {
+            s.enabled = false;
+            s.available = false;
+            s.pending = Pending{};
+            return;
+        }
+        // The last record is `error`, not `clear`: an interrupted run must stay
+        // visible in the host's list instead of looking cleanly finished.
+        seq = encode("error", "", msg, kFallbackApp, "main", -1);
         s.enabled = false;
         s.available = false;
         s.pending = Pending{};

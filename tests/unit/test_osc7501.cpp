@@ -113,11 +113,17 @@ TEST_CASE("osc7501: progress only for working, and only in range") {
     CHECK(!contains(encode("done", "", "m", "projv", "main", 42), "progress="));
 }
 
-TEST_CASE("osc7501: clear carries only the id") {
+TEST_CASE("osc7501: clear carries state, id and app, nothing else") {
     const std::string seq = encode("clear", "", "", "projv", "main", -1);
-    CHECK(endsWith(seq, "state=clear:id=main\x1b\\"));
-    CHECK(!contains(seq, "app="));
+    // app is mandatory on every record (rev 0.4), clear included.
+    CHECK(endsWith(seq, "state=clear:id=main:app=projv\x1b\\"));
     CHECK(!contains(seq, "msg="));
+    CHECK(!contains(seq, "progress="));
+}
+
+TEST_CASE("osc7501: an empty app still emits the mandatory field") {
+    CHECK(contains(encode("working", "", "m", "", "main", -1), ":app=projv"));
+    CHECK(contains(encode("clear", "", "", "", "main", -1), ":app=projv"));
 }
 
 TEST_CASE("osc7501: msg truncation stays inside the spec limits") {
@@ -243,6 +249,38 @@ TEST_CASE("osc7501: shutdown emits clear exactly once") {
     CHECK(contains(sink.writes.back(), "state=clear"));
     CHECK(contains(sink.writes.back(), "id=main"));
     CHECK(terminal_status::available() == false);
+}
+
+TEST_CASE("osc7501: abandon leaves error as the last record, never clear") {
+    Fresh fresh;
+    Sink sink;
+    sink.attach();
+    terminal_status::test::setTtyProbe([] { return true; });
+    REQUIRE(terminal_status::init(true));
+
+    terminal_status::working("thinking");
+    terminal_status::flushIfDirty();
+    terminal_status::abandon("interrupted");
+    terminal_status::abandon("interrupted again"); // idempotent: one record only
+
+    REQUIRE(sink.writes.size() == 2);
+    CHECK(contains(sink.writes.back(), "state=error"));
+    CHECK(contains(sink.writes.back(), "app=projv"));
+    CHECK(!contains(sink.writes.back(), "state=clear"));
+    CHECK(terminal_status::available() == false);
+}
+
+TEST_CASE("osc7501: abandon after shutdown writes nothing") {
+    Fresh fresh;
+    Sink sink;
+    sink.attach();
+    terminal_status::test::setTtyProbe([] { return true; });
+    REQUIRE(terminal_status::init(true));
+
+    terminal_status::shutdown();
+    const size_t afterShutdown = sink.writes.size();
+    terminal_status::abandon("late");
+    CHECK(sink.writes.size() == afterShutdown);
 }
 
 TEST_CASE("osc7501: no raw newline can survive the encoder") {

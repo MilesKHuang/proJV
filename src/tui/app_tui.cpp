@@ -787,7 +787,9 @@ void TuiApp::emergencyShutdown() {
     // Do not join the models thread: it never touches the DB and might be
     // blocked on the network. Close the DB now; the OS reclaims the rest.
     storage.closeDatabase();
-    terminal_status::shutdown(); // idempotent; keeps the host list clean
+    // Ctrl-C / window close: leave `error` as the last record instead of a
+    // silent clear, so an interrupted run is visible in the host's list.
+    terminal_status::abandon("interrupted");
 }
 
 status_bar::Data TuiApp::getStatusBarData() const {

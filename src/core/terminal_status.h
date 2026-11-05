@@ -50,6 +50,12 @@ bool init(bool enabled);
 // Safe to call twice (the second call does nothing).
 void shutdown();
 
+// Interrupted exit (Ctrl-C, window close): send a final "error" record and go
+// back to the no-op state WITHOUT the "clear" that would erase the record. An
+// abrupt exit must stay visible in the host's list. Safe to call twice, and
+// safe to call after shutdown() (then it does nothing).
+void abandon(const std::string& msg);
+
 // True when a status report could actually reach the host.
 bool available();
 
