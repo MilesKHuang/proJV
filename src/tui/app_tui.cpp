@@ -247,14 +247,10 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
 
     // Prompt files from projv_files/prompts/.
     promptFiles_ = ensureDefaultPrompts();
-    // Not roles: compactor.md is the /compress prompt, and the three legacy role
-    // seeds stay on disk for old installs but must not show up in the Tab cycle
-    // now that assistant.md covers all of them.
-    static const char* const kHiddenPrompts[] = {"compactor.md", "coder.md", "designer.md",
-                                                 "analyzer.md"};
-    for (const char* hidden : kHiddenPrompts)
-        promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), hidden),
-                           promptFiles_.end());
+    // compactor.md is the /compress prompt, not a role. Every other file here is
+    // a role, whatever it is called -- no name is reserved.
+    promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
+                       promptFiles_.end());
     activePromptIndex_ = defaultPromptIndex(promptFiles_);
     std::string sp = activePromptContent();
     agent->setSystemPrompt(sp);

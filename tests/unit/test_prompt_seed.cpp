@@ -28,6 +28,10 @@ TEST_CASE("role seed: the default file name and the startup index") {
     CHECK(defaultPromptIndex({"reviewer.md", "assistant.md"}) == 1);
     // The seeded file is gone but the list is not: first entry wins.
     CHECK(defaultPromptIndex({"reviewer.md"}) == 0);
+    // No role name is reserved: a file called coder.md is a normal role, it just
+    // is not preferred over the seed.
+    CHECK(defaultPromptIndex({"analyzer.md", "assistant.md"}) == 1);
+    CHECK(defaultPromptIndex({"coder.md"}) == 0);
 }
 
 TEST_CASE("role seed: the tool line names every capability the role may use") {

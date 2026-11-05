@@ -69,7 +69,7 @@
 |---|---|
 | `prompts_loader.cpp` | presets 表换成 `assistant.md` 一个种子；删 coder/designer/analyzer 种子；`upgradeSeededPrompt`（:290-298）补分支走 `upgradeStyleText`（不补 styles 测试首轮红）；`upgradePromptFile`（:349-352）改一行 |
 | `prompts.h` | 加 `defaultPromptSeed(name)`、`defaultPromptIndex(list)`；顺带改 `:6-7` 注释里的 `"coder.md"`（§8 的 grep 验收会命中这两行注释） |
-| `app_tui.cpp` | `:253-257` 换 `defaultPromptIndex`；`:250-251` 的 erase 名单从 `compactor.md` 扩成 `compactor.md` + 旧三份（不改这里，老安装 Tab 循环仍有四个角色，与 §8 验收直接冲突）；`:259` 空表守卫（`:295`、`:901` 是同一处裸索引，一并防） |
+| `app_tui.cpp` | `:253-257` 换 `defaultPromptIndex`；`:250-251` 的 erase 名单**只留 `compactor.md`**（复核后推翻原方案：按名字隐藏旧三份等于禁止用户再用这三个名字，属于把实现细节变成用户约束）；`:259` 空表守卫（`:295`、`:901` 是同一处裸索引，一并防） |
 | `docs/en/user-guide/03-roles.md`、`docs/zh/user-guide/03-roles.md` | 角色表（en `:12-19`、zh `:14` 起）改成 assistant + compactor；顺手订正 en `:42-43` 那句错话——真实现状是 `agent.cpp:959-967` 过滤 + `:819-820` 拒调，工具行就是权限表，不是"skill 级设置、主 agent 拿全套工具" |
 | `test_prompt_style.cpp` | files[] **追加** assistant.md，不要删 coder/designer/analyzer —— `upgradeSeededPrompt` 的旧分支必须留给老安装，测试删了就没人守它；工具集合相等断言；旧角色名不在 assistant.md 断言 |
 
@@ -84,7 +84,7 @@
 
 ### 2.4 硬约束
 
-- 不删用户文件：coder/designer/analyzer 留磁盘，靠 `app_tui.cpp:250-251` 的隐藏名单从角色列表过滤（"留磁盘"和"不出现在列表"是两件事，缺后者 Tab 循环不会变）
+- 不删用户文件：coder/designer/analyzer 留磁盘；它们就是普通角色（文件名即角色名），只有 `compactor.md` 是内部提示词、不进循环
 - 不做等值迁移；断言成对（测"不含"旧角色名）
 - compactor.md 不套三层表达（压缩是结构化抽取）
 
@@ -193,7 +193,7 @@ MCP 实施（见另一篇）
 - `ctest -C Release --output-on-failure` 全绿；新增断言 ≥ 4（agent 集合相等、旧角色名不在 assistant.md、`defaultPromptIndex`、种子含"本科生毕业也能理解"）
 - 手改测试：删 `format_file`/`list_dir` → 红；删 `tools available:` 行 → 红；`Keep responses concise` 放回种子 → 红；`Chinese for narrative` 放回种子 → 红
 - `grep -rn '"coder.md"' src/` 只剩 legacy 两处（`prompts_loader.cpp:291` dispatch、`:349` upgradePromptFile）——前提是 `prompts.h:6-7` 的注释同一提交改掉，否则这里是三处
-- 角色列表只剩 assistant.md / compactor.md（老安装也一样，靠 `:250-251` 隐藏名单）；旧三文件在磁盘仍存在
+- 新安装角色列表只剩 assistant.md / compactor.md；老安装里旧三份照常作为普通角色出现在循环中（名字不保留，想删就删文件）
 - OSC：`test_osc7501.cpp` 的 "C1 controls" 与 "non-control UTF-8 above the C1 range" 两例已落地（本轮已修）
 - `grep -c "web_search" skills/bigbang/config.json` = 1；跑通用题，角色能抓网页
 - avenger 跑非商业题（如"给新手村设计怪物 AI 行为树"），文档开头白话摘要、B 段"单人落地路径"而非"创业"

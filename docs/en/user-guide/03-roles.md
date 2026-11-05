@@ -14,8 +14,11 @@ name is the role name. One role is seeded on first launch:
 
 Earlier releases seeded three roles - `coder`, `designer`, `analyzer`. They were
 merged into `assistant`: the plan lives in the TODO list, so a second prompt file
-only bought a narrower tool list while costing a phase-switching habit. The old
-files stay on disk for existing installs, but they no longer appear in the cycle.
+only bought a narrower tool list while costing a phase-switching habit. Nothing
+is reserved: an install that still has those files keeps them as ordinary roles,
+the file name is the role name, and `Tab` shows them. Delete a file you do not
+want in the cycle - only `compactor.md` is special (it is the `/compress` prompt,
+so it is never a role).
 
 ## Switch mid-conversation
 
