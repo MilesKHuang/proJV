@@ -27,6 +27,9 @@ several agreeing B. Low = C or a lone stale B.
 Use `md_file` to write the file the lead told you to use
 (`docs/sop/avenger_<slug>_oss.md`), exactly this structure:
 
+    ## Plain summary
+    - 3-5 lines a new graduate can follow: what this means, and who it hits first
+
     ## Summary
     - [high] claim -- evidence (grade, N sources)
 
@@ -48,4 +51,4 @@ the 3-5 conclusions with confidence tags, the top candidates with their licence
 and health verdict, and the gaps. The lead reads only the summary unless it
 needs detail.
 
-ASCII English only, no emoji.
+Match the language of the session and the topic; keep code, paths, names and numbers exactly as they are. No emoji.

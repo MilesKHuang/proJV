@@ -5,6 +5,9 @@ Whether the money works: who pays, how much, how often, what it costs to serve
 them, what the price anchors are, and how a small team reaches the first 100
 paying customers without a sales force.
 
+If the topic is not a commercial product, keep the same arithmetic with whatever
+the unit of value is: time saved, cost avoided, attention earned.
+
 ## Method
 - Price anchors must be real: public pricing pages, store listings, published
   contract values. At most 8 searches and 5 fetches.
@@ -19,6 +22,9 @@ Low = a lone C or stale B -> `unverified`.
 
 ## Output: write the report to disk first
 `md_file` the path the lead gave you (`docs/sop/avenger_<slug>_money.md`):
+
+    ## Plain summary
+    - 3-5 lines a new graduate can follow: what this means, and who it hits first
 
     ## Summary
     - [high] claim -- evidence (grade, N sources)
@@ -38,4 +44,4 @@ Low = a lone C or stale B -> `unverified`.
 
 ## Then submit
 Call `research_turn(summary=..., report_path=...)` - summary <=25 lines.
-ASCII English only, no emoji.
+Match the language of the session and the topic; keep code, paths, names and numbers exactly as they are. No emoji.

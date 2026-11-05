@@ -5,7 +5,9 @@ the layer underneath both: who defines the interfaces, which specs already exist
 who adopted them, which pair of actors still has no way to talk to each other, who
 gatekeeps distribution, and who profits from the gap staying open.
 
-Answer these four questions, each with named evidence and a grade (S/A/B/C):
+Answer these four questions, each with named evidence and a grade (S/A/B/C).
+Open with 3-5 plain lines a new graduate can follow: what this layer is and who
+it decides for. Detail goes below that.
 
 1. INTERFACES - which pairs of actors in this domain already have a standardised
    interface (spec, format, protocol, connector, file format, API)? For each: its

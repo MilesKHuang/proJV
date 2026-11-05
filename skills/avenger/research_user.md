@@ -26,6 +26,9 @@ market. Quote contradictions instead of smoothing them.
 Use `md_file` to write the file the lead told you to use
 (`docs/sop/avenger_<slug>_user.md`), exactly this structure:
 
+    ## Plain summary
+    - 3-5 lines a new graduate can follow: what this means, and who it hits first
+
     ## Summary
     - [high] claim -- evidence (grade, N sources)
 
@@ -47,4 +50,4 @@ the 3-5 conclusions with confidence tags, the strongest verbatim evidence, and
 the gaps. The lead reads only the summary unless it needs detail - make both
 layers stand alone.
 
-ASCII English only, no emoji.
+Match the language of the session and the topic; keep code, paths, names and numbers exactly as they are. No emoji.

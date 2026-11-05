@@ -1,1 +1,5 @@
-{"name":"write_bigbang_doc","description":"After convergence, emit the final execution document.","parameters":[{"name":"doc_markdown","type":"string","description":"The full execution document (Markdown)","required":true}]}
+{
+  "name": "write_bigbang_doc",
+  "description": "After convergence, emit the final plan document: 5 plain lines first, then the execution steps, the risk table and the NOT-included list.",
+  "parameters": [{"name": "doc_markdown", "type": "string", "description": "The full plan document (Markdown), opening with 5 lines a new graduate can follow", "required": true}]
+}

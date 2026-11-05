@@ -26,12 +26,17 @@ projv_files/skills/monica/
 
 The skill name doubles as the command. `Esc` stops it.
 
-## The two examples
+## Example skills
 
 ### bigbang
 
-Three roles debate a topic until they all agree, then produce one execution
+Three roles debate a topic until they all agree, then produce one plan
 document. Thinking mode stays on; the debate is the product.
+
+The topic does not have to be software: the rules read "file path / class /
+interface" as "part / step / material / person", so a shop-opening plan or a
+course outline gets the same three reviewers. The skill can search the web, and
+the document opens with five lines a new graduate can follow before any detail.
 
 ### monica
 
@@ -53,10 +58,13 @@ Dead code is only ever reported. Workers have no shell; formatting goes through
 Three skills that chain into one commercialisation pipeline, and they show the
 two ways a skill can be orchestrated:
 
-1. **avenger** - market research. Stark is the only driver: it dispatches the
-   market / users / open-source lines in parallel, may wake the optional lines
-   (tech / compliance / money), audits every report, and stops on `DONE`. Writes
-   `docs/sop/avenger_<slug>.md`.
+1. **avenger** - research on any topic. Stark is the only driver. Round 1 sends
+   `research_aud` alone to learn the field and write a knowledge map (vocabulary,
+   key questions, the *type* of source each line should hunt, and the local
+   unknowns no search can settle). Round 2 dispatches the market / users /
+   open-source lines plus any optional line (tech / compliance / money /
+   ecosystem) the map justifies, then audits every report and stops on `DONE`.
+   Writes `docs/sop/avenger_<slug>.md`, opening with 3-5 plain lines.
 2. **steve** - product design. No driver at all: seven roles sit in the script
    (four designers -> PM -> QA -> everyone votes) and the **engine** runs it.
    `converge=all_agree` means unanimity is counted, not claimed; one dissent

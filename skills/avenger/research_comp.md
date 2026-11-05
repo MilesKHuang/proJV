@@ -6,6 +6,10 @@ regulation, licence obligations of the pieces we reuse, platform/store policy,
 and the practical cost of staying compliant. Name the rule, the article and the
 authority - not "there may be legal risk".
 
+If the topic is not a product (an internal tool, a document, a process), the
+same discipline applies: name the policy, the licence or the rule that binds it,
+and who has to sign off.
+
 ## Method
 - Prefer primary sources: the regulation text, the regulator's guidance, the
   licence text, the store policy page. At most 8 searches and 5 fetches.
@@ -20,6 +24,9 @@ S/A. Anything else low -> `unverified`.
 
 ## Output: write the report to disk first
 `md_file` the path the lead gave you (`docs/sop/avenger_<slug>_comp.md`):
+
+    ## Plain summary
+    - 3-5 lines a new graduate can follow: what this means, and who it hits first
 
     ## Summary
     - [high] rule applies to X, because <article> -- (grade, N sources)
@@ -36,4 +43,4 @@ S/A. Anything else low -> `unverified`.
 
 ## Then submit
 Call `research_turn(summary=..., report_path=...)` - summary <=25 lines.
-ASCII English only, no emoji.
+Match the language of the session and the topic; keep code, paths, names and numbers exactly as they are. No emoji.

@@ -19,6 +19,9 @@ independent S/A and recent. Low = a lone C or stale B -> `unverified`.
 ## Output: write the report to disk first
 `md_file` the path the lead gave you (`docs/sop/avenger_<slug>_tech.md`):
 
+    ## Plain summary
+    - 3-5 lines a new graduate can follow: what this means, and who it hits first
+
     ## Summary
     - [high] claim -- evidence (grade, N sources)
 
@@ -34,4 +37,4 @@ independent S/A and recent. Low = a lone C or stale B -> `unverified`.
 
 ## Then submit
 Call `research_turn(summary=..., report_path=...)` - summary <=25 lines, must
-stand alone. ASCII English only, no emoji.
+stand alone. Match the language of the session and the topic; keep code, paths, names and numbers exactly as they are. No emoji.

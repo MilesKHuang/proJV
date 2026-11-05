@@ -1,6 +1,6 @@
 {
   "name": "avenger",
-  "description": "Ant-colony market research: Stark is the only driver -- it dispatches the core three research lines in parallel (market / users / open-source), may wake the optional lines (tech / compliance / money / ecosystem), adversarially reviews every report and closes with two verdicts (business, and the one-person path), then merges everything into docs/sop/avenger_<slug>.md",
+  "description": "Ant-colony research on any topic: Stark scouts the field first, dispatches the research lines (market / users / open-source / tech / compliance / money / ecosystem), adversarially reviews every report and closes with two verdicts (the decision, and the one-person path), then merges everything into docs/sop/avenger_<slug>.md",
   "thinking": "on",
   "tools": ["web_search", "fetch_url", "read_file", "grep_files", "file_search", "md_file"],
   "tool_mode": "auto",
@@ -14,6 +14,7 @@
   "stop_when": {"slot": "judgment", "equals": "DONE"},
   "agents": [
     {"id": "stark",         "display_name": "Stark (Lead)",         "prompt": "stark.md",         "thinking": "on"},
+    {"id": "research_aud",  "display_name": "Recon",                "prompt": "research_aud.md",  "thinking": "off"},
     {"id": "research_mkt",  "display_name": "Market",               "prompt": "research_mkt.md",  "thinking": "off"},
     {"id": "research_user", "display_name": "Users",                "prompt": "research_user.md", "thinking": "off"},
     {"id": "research_oss",  "display_name": "Open Source",          "prompt": "research_oss.md",  "thinking": "off"},
@@ -25,7 +26,7 @@
   "round_steps": [
     {"progress": "Round {{round}}/{{max_rounds}} - Stark: dispatch, review, decide", "actions": [
       {"agent": "stark", "tool": "emit", "capture": "summary", "into": "judgment", "emit": "message",
-       "message": "Topic: {{topic}}\n\n=== Round {{round}}/{{max_rounds}} ===\n\nYour own line from the previous round (empty in round 1):\n{{judgment.prev}}\n\nROUND 1: pick the ASCII slug, then in ONE reply send three parallel request_agent calls (research_mkt, research_user, research_oss) plus any optional line the topic really needs - research_tech, research_comp, research_money, research_eco. research_eco is for topics that turn on interfaces, formats, platforms, certification or distribution channels (most hardware, protocol and tooling topics), and it must be able to name the pair of actors that still has no standard; if the topic has no such layer, leave it asleep. Every dispatch message must contain: the topic, the ASCII slug, the exact report path docs/sop/avenger_<slug>_<line>.md, your sharpened questions, and the source-grade rules. Then emit ONE line: what you dispatched.\n\nROUND 2+: run the adversarial review from your system prompt on everything that came back (does it answer the business question / what is missing / what hidden link is worth chasing). Blind spot -> re-dispatch that line with a sharper question. All qualified -> emit exactly DONE."}
+       "message": "Topic: {{topic}}\n\n=== Round {{round}}/{{max_rounds}} ===\n\nYour own line from the previous round (empty in round 1):\n{{judgment.prev}}\n\nROUND 1: pick the ASCII slug, then dispatch research_aud ALONE (one request_agent call: topic, slug, path docs/sop/avenger_<slug>_aud.md, mandate: the knowledge map, source TYPES not URLs, the local unknowns). ROUND 2: read the map, then in ONE reply send three parallel request_agent calls (research_mkt, research_user, research_oss) plus any optional line the topic really needs - research_tech, research_comp, research_money, research_eco. research_eco is for topics that turn on interfaces, formats, platforms, certification or distribution channels (most hardware, protocol and tooling topics), and it must be able to name the pair of actors that still has no standard; if the topic has no such layer, leave it asleep. Every dispatch message must contain: the topic, the ASCII slug, the exact report path docs/sop/avenger_<slug>_<line>.md, 2-5 questions taken from the map, the source-grade rules, and the local unknowns to mark instead of guessing numbers. Then emit ONE line: what you dispatched.\n\nROUND 3+: run the adversarial review from your system prompt on everything that came back (does it answer the decision question / what is missing / what hidden link is worth chasing). Blind spot -> re-dispatch that line with a sharper question. All qualified -> emit exactly DONE."}
     ]}
   ],
   "on_converge": [
