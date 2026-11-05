@@ -51,3 +51,7 @@ docs/archive/
 # Agent artifacts: design/architecture documents and diagrams written by the
 # designer prompts and the diagram tool. Not repository content.
 /doc/
+
+# Skill output: avenger and bigbang write their reports here (workspace data,
+# not repository content).
+docs/sop/
