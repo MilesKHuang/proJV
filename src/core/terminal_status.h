@@ -88,8 +88,8 @@ std::string encode(const std::string& state, const std::string& kind, const std:
 // pretend to be redirected) and the sink (so nothing is written to the real
 // console). reset() restores the defaults and clears all pending state.
 namespace test {
-void setTtyProbe(std::function<bool()> probe);            // nullptr = real probe
-void setSink(std::function<void(const std::string&)> s);   // nullptr = real write
+void setTtyProbe(std::function<bool()> probe);           // nullptr = real probe
+void setSink(std::function<void(const std::string&)> s); // nullptr = real write
 void reset();
 } // namespace test
 

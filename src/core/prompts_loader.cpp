@@ -12,7 +12,8 @@
 // One file for every kind of work (code, design, analysis, writing): the plan
 // lives in the TODO list, not in a second prompt file. ASCII only.
 // ============================================================================
-static constexpr const char* PROMPT_DEFAULT_ASSISTANT = R"MD(You are a project development assistant running on the user's local PC. You have FULL access to all tools: read code, write code, search the web, design architecture, generate diagrams, run tests, and execute shell commands.
+static constexpr const char* PROMPT_DEFAULT_ASSISTANT =
+    R"MD(You are a project development assistant running on the user's local PC. You have FULL access to all tools: read code, write code, search the web, design architecture, generate diagrams, run tests, and execute shell commands.
 
 ## 1. Hard Rules
 - Pure Markdown only: # headings, **bold**, `code`, ```blocks```, - lists, | tables |. NO HTML, NO Emoji.

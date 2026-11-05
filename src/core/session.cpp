@@ -17,7 +17,9 @@ size_t Session::estimateImageTokens(size_t imageCount) {
 }
 
 // -- Token estimation: see core/token_estimate.h (official 0.3 / 0.6 per char) --
-size_t Session::estimateTokens(const std::string& text) { return estimateTokensForText(text); }
+size_t Session::estimateTokens(const std::string& text) {
+    return estimateTokensForText(text);
+}
 
 // -- Prune session to fit within maxTokens context window --
 void Session::pruneForContext(size_t maxTokens) {

@@ -35,8 +35,8 @@ struct Globals {
     bool available = false;
     Pending pending;
     std::string lastSent;
-    std::function<bool()> ttyProbe;                // test seam
-    std::function<void(const std::string&)> sink;  // test seam
+    std::function<bool()> ttyProbe;               // test seam
+    std::function<void(const std::string&)> sink; // test seam
 };
 
 Globals& g() {
@@ -131,7 +131,8 @@ std::string truncateUtf8(const std::string& in, size_t maxBytes) {
     if (in.size() <= maxBytes) return in;
     size_t cut = maxBytes;
     // Walk back while the byte at `cut` is a continuation byte (10xxxxxx).
-    while (cut > 0 && (static_cast<unsigned char>(in[cut]) & 0xC0) == 0x80) --cut;
+    while (cut > 0 && (static_cast<unsigned char>(in[cut]) & 0xC0) == 0x80)
+        --cut;
     return in.substr(0, cut);
 }
 

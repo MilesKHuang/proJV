@@ -211,8 +211,7 @@ std::string buildAgentsMdContext(const std::string& workspacePath) {
 
     // Drop a UTF-8 BOM and leading blank lines so the wrapper stays first.
     if (body.size() >= 3 && static_cast<unsigned char>(body[0]) == 0xEF &&
-        static_cast<unsigned char>(body[1]) == 0xBB &&
-        static_cast<unsigned char>(body[2]) == 0xBF)
+        static_cast<unsigned char>(body[1]) == 0xBB && static_cast<unsigned char>(body[2]) == 0xBF)
         body.erase(0, 3);
     const size_t first = body.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) return ""; // empty file: inject nothing

@@ -144,7 +144,8 @@ std::string oneLine(const std::string& in, size_t maxLen = 120) {
         out += ch;
         if (out.size() >= maxLen) break;
     }
-    while (!out.empty() && out.back() == ' ') out.pop_back();
+    while (!out.empty() && out.back() == ' ')
+        out.pop_back();
     return out;
 }
 } // namespace

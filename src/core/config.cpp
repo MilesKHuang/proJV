@@ -226,7 +226,7 @@ bool saveConfig(const AppConfig& cfg) {
     std::string configPath = getConfigPath();
     toml::table tbl;
     try {
-        tbl = static_cast<toml::table&&>(toml::parse_file(configPath));   // see note above
+        tbl = static_cast<toml::table&&>(toml::parse_file(configPath)); // see note above
     } catch (...) {
     }
 
