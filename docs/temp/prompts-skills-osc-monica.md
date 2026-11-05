@@ -1,233 +1,169 @@
-# TEMP 设计稿：提示词双角色化 + 技能通用化 + OSC 7501 对齐 + monica 基线
+# TEMP 设计稿：提示词单角色化 + 技能通用化 + OSC 7501 对齐 + monica 基线
 
-> **TEMP（临时设计稿）** —— 中文、仅供评审，未定稿。
-> 不进 `docs/en/` 镜像；定稿后按 `AGENTS.md` 拆成 `docs/en/` + `docs/zh/` 双语正式文档，本文件删除。
-> 本文只做设计，不含实现。所有行号来自实际读取；未核实的一律标 `[待证]`。
+> **TEMP** —— 中文、仅供评审，未定稿。不进 `docs/en/` 镜像；定稿后拆成双语正式文档，本文件删除。
+> 本文只做设计。行号均经实读；未核实标 `[待证]`。
+> 2026-11-05 对照代码复读后订正：工具可见性分三类（pytool 动态注册）、C2 与 clear 的字段顺序、旧三份的隐藏名单、en+zh `03-roles.md` 进改动清单、bigbang 写死中文。C1 已落地代码。
 
 ---
 
-## 0. 这份文档覆盖四件事
+## 0. 目标
 
 | 代号 | 工作项 | 一句话 |
 |---|---|---|
-| A | 提示词双角色化 | 把四份角色提示词收成 planner + executor，让 proJV 不再只做编码代理 |
-| B | 技能通用化 | bigbang / avenger 从"代码调研与方案"扩到"通用调研与方案" |
-| C | OSC 7501 对齐 0.4 | 现状已声明 rev 0.4，但有两处与规范不符，必须修 |
-| D | monica 巡检 | 用 monica 跑一遍 proJV，产出"实现 MCP 之前的基线" |
+| A | 提示词单角色化 | 四份角色提示词收成一个 universal `assistant.md`；plan→execute 用 TODO + 确认门约束，不丢 hard rules |
+| B | 技能通用化 | bigbang / avenger 从"代码/市场专属"扩到任意工程师/设计师/写作等题材；输出先白话后细节 |
+| C | OSC 7501 对齐 0.4 | 修不合规处（C1 必改，C2 建议，C3 拍板，C4 待核） |
+| D | monica 巡检 | 在 A/B 之后跑，产出 MCP 实施前的代码基线报告 |
 
-A 和 B 是同一件事的两半：A 改主控角色，B 改技能里的角色。C 是独立的合规修补。D 是给后面 MCP 那篇设计立基线。
+贯穿约束：所有提示词与技能输出遵循**两层表达**——① 白话结论（本科生毕业也能理解）→ ② 专业细节（文件路径、签名、数据、参数）。替代现 `Keep responses concise` + "conclusion first + plain language"（`prompts_loader.cpp:21, 30-33`）三条，它们只约束"简洁"与"顺序"，不约束受众可理解度。
 
----
-
-## 1. 现状事实（先看这段，后面所有设计都建立在它上面）
-
-### 1.1 proJV 没有"角色系统"
-
-所谓四个角色，是 `prompts_loader.cpp` 在启动时写到磁盘上的四份纯文本提示词：
-
-- `prompts_loader.cpp:330-333` 的 presets 表：`coder.md` / `designer.md` / `compactor.md` / `analyzer.md`
-- 引擎里没有角色表、没有角色→工具映射、没有角色注册表
-
-### 1.2 每个提示词里那行 `tools available:` 就是权限表
-
-```
-tools available: read_file, write_file, exec_shell, ...
-```
-
-- `agent.h:100` `reloadAllowedTools() { allowedTools_ = parseAvailableTools(systemPrompt_); }`
-- `tool_list_parser.cpp` 只认字面量 `tools available:`，按 `,` 切、trim 空格
-- **名单外的工具，模型连看都看不见**：`agent.cpp:931` `req.tools = getFilteredToolDefinitions();`，而 `agent.cpp:959-964` 在 `allowedTools_` 非空时按名单过滤
-
-所以"让 planner 不能写代码"不需要新机制，只需要它的文本里不写那三个工具名。
-
-### 1.3 两个静默失效点
-
-1. **空名单 = 不设限**：`agent.cpp:959-964` 的 `if (allowedTools_.empty()) return all;`。新提示词漏写那行，权限不会变窄，而是变成"全放行"，构建绿、测试绿。
-2. **默认角色是按字面量找的**：`app_tui.cpp:252-258` 循环找 `"coder.md"`，不是取列表首位。**新建 planner.md 而不改这行，老用户永远落在 coder。**
-
-另外 `app_tui.cpp:259` 的 `promptFiles_[activePromptIndex_]` 在列表为空时越界（既有问题，顺手修）。
-
-### 1.4 现有工具行（四行，逐字核对过）
-
-| 位置 | 角色 | 工具 |
-|---|---|---|
-| `prompts_loader.cpp:41-42` | coder | read_file, write_file, exec_shell, grep_files, edit_file, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill, view_image（13） |
-| `prompts_loader.cpp:87` | compactor | md_file, read_file, grep_files（3） |
-| `prompts_loader.cpp:190` | analyzer | read_file, grep_files, file_search, md_file, diagram_tool（5） |
-| `prompts_loader.cpp:209` | 旧 coder 锚点 | 仅用于样式升级的字符串锚点，**不是活代码** |
-
-**两个孤儿工具**：`format_file`（`format_tool.cpp:130`）和 `list_dir`（`file_tool.cpp:504`）都已注册，但不在上面任何一行里——今天所有角色都用不了它们。
-
-`diagram_tool` 是 pytool 动态注册（`python_tool_manager.cpp` 按 tool.json 注册），`run_skill` / `view_image` 注册在 `app_tui.cpp:59` / `:138`。
+**叙述语言让 LLM 自判，不写死**：删 `prompts_loader.cpp:67/:161` 的 `Chinese for narrative; English for code`（写死中文，英文用户拿到中文报告），改为：**匹配会话与项目语言**（AGENTS.md / README / 代码注释的多数语言），无法判定时镜像用户最近一条消息的语言。代码本体、文件路径、函数名永远保持原样（不翻译）。`prompts_loader.cpp:23` 的 "code ONLY English and ASCII" 保留——代码本体必须英文，任何语言使用者都成立。
 
 ---
 
-## 2. 工作项 A：planner + executor
+## 1. 现状事实
 
-### 2.1 两个角色各拿什么
+- proJV 无角色系统：四份提示词只是 `prompts_loader.cpp` 启动时写的纯文本（presets `:329-334`）。
+- 提示词里 `tools available:` 行是**权限表**：`agent.h:100` `reloadAllowedTools()` → `tool_list_parser.cpp` 按字面量解析；名单外工具模型看不到（`agent.cpp:931, 959-964`）。
+- **动态切换 system prompt 已存在**：`Agent::replaceSystemPrompt`（`agent.h:71-72`，注释明确 "role switching without clearing context"）→ `TuiApp::switchPrompt`（`app_tui.cpp:958-965`）→ Tab 循环（`main_tui.cpp:413-419`）。双角色方案不需要新机制。
+- 静默失效点：
+  1. `agent.cpp:959-964`：`allowedTools_` 为空 = 全放行，漏写工具行不报错。
+  2. `app_tui.cpp:253-257`：默认角色按字面量找 `"coder.md"`，不是列表首位。
+  3. `app_tui.cpp:259`：`promptFiles_` 为空时越界（顺手修）。
+- 工具可见性分三类，别混为一谈：
+  1. `format_file`（`format_tool.cpp:130`）、`list_dir`（`file_tool.cpp:504`）已注册，三份主角色提示词都不带 → **主 agent** 用不了；但 monica 的工具白名单带（`skills/monica/config.json:5`），skill 子角色今天就在用。它们只在"主角色"意义上是孤儿。
+  2. pytool 是动态注册：`projv_files/pytool/<name>/tool.json` 由 `python_tool_manager.cpp:174` 扫盘注册，`diagram_tool` 本身就是 pytool，不是内置工具。新增一个 pytool 目录，模型在改工具行之前看不到它 → "注册表 ⊆ 某角色工具行"必须**启动后动态比对**，写不成静态清单。
+- 表达规则现状：`prompts_loader.cpp:21` `Keep responses concise` 与 `:30-33` "conclusion first + plain language" 只鼓励浓缩结论与顺序约束，无受众标准；本轮用"本科生毕业也能理解"替代。`prompts_loader.cpp:67/:161` 的 `Chinese for narrative` 写死叙述语言（英文用户会拿到中文报告），改为 LLM 自判。
+- skill 工具白名单是真闸门：`sub_agent.cpp:186-189` 执行时过滤，`skill_runner.cpp:393-394` 按名单注册 schema。bigbang 现只有 `read_file, grep_files, file_search`，零联网。
 
-| 角色 | 工具数 | 名单 |
-|---|---|---|
-| planner | 11 | read_file, list_dir, grep_files, file_search, web_search, fetch_url, md_file, update_todo, diagram_tool, run_skill, view_image |
-| executor | 15 | planner 全部 + write_file, edit_file, exec_shell, format_file |
+---
 
-差集就是那四个"动手"的工具 —— 这就是"计划 / 执行"的边界，其余完全一样。
+## 2. 工作项 A：一个 universal assistant.md
 
-**顺手救活两个孤儿**：`list_dir` 进 planner（读目录本来就是计划的一部分），`format_file` 进 executor（执行的一部分）。这是本轮唯一一次会重写工具行的机会，下一版没人会为两个名字再来一次。
+### 2.1 方案
 
-### 2.2 改哪些文件
+单文件 + 工作流约束。plan→execute 不靠文件切换（虽然机制存在，但双文件换来的只是"少四个工具名"，还要养一套阶段切换 UI 语义）：
+
+- 计划 = `update_todo(action="init", tasks=...)` + 确认门（先白话说清理解 + 交付物，歧义先确认）
+- 执行 = `update_todo(action="update", ...)` 逐步推进，完成 `action="done"`；TODO 状态经 `todo_tool.cpp:277-296` 注入 system 块（`agent.cpp:934-936`），右侧面板可见（`main_tui.cpp:518`）
+
+**assistant.md 不是"新的 coder"，是取三份优点整合**——todo 只是进度载体，不是准则来源。三份各有独有准则，缺了会退化：
+
+| 来源 | 独有准则（另外两份没有） |
+|---|---|
+| coder | 8KB 上限、exec_shell timeout、批量工具调用、run_skill/view_image 纪律、英文代码 |
+| designer | 具体到文件路径+签名+行数、表内禁空行、md_file 专属写文档、设计文档五段结构、线程安全/资源生命周期检查、先读全部源码再写 |
+| analyzer | diagram_tool 绘图准则（digraph/rankdir/cluster）、数据流追踪、图表类型约定 |
+
+**"要求先白话结论"与"Keep responses concise"合并成一条可判定标准**：
+- 删 `prompts_loader.cpp:21` `Keep responses concise -- compact conclusions`
+- 删 `:30-33` 三层表达/plain language 两条，替换为一条：**"用本科生毕业也能理解的语言给出结论——先讲清是什么和它对你意味着什么，再给专业细节"**
+- 删 `:67/:161` `Chinese for narrative; English for code...`，替换为：**匹配会话与项目语言（AGENTS.md / README / 代码注释多数语言），无法判定时镜像用户最近一条消息的语言；代码/路径/函数名保持原样**（`buildAgentsMdContext` `app_tui.cpp:880` 已注入 AGENTS.md，模型有现成信号）
+- 保留 designer 的 `- Be concrete -- exact file paths...`（否则模型只写大白话、丢工程细节）与 coder 的 "code ONLY English and ASCII"（代码本体必须英文，任何语言使用者都成立）
+
+工具行（15 个）：现 coder 13 个 + `list_dir`（规划） + `format_file`（执行收尾）。
+
+### 2.2 改动清单
 
 | 文件 | 动作 |
 |---|---|
-| `prompts_loader.cpp` | presets 表换成 `planner.md` / `executor.md`；新增两段种子文本；`upgradeSeededPrompt`（:290-298）补两个分支走 `upgradeStyleText`（**不补则 styles 测试首轮红 6 条**）；`upgradePromptFile`（:349-352）补两行 |
-| `prompts.h` | 加 `defaultPromptSeed(name)`、`defaultPromptIndex(list)` 两条声明 |
-| `app_tui.cpp` | `:252-258` 的循环换成 `defaultPromptIndex`；`:250-251` 的 erase 追加三个旧角色名；`:259` 加空表守卫 |
-| `test_prompt_style.cpp` | files[] 追加两个新名字；planner / executor 各一条集合相等断言；`planner != executor` |
+| `prompts_loader.cpp` | presets 表换成 `assistant.md` 一个种子；删 coder/designer/analyzer 种子；`upgradeSeededPrompt`（:290-298）补分支走 `upgradeStyleText`（不补 styles 测试首轮红）；`upgradePromptFile`（:349-352）改一行 |
+| `prompts.h` | 加 `defaultPromptSeed(name)`、`defaultPromptIndex(list)`；顺带改 `:6-7` 注释里的 `"coder.md"`（§8 的 grep 验收会命中这两行注释） |
+| `app_tui.cpp` | `:253-257` 换 `defaultPromptIndex`；`:250-251` 的 erase 名单从 `compactor.md` 扩成 `compactor.md` + 旧三份（不改这里，老安装 Tab 循环仍有四个角色，与 §8 验收直接冲突）；`:259` 空表守卫（`:295`、`:901` 是同一处裸索引，一并防） |
+| `docs/en/user-guide/03-roles.md`、`docs/zh/user-guide/03-roles.md` | 角色表（en `:12-19`、zh `:14` 起）改成 assistant + compactor；顺手订正 en `:42-43` 那句错话——真实现状是 `agent.cpp:959-967` 过滤 + `:819-820` 拒调，工具行就是权限表，不是"skill 级设置、主 agent 拿全套工具" |
+| `test_prompt_style.cpp` | files[] **追加** assistant.md，不要删 coder/designer/analyzer —— `upgradeSeededPrompt` 的旧分支必须留给老安装，测试删了就没人守它；工具集合相等断言；旧角色名不在 assistant.md 断言 |
 
-### 2.3 硬约束
+**compactor.md 保留**：`/compress` 的 LLM 压缩提示词（`agent.cpp:787`），不属于主角色范围。
 
-- **不删用户文件**：`coder.md` / `designer.md` / `analyzer.md` 留在磁盘，只从 F4 列表过滤掉。想要回来自行改名。
-- **不做等值迁移**：不为"删旧种子"养两个 legacy 常量和一段不可回滚的删除逻辑。
-- **断言必须成对**：只测"含"会放行一个照抄 coder 的残废种子。
+### 2.3 新种子必须包含（缺失即种子被改坏）
 
-### 2.4 已知缺口（写清，别当 bug 报）
+1. 确认门（继承 `prompts_loader.cpp:27-29`）
+2. 计划先行：多步骤先 `update_todo(init)`；执行推进：每步 `update_todo(update)`，完成 `done`；不做计划外工作
+3. 表达规则（合并原三条）：**结论用本科生毕业也能理解的语言**，先讲清是什么与它对你意味着什么，再给专业细节；**叙述语言匹配会话与项目语言**（AGENTS.md/README/代码注释多数语言，无法判定时镜像用户最近消息语言），代码/路径/函数名保持原样；保留 `Be concrete -- exact file paths`
+4. 继承 coder/designer/analyzer 独有准则：8KB、exec_shell timeout、批量调用、run_skill/view_image 纪律、md_file 专属写文档、五段结构、线程安全/资源检查、diagram_tool 绘图准则、先读全部源码再写、code ONLY English and ASCII
 
-- **planner 只能写 `.md`**：`md_file` 强制后缀 + 8KB 上限，所以"把计划存成 plan.json"做不到。
-- **角色边界只存在于提示词文本**：没有代码强制。抓得住"种子被改坏"，抓不住"有人用一句话说服模型越界"。
+### 2.4 硬约束
+
+- 不删用户文件：coder/designer/analyzer 留磁盘，靠 `app_tui.cpp:250-251` 的隐藏名单从角色列表过滤（"留磁盘"和"不出现在列表"是两件事，缺后者 Tab 循环不会变）
+- 不做等值迁移；断言成对（测"不含"旧角色名）
+- compactor.md 不套三层表达（压缩是结构化抽取）
+
+### 2.5 已知缺口
+
+- 计划无独立文件形态（`md_file` 强制 `.md` + 8KB）；持久形态 = TODO 面板 + 会话库
+- 阶段边界只在提示词文本，无代码强制
 
 ---
 
 ## 3. 工作项 B：bigbang / avenger 通用化
 
-### 3.1 这里有个真问题，不是措辞问题
+### 3.1 必改点
 
-bigbang 的三份角色提示词里有条硬规矩：
+1. **证据规则扩源**：bigbang 三份角色各有同款证据规则（`sheldon.md:26-27`、`penny.md:27-28`、`leonard.md:19-20`）"Any claim about the codebase... MUST come from a file you read THIS round" 在通用调研（无文件可引）下会一路否决到打满 `max_rounds`。扩成"本轮读过的文件或 URL/检索结果"，保留"未核实标 `[assumed]`"。
+2. **输出给谁看**：avenger `stark.md:77-117` B1-B4 全是"创业者/投资人"语言；七条 worker 线（`research_{mkt,user,oss,tech,comp,money,eco}`）与 `research_mkt` 的 market/price 全是单一受众假设；bigbang 三份提示词 "design document/codebase" 全是代码语义。
+3. **不预置 source catalog，先学后做**：用户对领域无知是默认假设。喂具体 URL/目录 = 预设答案，违背 universal。research_aud 增 **round 0 摸底**——从入门内容现学，产出**领域知识地图**：关键问题清单、每条线该找的**信息类型**（"许可监管页"——类型是方法，任何领域成立；具体 URL 是答案，不预置）、本地未知项。七线按地图分配深挖。
+4. **领域推导判据，不用固定模板**：B 段"4 周最小成果"由摸底地图推导（咖啡店 = 摊位/pop-up + 选址流量计数；袜子 = 小批量 + 平台店），Stark 不得套固定模板。
+5. **线下数据盲区显式化**：咖啡店的人流/租金/选址是本地数据，web_search 抓不到。地图与最终报告显式标"未知项"，模型不编数填坑。
 
-> Any claim about the codebase (file path, signature, line number, behavior) MUST come from a file you read or grepped THIS round.
-
-通用调研（市场、竞品、方案对比）**没有文件路径可引**。照抄这条，Sheldon 会一路否决到打满 `max_rounds: 8`。
-
-**改法**：把"必须来自本轮读过的文件"扩成"必须来自本轮读过的来源：文件路径，或 URL/检索结果"。同时保留后半句（未核实必须标 `[assumed]`）——那才是这条规矩的价值。
-
-### 3.2 工具闸门已验证：加名字就生效
-
-`skills/*/config.json` 的 `"tools"` 数组是**真闸门**，不是死配置：
-
-- `sub_agent.cpp:186-189` 执行时逐个比对白名单，不在名单返回 `tool '<x>' not allowed`
-- `skill_runner.cpp:393-394` 按同一名单把 schema 注册给模型
-
-所以 bigbang 现在只有 `read_file, grep_files, file_search`（零联网能力），要做通用调研必须加 `web_search` / `fetch_url`。这一条是 grep 出来的事实，不是推测。
-
-### 3.3 改哪些文件
+### 3.2 改动清单
 
 | 文件 | 动作 |
 |---|---|
-| `skills/bigbang/config.json` | `tools` 加 `web_search`、`fetch_url`；`description` 去掉"engineering" |
-| `skills/bigbang/{sheldon,penny,leonard}.md` | 证据规则从"文件"扩到"文件或 URL"；把"design document""codebase"这类词改成通用说法 |
-| `skills/bigbang/tools/write_bigbang_doc.json` | description 里的"execution document"改通用 |
-| `skills/avenger/config.json` | 同上加 web 工具 |
-| `skills/avenger/research_*.md`、`stark.md` | 同 B 的证据规则与措辞 |
-| `skills/*/README.md` | 说明这两个技能不再只面向代码 |
+| `skills/bigbang/config.json` | tools 加 `web_search`、`fetch_url`；description 去 "engineering" |
+| `skills/bigbang/{sheldon,penny,leonard}.md` | 证据规则扩"文件或 URL"；通用措辞；proposal 阶段加"先 5 行白话"；**删写死中文的长度要求**（`sheldon.md:49`、`penny.md:51`、`leonard.md:53` 的 "NNN chars in Chinese"）改成"匹配会话与项目语言"——否则 A 的语言策略和这三行正面对撞 |
+| `skills/bigbang/tools/write_bigbang_doc.json` | description 改"方案文档"；结构要求实际在 `leonard.md:45-50`，一并改"先白话结论" |
+| `skills/avenger/config.json` | agents 加 `research_aud`（round 0 摸底）；`round_steps` ROUND 1 改：先派 aud 摸底出地图，再按地图派七线 |
+| `skills/avenger/research_*.md` | 证据规则扩源；报告开头加"白话摘要"（3-5 行）；mkt/comp/money 措辞改"题目相关"；接受 round 0 地图派发 |
+| `skills/avenger/stark.md` | B1-B4 改"单人落地路径"，判据由领域地图推导、可判定 |
+| `skills/avenger/README.md`、`skills/bigbang/README.md` | 声明适用任意题材；"先学后做"流程说明 |
 
-### 3.4 风险
+### 3.3 风险
 
-- 加 web 工具后单个 worker 挂起会拖长整轮；`max_rounds: 8` 的墙钟时间可能翻倍。skill 阶段目前没有 per-tool 超时。
-- 通用题目下"引用来源"的质量取决于检索结果，`[assumed]` 标记会变多——这是对的，不是退步。
+- web 工具拖长墙钟（`max_rounds: 8` 可能翻倍），无 per-tool 超时；round 0 摸底再吃一轮（约 5 次搜索 + 1 篇地图）
+- `research_aud` 唤醒后 7 线全醒，`max_parallel: 6` 吃紧
+- 通用题目下 `[assumed]` 标记变多（正常）
+- B 段验收不改成可判定 → `DONE` 乱发
+- 摸底轮只激活常识不验证 → 地图里的领域常识可能过时（无预置目录时无法避免；靠各线深挖时验证修正）
 
 ---
 
-## 4. 工作项 C：OSC 7501 对齐最新版
+## 4. 工作项 C：OSC 7501 对齐 0.4
 
-### 4.1 先纠正一个前提
+规范：`https://www.superlogical.com/rex/docs/build/program-status`（0.4 = 2026-10-10 最新）
 
-`terminal_status.h:2` 写着 "rev 0.4"，而规范当前的**最新版就是 0.4（2026-10-10）**。所以这不是"升级到新版本"，是**逐条对齐 0.4 并修掉不合规处**。
-
-规范地址（`terminal_status.h` 里记的那一条）：`https://www.superlogical.com/rex/docs/build/program-status`
-版本历史：0.1（09-28）→ 0.2（10-06）→ 0.3（10-07）→ **0.4（10-10，当前最新）**。
-
-### 4.2 核对结果
-
-| # | 0.4 的要求 | 现状 | 判定 |
+| # | 要求 | 现状 | 判定 |
 |---|---|---|---|
-| C1 | 解码后的 `msg`/`title` **禁止** U+0000–U+001F、U+007F、**U+0080–U+009F** | `terminal_status.cpp:104` 只判 `c < 0x20 \|\| c == 0x7f`（逐字节） | **不合规，必修** |
-| C2 | 记录是**整体替换**，每条报文都必须重复 `app` | `:167` `if (!app.empty()) body += ":app=" ...` | 有隐患，建议改为必填 |
-| C3 | 完成即退出时应留 `done`/`error` 记录 | `shutdown()` 发的是 `state=clear`（`:230`） | 设计取舍，需拍板 |
-| C4 | 用户中断/取消时上报 `idle` | `[待证]` 需核 `Agent::cancel` 路径 | 待核 |
-| C5 | `ST` 可以是 `ESC \` 或 `BEL` | 只用 `ESC \`（`kEnd`） | 合规（可保留） |
-| C6 | 特性探测可选，可不等回复直接上报 | 从不发 `OSC 7501 ; ? ST` | 合规 |
-| C7 | 上限：4096 / key 16 / msg 2732·2048 / title 256·192 / app 32 / id 128 | 常量逐一对应 | 合规 |
-
-### 4.3 C1 为什么是真 bug
-
-UTF-8 里 U+0080–U+009F 编码成两字节 `C2 80`..`C2 9F`。逐字节判 `c < 0x20 || c == 0x7f` 两个字节都不命中，于是这些字符原样进 base64。
-
-规范的处置是**整条报文作废**：
-
-> A report is discarded whole if it exceeds one of the limits, if its base64 does not decode, or if decoded text contains a control character.
-
-也就是：宿主看到 C1 控制字符 → **整条丢掉** → proJV 以为上报了，宿主那边什么都没有。用户看到的是"状态栏不更新"，而且**没有任何日志**。严格实现（Rex 自己那套）会这样处理，宽松实现不会——正好是最难复现的一类 bug。
-
-**修法**：`sanitizeControl` 改成按码点判定（先按 UTF-8 解码，替换所有 C0/C1/DEL，再编码），或者最小改法——额外挡住 `0xC2` 后面跟 `0x80`..`0x9F` 的两字节序列。前者正确，后者够用。
-
-### 4.4 C3 需要拍板
-
-规范原文：
-
-> A program that exits as soon as it finishes SHOULD report `done` or `error` right before exiting, so a record is left behind for the user to find.
-
-proJV 是长驻 TUI，用户关窗口 = 不再需要状态 → `clear` 合理。但两种场景应区分：
-
-- 用户主动关（`q` / 关标签页）→ `clear`，现状正确
-- 崩溃 / 被 Ctrl-C → 应留 `error`，否则宿主里那条记录会一直显示"working"
-
-**决定**：正常退出保持 `clear`；信号/异常路径补一条 `error`。这是本轮唯一需要改 `shutdown()` 语义的地方。
+| C1 | 解码后 msg/title 禁 U+0000–U+001F、U+007F、U+0080–U+009F | `terminal_status.cpp:104` 逐字节判 `c<0x20 \|\| c==0x7f`；C1 字符（`C2 80`..`C2 9F` 两字节）漏网 → 整条报文被宿主丢弃 | **必修 → 已修**：`sanitizeControl` 改按码点（两字节塌成一个空格，不透传 `0xC2`），`test_osc7501.cpp` 补 C1 区间 + U+00A0 正例断言 |
+| C2 | 每条报文必须重复 `app` | `:167` `if (!app.empty())` 才带；更麻烦的是 `:165` 对 `state=clear` 提前 return，`app` 在 `:167` 才追加 → 今天连 clear 都不带 app | 建议必填：只改 `:167` 的条件不够，得把 clear 的 return 挪到 app/id 之后 |
+| C3 | 完成即退出应留 done/error | `shutdown()` 发 `state=clear`（`:230`）；但 phase→`done`/`error` 的映射已经接好（`app_tui.cpp:225-236`） | 能力不缺，缺的只是退出语义：正常退出留 clear，崩溃/Ctrl-C 走 `error` |
+| C4 | 用户中断上报 `idle` | `Agent::cancel`（agent.cpp:545-555）不设 phase，但主循环各退出路径均落 `AgentPhase::Idle`，OSC 正常收敛 | 成立，无需改 |
+| C5-C7 | ST 用 ESC\ / 特性探测可选 / 上限常量 | 合规 | 不动 |
 
 ---
 
-## 5. 工作项 D：monica 巡检，作为 MCP 的新基线
+## 5. 工作项 D：monica 巡检
 
-### 5.1 monica 是什么（读配置得到的）
+`skills/monica/config.json`：1 supervisor + 10 worker，`max_parallel:16`、`max_rounds:10`，工具含 `write_file`/`edit_file`/`format_file` —— **会改仓库**。
 
-`skills/monica/config.json`：**1 个 supervisor + 10 个 worker**，`max_parallel: 16`、`max_rounds: 10`、`converge: none`、`stop_when` supervisor 回 `DONE`。
-
-它做的事：格式化、全角转半角、把中文注释翻成英文、**只报告不删除**的死代码审计。工具集含 `write_file` / `edit_file` / `format_file` —— **它会改仓库**。
-
-设计规模是 50–200 文件；proJV 的 `src` + `tests` 大致在这个区间，正好是它的目标场景。
-
-### 5.2 为什么把它当成 MCP 的新基线
-
-MCP 那篇设计里有大量 `[assumed]`（尤其协议理解），而它的所有结论都建立在"当前代码是这样"之上。跑一次 monica 能得到：
-
-1. **格式与标点统一**：MCP 落地时那次 diff 不会混进格式噪声
-2. **中文注释清理**：`AGENTS.md` 要求源码只写英文；现状有残留
-3. **死代码清单**：MCP 要往 `tools/` 加东西，先知道哪些是死的
-4. **一份逐文件的现状报告**：这比"MCP 设计稿里我们猜的"更可靠，直接作为实施起点
-
-### 5.3 怎么跑（必须遵守）
-
-- **在分支上跑**，不要在 `main` 上跑。它有写权限。
-- 跑完先看 `git diff --stat` 和死代码清单，**不要盲merge**。
-- 它的死代码结论是"报告"，不是"删除"。任何删除都要人来做。
-- 顺序：放在 A、B 之后。否则 A/B 改完的文件又要被它再格式一遍。
+- 目的：MCP 实施前基线（格式统一、中文注释清理、死代码清单、逐文件现状报告）
+- **规则**：分支上跑；跑完看 `git diff --stat` 与死代码清单，不盲 merge；死代码只报告不删除
+- 顺序：A、B 之后（否则 A/B 改过的文件会被再格式一遍）
 
 ---
 
-## 6. 顺序与依赖
+## 6. 顺序
 
 ```
-C（OSC 对齐，半天，独立可发）
+C（半天，独立可发）
   ↓
-A（双角色）  →  B（技能通用化）
+A（单角色） → B（技能通用化）
   ↓
-D（monica 巡检，在分支上）
+D（monica，分支上）
   ↓
 MCP 实施（见另一篇）
 ```
 
-两条硬依赖：
-
-1. **A 必须早于 MCP**：MCP 的 `roles = ["..."]` 是按提示词文件名做 key 的，而今天没有 planner/executor 这两个文件。A 不做，MCP 的示例就只能写 `roles = ["coder"]`。
-2. **D 必须在 A/B 之后、MCP 之前**：否则那份"基线"记录的是即将被改掉的代码。
+依赖：A 早于 MCP（MCP 的 roles 按提示词文件名做 key，需 assistant.md 存在）；D 在 A/B 后、MCP 前。
 
 ---
 
@@ -235,23 +171,30 @@ MCP 实施（见另一篇）
 
 | 风险 | 触发 | 严重度 | 立刻 | 长期 |
 |---|---|---|---|---|
-| 新提示词漏写 `tools available:` → 权限变成全放行 | 手写种子 | 高 | 集合相等断言 | 让 `parseAvailableTools` 空结果直接报错而不是放行 |
-| 忘了改 `app_tui.cpp:252-258` 的字面量 → 新角色永不生效 | 只加文件不改代码 | 高 | 启动日志打印当前角色与工具数 | 角色默认值进配置 |
-| `upgradeSeededPrompt` 不加分支 → styles 测试红 6 条 | 只加文件名 | 中 | 同提交改两个分支 | dispatch 改表驱动 |
-| `promptFiles_` 为空 → `:259` 越界 | 用户清空 prompts 目录 | 中 | 加空表守卫 | 索引统一走 `defaultPromptIndex` |
-| OSC C1 控制字符放行 → 整条报文被宿主丢弃 | 消息里带 U+0080–U+009F | 中 | 按码点过滤 | 加一例含 C1 字符的编码测试 |
-| monica 在 main 上跑并提交 | 直接执行 | 高 | 分支 + 人工看 diff | 技能加"只读模式"开关 |
-| 新注册工具无人可用（历史上的 format_file / list_dir） | 加工具忘了改工具行 | 中 | 本轮已补 | 加一条"注册表 ⊆ 某个角色工具行"的检查 |
-| bigbang 加 web 工具后单轮墙钟时间翻倍 | 通用调研题目 | 低 | 文档标注 | skill 阶段加 per-tool 超时 |
+| 漏写 `tools available:` → 全放行 | 手写种子 | 高 | 工具集合相等断言 | `parseAvailableTools` 空结果报错 |
+| 忘改 `app_tui.cpp:252-258` 字面量 → 新角色永不生效 | 只加文件不改代码 | 高 | 启动日志打印角色与工具数 | 默认角色进配置 |
+| `upgradeSeededPrompt` 不加分支 → styles 测试红 | 只加文件名 | 中 | 同提交改分支 | dispatch 表驱动 |
+| `promptFiles_` 空 → `:259` 越界 | 用户清空目录 | 中 | 空表守卫 | 索引走 `defaultPromptIndex` |
+| 漏写两层表达 → 模型只给浓缩结论 | 手写种子 | 高 | 断言种子含"本科生毕业也能理解" | 种子 golden 化 |
+| 叙述语言写死中文 → 英文用户拿到中文报告 | 继承 `Chinese for narrative` | 中 | 断言种子不含该句；种子含"匹配会话与项目语言" | 同上 |
+| 旧角色名留工具行 → 权限意外收窄 | 复制改造 | 中 | 断言旧角色名不在 assistant.md | 同上 |
+| OSC C1 放行 → 宿主丢弃整条 | 消息带 U+0080-9F | 中 | 按码点过滤 | C1 编码测试 |
+| monica 在 main 跑并提交 | 直接执行 | 高 | 分支 + 人工看 diff | 技能只读模式开关 |
+| 注册工具无人可用 | 加内置工具或加 `projv_files/pytool/` 目录，忘改工具行 | 中 | 本轮补进 assistant.md（`list_dir`/`format_file`） | 启动后动态跑"扫描注册表 ⊆ assistant.md 工具行"，pytool 才是常态来源 |
+| 双语文档没跟上角色合并 | 只改代码 | 高 | 同提交改 en+zh `03-roles.md` | grep 校验文档里出现的角色名 |
+| bigbang 加 web 后墙钟翻倍 | 通用调研题 | 低 | 文档标注 | skill per-tool 超时 |
+| 7 线全醒 `max_parallel:6` 吃紧 | research_aud 唤醒 | 低 | 文档标注 | 上限按需调 8 |
+| B 段验收不可判定 → `DONE` 乱发 | 只改名不改判据 | 高 | 判据写成可判定 | 同上 golden |
 
 ---
 
 ## 8. 验收
 
-- `ctest -C Release --output-on-failure` 全绿；新增断言 ≥ 4 条（planner 集合、executor 集合、两者不等、`defaultPromptIndex`）。
-- 手改测试：把 planner 的工具行换成 executor 的那行 → 必须红；删掉 executor 种子里的 `tools available:` 行 → 必须红。
-- `grep -rn '"coder.md"' src/` 只剩 `prompts_loader.cpp` 里两处 legacy 路径（dispatch `:291`、`upgradePromptFile` `:349`）。
-- F4 列表只剩 planner / executor；旧文件在磁盘上仍存在。
-- OSC：`state=working:msg=` 里塞一个 C1 字符，编码结果不得包含 `C2 80`..`C2 9F`。
-- `grep -c "web_search" skills/bigbang/config.json` 为 1；跑一次 bigbang 通用题目，角色能真的抓网页。
-- monica 报告落进 `docs/temp/monica-baseline.md`（报告，不落代码）。
+- `ctest -C Release --output-on-failure` 全绿；新增断言 ≥ 4（agent 集合相等、旧角色名不在 assistant.md、`defaultPromptIndex`、种子含"本科生毕业也能理解"）
+- 手改测试：删 `format_file`/`list_dir` → 红；删 `tools available:` 行 → 红；`Keep responses concise` 放回种子 → 红；`Chinese for narrative` 放回种子 → 红
+- `grep -rn '"coder.md"' src/` 只剩 legacy 两处（`prompts_loader.cpp:291` dispatch、`:349` upgradePromptFile）——前提是 `prompts.h:6-7` 的注释同一提交改掉，否则这里是三处
+- 角色列表只剩 assistant.md / compactor.md（老安装也一样，靠 `:250-251` 隐藏名单）；旧三文件在磁盘仍存在
+- OSC：`test_osc7501.cpp` 的 "C1 controls" 与 "non-control UTF-8 above the C1 range" 两例已落地（本轮已修）
+- `grep -c "web_search" skills/bigbang/config.json` = 1；跑通用题，角色能抓网页
+- avenger 跑非商业题（如"给新手村设计怪物 AI 行为树"），文档开头白话摘要、B 段"单人落地路径"而非"创业"
+- monica 报告落 `docs/temp/monica-baseline.md`（报告，不落代码）
