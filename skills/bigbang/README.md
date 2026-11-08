@@ -10,6 +10,21 @@ enclosure, a course outline, a shop opening plan and a refactor all go through
 the same three reviewers. Output opens with five lines a new graduate can follow,
 then the detail.
 
+## Numbers carry sources
+
+Both reviewers bring their own numbers, independently, and every number carries
+value | source | date - a URL, a file path, or the exact table that was read. A
+number nobody can source is written as a range and marked `[estimate]`, never as
+a bare precise figure. The two reviewers attack each other's provenance (no
+date / vendor blog / one country / stale), not with a new unsourced number.
+Leonard audits the numbers before deciding: a decision-critical number with no
+source is a `[high]` concern and forces a no vote.
+
+The plan document therefore contains a numbers table (Number | Value | Source |
+Date | Used for | Brought by) and a risk table (Risk | Trigger | Severity |
+Immediate Fix | Long-term Fix) where every trigger is a sourced number or a
+marked range.
+
 Skills are just folders. This repo ships the folder; you install it by copying
 it into your runtime skills directory.
 
@@ -45,4 +60,6 @@ Uninstall = delete the `bigbang/` folder. Nothing is seeded automatically.
 - `tools` carries `web_search` and `fetch_url`, so a topic outside the workspace
   can still be researched. A claim must come from a file read this round or a
   source fetched this round; anything else is marked `[assumed]`.
+- bigbang does not read an avenger report. It is meant to be runnable on its own,
+  from a topic sentence and nothing else.
 - `max_rounds` and other fields are plain config; edit the JSON to tune.

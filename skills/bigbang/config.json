@@ -8,6 +8,8 @@
     {"id": "leonard", "display_name": "Leonard", "prompt": "leonard.md"}
   ],
   "max_rounds": 8,
+  "max_tool_iters": 12,
+  "submit_reserve": 1,
   "converge": "all_agree",
   "loop_detect": "leonard",
   "tool_mode": "auto",

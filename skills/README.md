@@ -45,8 +45,8 @@ It is written so an agent can produce a working skill without reading the C++.
 
 | Folder | What it does |
 |--------|--------------|
-| `bigbang/` | three-role debate on any topic (propose / integrate / vote) -> one plan document |
+| `bigbang/` | three-role debate on any topic (propose / integrate / vote) -> one plan document, every number sourced |
 | `monica/`  | supervisor-driven project tidy-up: format, translate comments, audit dead code |
-| `avenger/` | SOP 1/3: research swarm on any topic - recon first, then parallel lines, audited, into `docs/sop/avenger_<slug>.md` |
+| `avenger/` | SOP 1/3: field-research swarm on any topic - recon first, then parallel lines, audited, into `docs/sop/avenger-<slug>.md`: the map and the foothold, no verdict |
 | `steve/`   | SOP 2/3: multi-expert product design - script mode, no driver, seven roles vote and `all_agree` is engine-enforced |
 | `musk/`    | SOP 3/3: kanban execution - Musk pairs dev x test against a one-line DoD and judges on quoted evidence |

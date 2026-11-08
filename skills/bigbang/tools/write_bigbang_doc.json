@@ -1,5 +1,5 @@
 {
   "name": "write_bigbang_doc",
-  "description": "After convergence, emit the final plan document: 5 plain lines first, then the execution steps, the risk table and the NOT-included list.",
-  "parameters": [{"name": "doc_markdown", "type": "string", "description": "The full plan document (Markdown), opening with 5 lines a new graduate can follow", "required": true}]
+  "description": "After convergence, emit the final plan document: 5 plain lines first, then execution steps, the numbers table with a source per row, the risk table and the NOT-included list.",
+  "parameters": [{"name": "doc_markdown", "type": "string", "description": "The full plan document (Markdown), opening with 5 lines a new graduate can follow, then execution steps, a Numbers/Source/Date table, a Risk/Trigger/Severity/Immediate fix/Long-term fix table, and the explicit NOT-included list", "required": true}]
 }
