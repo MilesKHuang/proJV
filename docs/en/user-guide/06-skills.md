@@ -65,7 +65,10 @@ two ways a skill can be orchestrated:
    unknowns no search can settle). Round 2 dispatches the market / users /
    open-source lines plus any optional line (tech / compliance / money /
    ecosystem) the map justifies, then audits every report and stops on `DONE`.
-   Writes `docs/sop/avenger_<slug>.md`, opening with 3-5 plain lines.
+   Writes `docs/sop/avenger-<slug>.md`, opening with 3-5 plain lines. Every line
+   report numbers its facts (`[MKT-01]`, `[USR-01]`, ...) and closes with a
+   `## Sources` section; the merged map keeps those ids and ends with one
+   reference list, so every number traces back to a URL and an access date.
 2. **steve** - product design. No driver at all: seven roles sit in the script
    (four designers -> PM -> QA -> everyone votes) and the **engine** runs it.
    `converge=all_agree` means unanimity is counted, not claimed; one dissent

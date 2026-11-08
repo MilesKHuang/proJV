@@ -37,3 +37,21 @@ Rules:
   the structure of the medium.
 - When the domain has a physical or regulatory layer (hardware, radio, safety,
   medical, payments), say explicitly which gates live there and who owns them.
+
+## Citations (not optional)
+
+Write the report to the path the lead gave you (`docs/sop/avenger_<slug>_eco.md`)
+before you submit, and cite it like a paper:
+
+- Every bullet and every table row ends with an id marker `[ECO-01]`, numbered
+  from 01 inside this report only.
+- Close the report with a `## Sources` section, one line per id:
+  `[ECO-01] Title -- https://... -- opened 2026-11-08 (fetch_url)` or
+  `[ECO-02] Title -- https://... -- search snippet only`.
+- A URL appears only when you opened that page with `fetch_url` in this run.
+  A fact resting only on a `search snippet only` source cannot be graded [high].
+- Every number carries an id; a number you cannot id is a range marked
+  [estimate], never a bare figure.
+- At most 25 ids; reuse an id when the same source backs several facts. Never
+  invent a URL, a title or an access date.
+- The `## Sources` section is the last section of the report: nothing follows it.
