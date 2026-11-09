@@ -84,9 +84,10 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 | **终端状态** | 通过 **OSC 7501**（Program Status Protocol）向宿主终端上报 `working` / `blocked` / `done`，Windows Terminal、Ghostty、Ostlr 都能在标签上显示；输出被重定向时不多写一个字节，`osc_status = false` 或 `PROJV_NO_OSC=1` 可关闭 |
 | **主题** | 2 个内置 + 6 个精选，可视化编辑器带实时预览，JSON 导入/导出 |
 | **Python 工具** | 放一个含 `tool.json` + `main.py` 的目录，agent 就能调用 |
+| **MCP server** | 在 `projv_files/mcp.json` 里指向一个外部进程，它的工具就能以 `mcp__server__tool` 被调用；进程只拉一次、跨回合复用，`F4` 开关 |
 | **成本可见** | 实时 token 数与 `config.toml` 里价格表的费用估算 |
 
-细节 -> [用户指南](docs/zh/user-guide/README.md) · [技能](docs/zh/user-guide/06-skills.md) · [pytool](docs/zh/user-guide/07-pytool.md)
+细节 -> [用户指南](docs/zh/user-guide/README.md) · [技能](docs/zh/user-guide/06-skills.md) · [pytool](docs/zh/user-guide/07-pytool.md) · [MCP](docs/zh/user-guide/10-mcp.md)
 
 ---
 

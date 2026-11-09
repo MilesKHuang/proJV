@@ -86,9 +86,10 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | **Terminal status** | reports `working` / `blocked` / `done` to the host terminal over **OSC 7501** (Program Status Protocol), so Windows Terminal, Ghostty or Ostlr can show a tab badge; a redirected stdout gets no extra bytes, `osc_status = false` or `PROJV_NO_OSC=1` turns it off |
 | **Themes** | 2 built-in + 6 curated, visual editor with live preview, JSON import/export |
 | **Python tools** | drop a folder with `tool.json` + `main.py` and the agent can call it |
+| **MCP servers** | point `projv_files/mcp.json` at an external process and its tools become callable as `mcp__server__tool`; the process is spawned once and reused across turns, `F4` to toggle it |
 | **Cost awareness** | live token counts and a price estimate from `config.toml` |
 
-Details -> [user guide](docs/en/user-guide/README.md) · [skills](docs/en/user-guide/06-skills.md) · [pytool](docs/en/user-guide/07-pytool.md)
+Details -> [user guide](docs/en/user-guide/README.md) · [skills](docs/en/user-guide/06-skills.md) · [pytool](docs/en/user-guide/07-pytool.md) · [MCP](docs/en/user-guide/10-mcp.md)
 
 ---
 
