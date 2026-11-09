@@ -518,7 +518,7 @@ namespace mcp {
 void Manager::syncTools(ToolRegistry& registry, Agent& agent) {
     // Agent thread only, at a turn boundary. This is the single writer of both
     // ToolRegistry and Agent::autoToolNames_, and it runs on the same thread
-    // that reads them, so neither map needs a lock (design doc section 6.2).
+    // that reads them, so neither map needs a lock (see the header).
     for (auto& up : servers_) {
         ServerHandle& h = *up;
         const bool ready = h.state.load() == ConnState::Ready;

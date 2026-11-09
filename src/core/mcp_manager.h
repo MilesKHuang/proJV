@@ -3,7 +3,7 @@
 // One Manager owns every configured server. Each server is a child process
 // proJV talks to over stdio, and it stays alive across turns.
 //
-// Threading contract (design doc section 6.2). There is no cross-thread mutex in
+// Threading contract. There is no cross-thread mutex in
 // this class; the invariants below replace it:
 //   1. start()/stop()/restart()/shutdownAll() are the ONLY places that spawn,
 //      kill or join. Each server owns exactly one std::thread worker, and every

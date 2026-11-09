@@ -5,7 +5,7 @@
 //
 //   fake_mcp_server --mode=<name> [--pidfile=<path>]
 //
-// Modes (see docs/temp/mcp-client.md section 11.1):
+// Modes:
 //   stateful  legacy handshake + tools/list + tools/call        (default)
 //   stateless modern: no handshake, requires the _meta block
 //   badmeta   rejects the protocol version (-32602)

@@ -4,8 +4,8 @@
 // runtime parameters, while this is a list of external processes that can be
 // hot-added, toggled and that may carry a server token. It also lives next to
 // the exe (getProjvDir), exactly like config.toml / prompts / skills / sessions,
-// which makes the `enabled` flag an install-wide setting -- see the design doc,
-// section 8.
+// which makes the `enabled` flag an install-wide setting rather than a
+// per-project one.
 #pragma once
 
 #include <map>

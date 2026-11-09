@@ -1,7 +1,7 @@
 // Tests for the MCP client: framing, schema pass-through, the auto-visible tool
 // channel, and the resident server pool driven by a real child process.
 //
-// Contract being locked down (docs/temp/mcp-client.md section 11.2):
+// Contract being locked down:
 //   1. a registered MCP tool is visible WITHOUT being listed in the role prompt;
 //   2. deleting the "tools available:" line still leaves every builtin usable --
 //      the two visibility channels must not contaminate each other;

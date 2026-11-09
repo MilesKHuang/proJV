@@ -1,6 +1,6 @@
 // proJV -- MCP client protocol layer (JSON-RPC 2.0 over newline-framed stdio).
 //
-// Two eras are supported (see docs/temp/mcp-client.md section 4):
+// Two eras are supported:
 //   legacy  -- "initialize" handshake, then notifications/initialized. The
 //              protocolVersion we offer is 2025-11-25; a server may answer with
 //              an older version it knows, and that is fine as long as we know it
