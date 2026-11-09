@@ -46,7 +46,8 @@ Linux：先 `sudo apt-get install -y libcurl4-openssl-dev`。
 
 - 把唯一的进程 runner 改成进程池，或去掉它的锁 —— 串行是刻意的
   （见 `src/platform/iprocess_runner.h`）。
-- 引入 MCP 层、插件注册表或包管理器。
+- 插件注册表、包管理器，或任何被二进制加载的代码。MCP server 不属于这类：
+  它是 `projv_files/mcp.json` 里声明的外部进程，通过 stdio 对话。
 - 在主题系统之外写死颜色。
 - 让技能删除它自行判定为死代码的东西。死代码只报告，不删除。
 - `docs/archive/` 是被忽略的设计稿：不要提交它（不用 `git add -f`，不开 `!` 例外），

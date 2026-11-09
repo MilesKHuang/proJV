@@ -18,6 +18,7 @@ proJV 是用原生 C++ 写的终端 AI agent（TUI，DeepSeek）。装上就能�
 | 07 | [pytool](07-pytool.md) | 写一个 Python 工具让 AI 调用 |
 | 08 | [参考](08-reference.md) | 所有快捷键、`/` 命令、`config.toml` 配置项 |
 | 09 | [编写 skill](09-skills-authoring.md) | 自己定义一个流程：一个目录就是一套 agent、轮次与动作工具 |
+| 10 | [MCP server](10-mcp.md) | 接一个外部 MCP server，调用它的工具 |
 
 ## 需要什么
 
@@ -36,6 +37,7 @@ projv_files/
 ├── theme/          主题 JSON
 ├── pytool/         Python 工具
 ├── skills/         多 Agent 技能（bigbang、monica）
+├── mcp.json        MCP server 清单（首次运行生成空文件）
 └── sessions/       SQLite 会话库
 ```
 

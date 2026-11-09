@@ -111,6 +111,22 @@
   `process_runner_linux.cpp`、`system_util_*`、`isystem_util.h`。
 - **规矩。** 一个 runner，串行是刻意的（见头文件注释）。
 
+## 10. MCP 客户端
+
+- **职责。** 用 stdio JSON-RPC 与外部 MCP server 对话，把它的工具交给模型。
+- **入口。** `src/core/mcp_manager.cpp`（`start` / `stop` / `syncTools` /
+  `callTool`）、`src/core/mcp_protocol.cpp`（换行分帧、`_meta`、`resultType`）、
+  `src/core/mcp_process.cpp`（三根管道、Job Object / `killpg`）、
+  `src/core/mcp_config.cpp`（`projv_files/mcp.json`）、`src/tui/mcp_view.cpp`（F4）。
+- **规矩。** 每个 server 一个 `worker_` 线程，由 `start` / `stop` / `shutdownAll`
+  负责 join，**永不 detach**。`syncTools()` 是 `ToolRegistry` 与
+  `Agent::autoToolNames_` 的唯一写入方，只在回合边界的 agent 线程上跑。
+  `mcp__<server>__<tool>` 只进 `autoToolNames_`，绝不进提示词白名单——空白名单必须
+  继续表示"全放行"。
+- **测试。** `test_mcp.cpp` 加上 `tests/fakes/` 里的 `fake_mcp_server` 可执行夹具
+  （作为真正的子进程被拉起）。`--mcp-check` / `--mcp-call` 可以不开 TUI 直接对着
+  真 server 验证。
+
 ---
 
 返回 -> [开发指南](README.md) | 改动配方 -> [recipes](recipes.md)

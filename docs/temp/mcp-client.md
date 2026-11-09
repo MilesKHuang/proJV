@@ -912,21 +912,25 @@ struct McpServerHandle {
 
 1. **`SystemUtil::Init()` 必须先于任何 config 路径访问**。`getExeDir()` → `SystemUtil::Instance()`，未 Init 时它 `throw std::runtime_error`（`isystem_util.cpp:14`）。把 headless 路径放在 Init 之前，结果是进程以 0xC0000409 退出且**一行输出都没有**（printf 在抛点之后），看起来像玄学崩溃。已在 `main()` 里把 Init 提前，并给 `configPath()` 加了 try/catch。
 2. **`uvx` 类 server 首次启动要下载依赖**（实测 32 个包，含 cryptography / pywin32 / pydantic-core），远超 120s 默认握手超时。**用户文档必须写**：首次先手工预热一次（`uvx mcp-server-time < nul`），或把 `timeout_ms` 调大。否则表现是"卡在 handshaking 然后超时"，极易被误判成客户端 bug。
+3. **§3 指的那道闸门找错了位置**。§3 说"在 `SkillRunner` 装载 `config.tools` 时跳过 `mcp__` 项"，并指向注册 schema 的那两行（`skill_runner.cpp:393-394`）。但 `registerToolDef()` 只往 `toolDefs_`（给模型看的 schema）里加，**真正在 `dispatchSide()` 里被执行的闸门是 `configure()` 传进去的 `toolWhitelist_`**（`skill_runner.cpp:376` 传的是未过滤的 `config_.tools`）。只过滤 schema 的结果是：模型看不见这个工具，但一旦它还是调了，子 agent 会照常执行。补断言时这条用例直接红了，才暴露出这个洞。已改成在源头过滤一次（`skillTools`），schema 列表与白名单共用同一份。
 
 ### 20.4 仍未完成（接手者必读）
 
 | 项 | 状态 |
 |---|---|
-| M1e 文档转立场（6 处、双语 12 文件） | **未做**。代码已可用，仓库里 `AGENTS.md` / `CONTRIBUTING*` / `README*` 仍写着"不要 MCP 层" |
-| F4 面板人工验收 | **未做**。headless 路径已验证；TUI 内的按键、焦点、渲染没有真人跑过 |
-| 测试 #15（串行）/ #18（ESC 取消不杀 server） | 代码已实现，**缺断言**。#18 需要跨线程驱动 `Agent::cancel()` |
-| 测试 #19（技能跳过 `mcp__`） | 逻辑已实现（`skill_runner.cpp:393` 那段），**缺断言** |
+| M1e 文档转立场（6 处、双语 12 文件） | **已完成**。`AGENTS.md` / `CONTRIBUTING*` / `README*` 双语的对比表与定位段已改写；新增 `docs/{en,zh}/user-guide/10-mcp.md`；`08-reference.md` 补 F4 行；`module-map.md` 补第 10 节 |
+| F4 面板人工验收 | **已验收**。真实终端里打开过 F4；启动注入的 `[MCP available tools]` 块确认落到会话上下文（三条工具名来自真 server 的 `tools/list`） |
+| 测试 #18（ESC 取消不杀 server） | **已完成**。`test_mcp.cpp`：300ms 后置取消标志，断言 2.5s 内返回、`connState` 仍 `Ready`、`spawns` 仍为 1、随后一次调用成功 |
+| 测试 #19（技能跳过 `mcp__`） | **已完成**，并且补断言时发现原实现有洞，见 20.3 第 3 条 |
+| 测试 #15（串行） | 无独立断言。由结构保证：主 Agent 的 `while` 工具循环是单线程，`callTool` 只有一个调用方 |
 | 分页 / SSE / resources / prompts / MRTR 多轮 | 按 §12 明确不做 |
 
 ### 20.5 实际落地的文件
 
 新增 12 个：`src/core/mcp_protocol.{h,cpp}`、`mcp_process.{h,cpp}`、`mcp_config.{h,cpp}`、`mcp_manager.{h,cpp}`、`src/tui/mcp_view.{h,cpp}`、`tests/fakes/fake_mcp_server.cpp`、`tests/unit/test_mcp.cpp`。
 
-改动 13 个：`src/client/models.{h,cpp}`、`src/tools/registry.{h,cpp}`、`src/core/agent.{h,cpp}`、`src/tui/app_tui.{h,cpp}`、`src/tui/main_tui.cpp`、`src/core/skill_runner.cpp`、`CMakeLists.txt`、`tests/CMakeLists.txt`、`.gitignore`。
+改动 14 个：`src/client/models.{h,cpp}`、`src/tools/registry.{h,cpp}`、`src/core/agent.{h,cpp}`、`src/core/skill_runner.cpp`、`src/tui/app_tui.{h,cpp}`、`src/tui/main_tui.cpp`、`CMakeLists.txt`、`tests/CMakeLists.txt`、`tests/unit/test_skill_engine.cpp`、`.gitignore`。
+
+文档 9 个：`AGENTS.md`、`CONTRIBUTING.md`、`CONTRIBUTING_zh.md`、`README.md`、`README_zh.md`、`docs/{en,zh}/user-guide/10-mcp.md`（新）、`docs/{en,zh}/user-guide/08-reference.md`、`docs/{en,zh}/user-guide/README.md`、`docs/{en,zh}/dev-guide/module-map.md`、本文。
 
 顺带修掉的既有竞态（用户在设计阶段指出的"FX 竞态"）：`saveFullConfig()` 原本直接 `setupTools()`，回合运行中保存设置会在 Agent 线程遍历 `ToolRegistry` 的裸 `unordered_map` 时插入/删除 = UB。现在改为 `toolsReloadRequested_` 标志 + 回合边界统一重放（`runAgentTurnLoop`），与 MCP 的 `syncTools()` 共用同一个写入窗口。

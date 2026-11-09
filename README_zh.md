@@ -100,7 +100,7 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 | 安装 | 一个二进制，依赖内置 | npm | npm / brew / release | pip |
 | 运行时 | 不需要 | Node.js | 不需要（npm 包装） | Python |
 | 多 agent | 数据驱动的技能目录，worker 并发执行 | subagents | TOML subagents | — |
-| 扩展方式 | 扔文件：技能、角色、主题、Python 工具 | MCP servers、hooks | MCP、插件 | — |
+| 扩展方式 | 扔文件：技能、角色、主题、Python 工具；MCP server 写在 `mcp.json` | MCP servers、hooks | MCP、插件 | — |
 | 模型选择 | 只支持 DeepSeek | Anthropic | OpenAI | 多家 provider |
 | 成本模型 | DeepSeek 按 token 计价 | 订阅或 API | ChatGPT 套餐或 API | 因 provider 而异 |
 
@@ -124,7 +124,7 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 
 **原生 C++ 加终端界面。** 二进制小、没有运行时，SSH 里、tmux 里都能跑，还能直接调系统 API。真需要一个大库时，用 Python 工具补上。
 
-**没有 MCP。** 这里的工具就是一个带 JSON schema 的结构体加一个函数。任何 MCP 能力都能用几十行写成 pytool 或内置工具，中间不需要一层协议。
+**MCP 是一行配置，不是插件系统。** 内置工具仍然是一个带 JSON schema 的结构体加一个函数，pytool 仍然是文件夹里的一个文件。`projv_files/mcp.json` 增加的是第三种获得工具的方式：指向一个外部进程，用 stdio JSON-RPC 和它对话——和 `exec_shell` 跟一条命令对话是一回事，区别只是这个进程在两次调用之间一直活着。不加载任何代码，不查注册表，不经过包管理器。几十行 pytool 能解决的就写 pytool；工具已经以 MCP server 的形式存在时，才用它。
 
 **只用 DeepSeek（暂时）。** 对一个整天读写文件的 agent 来说它就是便宜，多 agent 并行才跑得起。
 

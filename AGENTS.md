@@ -33,8 +33,11 @@ Linux (needs `libcurl4-openssl-dev`):
 
 - Do not turn `IProcessRunner` into a pool or drop its lock. One child process at a time is
   the design; the reasoning is written out in `src/platform/iprocess_runner.h`.
-- Do not add an MCP layer, a plugin registry or a package manager. Every extension is a file:
-  skills, roles, themes, pytool folders, prompt files.
+- Every extension is a file: skills, roles, themes, pytool folders, prompt files, and MCP
+  servers declared in `projv_files/mcp.json`. MCP servers are external processes spoken to over
+  stdio JSON-RPC -- never loaded as code, never registered through a plugin registry, never
+  installed through a package manager. Do not add a plugin registry, a package manager, or
+  anything the binary loads as code.
 - Do not introduce colors outside the theme system (`src/tui/theme_*`).
 - Do not let a skill write or delete repository files. Skills report; the agent edits.
 - Do not change the version anywhere except `project(proJV VERSION ...)` in `CMakeLists.txt`.

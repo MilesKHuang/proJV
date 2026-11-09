@@ -17,6 +17,7 @@ run multi-agent skills.
 | 07 | [pytool](07-pytool.md) | Write a Python tool the agent can call |
 | 08 | [reference](08-reference.md) | Every shortcut, `/` command and `config.toml` key |
 | 09 | [authoring a skill](09-skills-authoring.md) | Define your own workflow: a skill folder with agents, rounds and verb tools |
+| 10 | [MCP servers](10-mcp.md) | Connect an external MCP server and call its tools |
 
 ## What it needs
 
@@ -35,6 +36,7 @@ projv_files/
 ├── theme/          theme JSON files
 ├── pytool/         Python tools
 ├── skills/         multi-agent skills (bigbang, monica)
+├── mcp.json        MCP server list (created empty on first run)
 └── sessions/       SQLite session databases
 ```
 

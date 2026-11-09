@@ -103,7 +103,7 @@ this repository.
 | Install | one binary, deps vendored | npm | npm / brew / release | pip |
 | Runtime needed | none | Node.js | none (npm wrapper) | Python |
 | Multi-agent | data-driven skill folders, workers run concurrently | subagents | TOML subagents | — |
-| Extending | drop files: skills, roles, themes, Python tools | MCP servers, hooks | MCP, plugins | — |
+| Extending | drop files: skills, roles, themes, Python tools; MCP servers via `mcp.json` | MCP servers, hooks | MCP, plugins | — |
 | Model choice | DeepSeek only | Anthropic | OpenAI | many providers |
 | Cost model | DeepSeek per-token pricing | subscription or API | ChatGPT plan or API | provider-dependent |
 
@@ -130,9 +130,14 @@ surface in plain files instead of a plugin registry.
 tmux, and lets you call system APIs directly. When something genuinely needs a
 big library, a Python tool covers it.
 
-**No MCP.** A tool here is a struct with a JSON schema and a function. Any MCP
-capability can be written in a few dozen lines as a pytool or a built-in tool,
-without a protocol layer in the middle.
+**MCP is a config line, not a plugin system.** A built-in tool is still a struct
+with a JSON schema and a function, and a pytool is still a file in a folder. What
+`projv_files/mcp.json` adds is a third way to get a tool: point it at an external
+process and proJV talks to it over stdio JSON-RPC, the same way `exec_shell` talks
+to a command -- except the process stays alive between calls. Nothing is loaded
+as code, no registry is consulted, no package manager is involved. If a few dozen
+lines of pytool do the job, write the pytool; reach for MCP when the tool already
+exists as an MCP server.
 
 **DeepSeek (for now).** It is simply very cheap for an agent that reads and
 writes files all day, which makes multi-agent runs affordable.

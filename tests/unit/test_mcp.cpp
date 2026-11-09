@@ -19,6 +19,7 @@
 #include "core/mcp_protocol.h"
 #include "tools/registry.h"
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -507,4 +508,35 @@ TEST_CASE("mcp: shutdownAll reaps grandchild processes too") {
     while (std::chrono::steady_clock::now() < deadline && pidFileEntryAlive(pidFile))
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     CHECK_FALSE(pidFileEntryAlive(pidFile));
+}
+
+TEST_CASE("mcp: cancelling a call abandons the request but keeps the server") {
+    mcp::Manager m;
+    REQUIRE(bringUp(m, "slowcall", 20000)); // the fake answers tools/call after 3s
+
+    std::atomic<bool> cancel{false};
+    std::thread flagger([&cancel] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        cancel.store(true);
+    });
+
+    const auto start = std::chrono::steady_clock::now();
+    const std::string r =
+        m.callTool("fake", "echo", R"({"msg":"hi"})", [&cancel] { return cancel.load(); });
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - start)
+                             .count();
+    flagger.join();
+
+    // Returned because the poll fired, not because the 3s reply arrived.
+    CHECK(r.find("cancelled") != std::string::npos);
+    CHECK(elapsed < 2500);
+    // ESC cancels a call, never the server: same state, same process.
+    CHECK(m.connState("fake") == mcp::ConnState::Ready);
+    CHECK(m.spawnCount("fake") == 1);
+    // And it is still usable afterwards (the stale reply to the abandoned
+    // request is skipped, not mistaken for this one).
+    CHECK(m.callTool("fake", "echo", R"({"msg":"again"})", nullptr) == "echo: again");
+
+    m.shutdownAll();
 }

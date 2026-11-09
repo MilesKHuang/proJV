@@ -366,6 +366,24 @@ void SkillRunner::loadAgents() {
                 drivers.insert(ac.agent);
     drivers_ = drivers;
 
+    // MCP tools are main-agent only, and THIS is the gate. A skill spawns its
+    // subagents concurrently (max_parallel), so two of them calling one MCP
+    // server would write the same stdin at the same time. The name reaches a
+    // subagent through two doors -- the schema list and the whitelist passed to
+    // configure() -- so it is dropped once here, at the source, rather than in
+    // each door separately. (Filtering only the schema list is not enough: the
+    // whitelist is what dispatchSide() actually enforces.)
+    std::vector<std::string> skillTools;
+    skillTools.reserve(config_.tools.size());
+    for (const auto& t : config_.tools) {
+        if (t.rfind("mcp__", 0) == 0) {
+            debugLogf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers",
+                      t.c_str());
+            continue;
+        }
+        skillTools.push_back(t);
+    }
+
     for (const auto& ag : config_.agents) {
         std::ifstream f(sdir + "/" + ag.promptFile, std::ios::binary);
         std::string prompt((std::istreambuf_iterator<char>(f)), {});
@@ -373,7 +391,7 @@ void SkillRunner::loadAgents() {
         auto sa = std::make_unique<SubAgent>(ag.displayName, prompt);
         // Role-level thinking overrides the skill-level setting.
         const bool thinkingOn = SkillConfig::thinkingEnabled(config_.thinking, ag.thinking);
-        sa->configure(cfg_, tools_, config_.tools, config_.maxToolIters, thinkingOn);
+        sa->configure(cfg_, tools_, skillTools, config_.maxToolIters, thinkingOn);
         sa->setMaxParallel(config_.maxParallel);
         sa->setSubmitReserve(config_.submitReserve);
         sa->seedSharedContext(sharedContext_);
@@ -390,17 +408,9 @@ void SkillRunner::loadAgents() {
         // no explicit action in the program -- still have a verb to answer with.
         for (const auto& kv : jsonDefs)
             sa->registerToolDef(kv.second);
-        // MCP tools are main-agent only, and this loop is the boundary that
-        // enforces it. A skill spawns subagents concurrently (max_parallel,
-        // default 16); two of them calling one MCP server would write the same
-        // stdin at the same time. Skipping the name here is the fix -- not a
-        // warning and not a per-call lock.
-        for (const auto& t : config_.tools) {
-            if (t.rfind("mcp__", 0) == 0) {
-                debugLogf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers",
-                          t.c_str());
-                continue;
-            }
+        // Schema list: same filtered set as the whitelist above, so what the
+        // model is shown and what it may call can never disagree.
+        for (const auto& t : skillTools) {
             if (regDefs.count(t)) sa->registerToolDef(regDefs[t]);
         }
 

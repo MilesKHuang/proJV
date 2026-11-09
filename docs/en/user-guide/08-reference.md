@@ -9,6 +9,7 @@
 | `F1` | About |
 | `F2` | Configuration |
 | `F3` | New chat |
+| `F4` | MCP servers (toggle / restart) |
 | `F5` | Open session (picker over `projv_files/sessions/`) |
 | `F6` | Switch theme |
 | `F7` | Theme editor |

@@ -187,3 +187,49 @@ TEST_CASE("engine: a response with multiple tool_calls executes ALL of them") {
     CHECK(a == 1); // both parallel calls ran, not just the first
     CHECK(b == 1);
 }
+
+TEST_CASE("engine: mcp__ tools never reach a skill subagent") {
+    ensureSysUtil();
+    // A skill lists an MCP tool that DOES exist in the main registry. The
+    // subagents run concurrently (max_parallel), so handing them one MCP server
+    // would mean two of them writing the same stdin. The loader drops the name;
+    // this asserts the drop, not just the log line.
+    const std::string cfg = R"JSON({
+  "name": "t_mcp",
+  "tools": ["mcp__fake__echo"],
+  "tool_mode": "auto",
+  "max_tool_iters": 5,
+  "max_rounds": 1,
+  "converge": "none",
+  "agents": [{"id": "a", "display_name": "A", "prompt": "a.md"}],
+  "round_steps": [
+    {"actions": [{"agent": "a", "tool": "emit", "capture": "summary", "into": "a", "emit": "message", "message": "go"}]}
+  ]
+})JSON";
+    std::string root = makeSkill("t_mcp", cfg);
+
+    ToolRegistry reg;
+    int mcpCalls = 0;
+    {
+        ToolDefinition d;
+        d.name = "mcp__fake__echo";
+        d.description = "an MCP tool the main agent may use";
+        reg.registerTool(d, [&mcpCalls](const std::string&) {
+            ++mcpCalls;
+            return std::string("mcp-ok");
+        });
+    }
+
+    // The subagent tries the MCP tool twice, then answers with its verb.
+    int n = 0;
+    auto a = [&n](const std::string&, const std::vector<Message>&) {
+        if (++n <= 2) return makeCall("mcp__fake__echo", nlohmann::json{{"msg", "x"}});
+        return makeCall("emit", nlohmann::json{{"summary", "done"}});
+    };
+    SkillRunner::Callbacks cbs;
+    SkillRunner sr(testConfig(), &reg, cbs, "", root);
+    sr.setResponder("a", a);
+    sr.run("t_mcp", "T");
+
+    CHECK(mcpCalls == 0); // never dispatched to the server
+}

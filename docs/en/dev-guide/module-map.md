@@ -129,6 +129,23 @@ the code disagree, the code wins.
   `process_runner_linux.cpp`, `system_util_*`, `isystem_util.h`.
 - **Rule.** One runner, serialized on purpose (see the comment in the header).
 
+## 10. MCP client
+
+- **Responsibility.** Talk to external MCP servers over stdio JSON-RPC and put
+  their tools in front of the model.
+- **Entry.** `src/core/mcp_manager.cpp` (`start` / `stop` / `syncTools` /
+  `callTool`), `src/core/mcp_protocol.cpp` (newline framing, `_meta`,
+  `resultType`), `src/core/mcp_process.cpp` (three pipes, Job Object / `killpg`),
+  `src/core/mcp_config.cpp` (`projv_files/mcp.json`), `src/tui/mcp_view.cpp` (F4).
+- **Rule.** One `worker_` thread per server, joined by `start` / `stop` /
+  `shutdownAll`, never detached. `syncTools()` is the only writer of
+  `ToolRegistry` and `Agent::autoToolNames_`, and it runs on the agent thread at a
+  turn boundary. `mcp__<server>__<tool>` lives in `autoToolNames_`, never in the
+  prompt allowlist -- an empty allowlist must keep meaning "allow everything".
+- **Tests.** `test_mcp.cpp` plus the `fake_mcp_server` executable fixture in
+  `tests/fakes/`, spawned as a real child process. `--mcp-check` / `--mcp-call`
+  verify against a live server without starting the TUI.
+
 ---
 
 Back -> [dev guide](README.md) | Recipes -> [recipes](recipes.md)

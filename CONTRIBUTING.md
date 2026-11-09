@@ -53,7 +53,9 @@ Checklist in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md
 
 - Turning the single process runner into a pool, or dropping its lock. It is
   serial on purpose (see `src/platform/iprocess_runner.h`).
-- Adding an MCP layer, a plugin registry, or a package manager.
+- A plugin registry, a package manager, or anything the binary loads as code. MCP
+  servers are none of those: they are external processes declared in
+  `projv_files/mcp.json` and spoken to over stdio.
 - Hardcoding colours outside the theme system.
 - A skill that deletes code it decided was dead. Dead code is reported, never
   removed.
