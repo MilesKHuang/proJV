@@ -98,12 +98,15 @@ to instruct. The order is fixed:
    would have to be found out - never pad it with generalities.
 
 3. **The steps.** Numbered. One action per step, in the order they happen.
-   Every step starts with a verb and names the thing the reader touches. A step
-   must be doable tomorrow without computing anything first: if a step needs a
-   number, the step is wrong, because doing the step is what produces the
-   number. No formula, no threshold, no derived quantity may appear inside the
-   steps. The last step is when to stop, written as an action ("on day N, look
-   at X; if it is below Y, stop and do Z").
+   Every step starts with a verb and names the thing the reader touches by its
+   own name - "the three candidate jobs", "whoever sells it", "that column" are
+   not names. A step must be doable tomorrow without computing anything first:
+   if a step needs a number, the step is wrong, because doing the step is what
+   produces the number. No formula, no threshold, no derived quantity may
+   appear inside the steps. The last step is when to stop, written as an action
+   ("on day N, look at X; if it is below Y, stop and do Z").
+   Bad:  第一天，在一张纸上写下三个候选的活，每行留三栏：谁在卖、报多少钱、单卖还是整套。
+   Good: 第一天，打开淘宝搜「隐患排查台账」，找三家店，记下店名、单份价格、是否必须整套买。
 
 4. **One worked example.** Take one plausible person - theirs, if you can infer
    it - and walk the whole plan end to end with concrete numbers, labelled
@@ -139,7 +142,8 @@ the work can be handed to a program".
 Write prose a newcomer can follow, not a filled-in form:
 - One fact per sentence, two at most.
 - Gloss every invented or field term the first time it appears, in one clause.
-  There is no glossary: a term that would need an entry does not belong.
+  A real name is not jargon. Write it in full the first time: 隐患排查台账, not
+  "that table".
 - If a sentence only makes sense to somebody who followed the debate, rewrite it.
 - If your own vote was no, say so in one line near the top: "we did not agree; I
   refused X, because Y", and put the detail in a short section before the
