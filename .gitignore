@@ -31,6 +31,9 @@ external/*.tar
 
 # Config with secrets
 config.toml
+# MCP server list: may carry a server token, and the program creates it on first
+# launch (projv_files/mcp.json next to the exe, same neighbourhood as config.toml).
+mcp.json
 
 # Logs
 *.log

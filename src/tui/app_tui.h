@@ -6,6 +6,7 @@
 #include "core/storage.h"
 #include "client/deepseek.h"
 #include "core/agent.h"
+#include "core/mcp_manager.h"
 #include "core/skill_runner.h"
 #include "core/turn_requests.h"
 #include "tools/registry.h"
@@ -129,6 +130,14 @@ class TuiApp {
     // Cancel agent + join threads (call before exit).
     void shutdown();
 
+    // --- MCP (F4) -------------------------------------------------------
+    // Null before initialize() and after shutdown().
+    mcp::Manager* mcpManager() { return mcpManager_.get(); }
+    // Flip `enabled` in mcp.json and start/stop the server to match.
+    // Idle only: a process change must never interleave with a running turn,
+    // and the tool table is only ever written at a turn boundary.
+    void setMcpEnabled(const std::string& name, bool enabled);
+
   private:
     void setupTools();
     void harvestSpeakers();
@@ -140,6 +149,14 @@ class TuiApp {
     // conversation: the directory tree, then the repository's AGENTS.md. Empty
     // pieces are skipped. Called on startup, on F3 and on "/clear".
     void injectWorkspaceContext();
+    // Second visibility channel: a short "[MCP available tools]" block naming the
+    // ready servers. Injected at the conversation start like the workspace
+    // context; retried at the next turn boundary while nothing is ready yet.
+    void injectMcpContext();
+    // Push the saved config into the Agent (paths, model, params). Separate from
+    // saveFullConfig so it can be deferred to a turn boundary when a turn is
+    // running -- those setters touch Agent state the agent thread reads.
+    void applyConfigToAgent();
     // Body shared by newChat() and "/clear": cancel the turn, wipe the session,
     // then re-inject the system prompt plus the workspace context. keepStorage
     // false also drops the session database and starts a new one (F3); "/clear"
@@ -172,6 +189,16 @@ class TuiApp {
     DeepSeekClient client;
     ToolRegistry tools;
     std::optional<PythonToolManager> pytoolMgr_;
+    // Resident MCP server pool. Declared after `tools` on purpose: it is
+    // destroyed first, so the executors it registered can never outlive it.
+    std::unique_ptr<mcp::Manager> mcpManager_;
+    // Set when a config save (F2) lands while a turn is running. The tool-table
+    // rebuild is deferred to the next turn boundary: ToolRegistry's maps are a
+    // bare unordered_map and the Agent thread iterates them while building a
+    // request, so re-registering mid-turn is a data race (the pre-MCP bug).
+    std::atomic<bool> toolsReloadRequested_{false};
+    // False until a non-empty MCP block has been injected into this conversation.
+    bool mcpContextInjected_ = false;
     Storage storage;
     Agent* agent = nullptr;
     IProcessRunner* procRunner_ = nullptr;

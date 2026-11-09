@@ -880,3 +880,53 @@ struct McpServerHandle {
 - `inputSchemaJson` 原样透传：`toJsonSchema()` 短路两行即可（`models.cpp:7`）；
 - 注册期必须校验 schema：`to_json(ToolDefinition)` 的 catch 会静默回落 `{"type":"object"}`（`models.cpp:196-203`），不校验就等于让模型自己编参数名；
 - 技能不接 MCP：`skill_runner.cpp:393-394` 按名查表 + `sub_agent.cpp:186-189` 白名单，两处都成立，跳过 `mcp__` 前缀这条边界可行。
+
+---
+
+## 20. 实现回填（v3 → 已验证，落地后补写）
+
+本节不是设计，是跑出来的结果。设计稿到这里可以作为历史记录封存。
+
+### 20.1 已验证的事实
+
+| 项 | 结果 |
+|---|---|
+| 构建 | Release 通过（MSVC 2019 / VS16），无新增警告 |
+| 单测 | `ctest` 全绿；`proJV_tests` 306 例，其中 MCP 新增 22 例（含假 server 驱动的进程级用例） |
+| 真 server | `uvx mcp-server-time` —— 官方 `modelcontextprotocol/servers` 的 Python `time` server，版本 2026.11.4 |
+| 握手 | server 回 `protocolVersion: 2025-11-25`、`serverInfo.name = mcp-time` |
+| 工具注册 | 3 个：`mcp__time__get_current_time` / `__convert_time` / `__get_time_ago` |
+| 常驻 | `spawns=1`，连续两次调用仍是同一个进程 |
+| 真实调用 | `get_current_time {timezone:"Asia/Tokyo"}` → `2026-11-09T21:47:40+09:00`；`convert_time {time:"14:30", UTC→Asia/Shanghai}` → `22:30:00+08:00`，`+8.0h` |
+
+这个 server 的 `inputSchema` 里带 `$ref` / `$defs` / `anyOf` / `annotations` / `outputSchema` —— 正是 `ToolParameter` 四种类型表达不了、必须原样透传的形状。所以 `inputSchemaJson` 这条通道**是被真数据验证过的**，不只是被单测验证过。
+
+### 20.2 与设计不同的实现（有意，需知悉）
+
+1. **stderr 没有独立线程**。§6.2 写"stderr 单独起一条线程 drain"；实际是**在同一个轮询循环里顺带 drain**（Windows `PeekNamedPipe`、POSIX `poll`），零线程，保证相同：stderr 永不参与解析，只进日志。少一条线程优于多一条。
+2. **`stop()` 在调用线程上同步执行**，最坏是关 stdin 后等 ≤2s 再升级到强杀。§6.2 的"TUI 线程永不做阻塞 I/O"在这里被放宽。可接受的前提是 F4 只在 idle 时操作；若要严格，把 kill 序列挪进 worker。
+3. **新增 `--mcp-check` / `--mcp-call`**（§17 未列）：headless 预检与单次调用。既是本次验证手段，也是风险表里"`--check-config` 预检"那条长期项的落地。
+4. **`registeredNames` 对账**：`restart()` 后工具集可能变而 `registered` 标志仍为真，因此 syncTools 比对的是名字集合，不是单个 bool。
+
+### 20.3 实施中发现的两个真问题（已修）
+
+1. **`SystemUtil::Init()` 必须先于任何 config 路径访问**。`getExeDir()` → `SystemUtil::Instance()`，未 Init 时它 `throw std::runtime_error`（`isystem_util.cpp:14`）。把 headless 路径放在 Init 之前，结果是进程以 0xC0000409 退出且**一行输出都没有**（printf 在抛点之后），看起来像玄学崩溃。已在 `main()` 里把 Init 提前，并给 `configPath()` 加了 try/catch。
+2. **`uvx` 类 server 首次启动要下载依赖**（实测 32 个包，含 cryptography / pywin32 / pydantic-core），远超 120s 默认握手超时。**用户文档必须写**：首次先手工预热一次（`uvx mcp-server-time < nul`），或把 `timeout_ms` 调大。否则表现是"卡在 handshaking 然后超时"，极易被误判成客户端 bug。
+
+### 20.4 仍未完成（接手者必读）
+
+| 项 | 状态 |
+|---|---|
+| M1e 文档转立场（6 处、双语 12 文件） | **未做**。代码已可用，仓库里 `AGENTS.md` / `CONTRIBUTING*` / `README*` 仍写着"不要 MCP 层" |
+| F4 面板人工验收 | **未做**。headless 路径已验证；TUI 内的按键、焦点、渲染没有真人跑过 |
+| 测试 #15（串行）/ #18（ESC 取消不杀 server） | 代码已实现，**缺断言**。#18 需要跨线程驱动 `Agent::cancel()` |
+| 测试 #19（技能跳过 `mcp__`） | 逻辑已实现（`skill_runner.cpp:393` 那段），**缺断言** |
+| 分页 / SSE / resources / prompts / MRTR 多轮 | 按 §12 明确不做 |
+
+### 20.5 实际落地的文件
+
+新增 12 个：`src/core/mcp_protocol.{h,cpp}`、`mcp_process.{h,cpp}`、`mcp_config.{h,cpp}`、`mcp_manager.{h,cpp}`、`src/tui/mcp_view.{h,cpp}`、`tests/fakes/fake_mcp_server.cpp`、`tests/unit/test_mcp.cpp`。
+
+改动 13 个：`src/client/models.{h,cpp}`、`src/tools/registry.{h,cpp}`、`src/core/agent.{h,cpp}`、`src/tui/app_tui.{h,cpp}`、`src/tui/main_tui.cpp`、`src/core/skill_runner.cpp`、`CMakeLists.txt`、`tests/CMakeLists.txt`、`.gitignore`。
+
+顺带修掉的既有竞态（用户在设计阶段指出的"FX 竞态"）：`saveFullConfig()` 原本直接 `setupTools()`，回合运行中保存设置会在 Agent 线程遍历 `ToolRegistry` 的裸 `unordered_map` 时插入/删除 = UB。现在改为 `toolsReloadRequested_` 标志 + 回合边界统一重放（`runAgentTurnLoop`），与 MCP 的 `syncTools()` 共用同一个写入窗口。

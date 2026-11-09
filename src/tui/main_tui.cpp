@@ -9,6 +9,7 @@
 #include "speaker_colors.h"
 #include "todo_view.h"
 #include "config_view.h"
+#include "mcp_view.h"
 #include "theme_editor_view.h"
 #include "theme_manager.h"
 #include "theme_map.h"
@@ -24,10 +25,13 @@
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/box.hpp>
 
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace ftxui;
@@ -237,13 +241,159 @@ static int runInstallCommand(int argc, char** argv) {
     return install_shim::run_purge(opt);
 }
 
+// MCP smoke test / pre-flight. Runs before FTXUI takes the terminal and never
+// starts the TUI, so it can be scripted or run in CI:
+//
+//   proJV_tui --mcp-check
+//       spawn every enabled server, wait for the handshake, print each server's
+//       state and the tools it contributed. Exit 0 only when every enabled +
+//       trusted server reached "ready".
+//
+//   proJV_tui --mcp-call <server> <tool> [key=value ...]
+//       same, then call one tool and print the raw result text. Arguments are
+//       key=value pairs (JSON-parsed when possible, string otherwise) because
+//       nested JSON on a cmd.exe command line is not quotable in practice.
+//
+// Returns -1 when the arguments are not an MCP command, so main() falls through
+// to the TUI.
+static int runMcpCheck(int argc, char** argv) {
+    bool wanted = false;
+    std::string callServer, callTool;
+    std::vector<std::string> callArgs;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--mcp-check") {
+            wanted = true;
+        } else if (arg == "--mcp-call") {
+            wanted = true;
+            if (i + 2 < argc) {
+                callServer = argv[++i];
+                callTool = argv[++i];
+                while (i + 1 < argc) {
+                    const std::string kv = argv[i + 1];
+                    if (kv.find('=') == std::string::npos || kv.rfind("--", 0) == 0) break;
+                    callArgs.push_back(kv);
+                    ++i;
+                }
+            }
+        }
+    }
+    if (!wanted) return -1;
+
+    // Unbuffered: if a server misbehaves and takes the process down, the lines
+    // printed so far must still reach the terminal.
+    setvbuf(stdout, nullptr, _IONBF, 0);
+
+    std::string cfgPath;
+    try {
+        cfgPath = mcp::configPath();
+    } catch (const std::exception& e) {
+        // A CLI path must never die in std::terminate: say what was missing.
+        fprintf(stderr, "[mcp] cannot resolve the config path: %s\n", e.what());
+        return 2;
+    }
+    printf("[mcp] loading %s\n", cfgPath.c_str());
+
+    mcp::Manager mgr;
+    mgr.setWorkDir(getWorkspaceDir());
+    mcp::ensureConfigFile(cfgPath);
+    if (!mgr.loadFromJson(cfgPath)) {
+        fprintf(stderr, "[mcp] config error: %s\n", mgr.configError().c_str());
+        return 2;
+    }
+    if (mgr.empty()) {
+        fprintf(stderr,
+                "[mcp] no servers in %s\n"
+                "      add one, e.g. {\"servers\":[{\"name\":\"time\",\"command\":\"uvx\","
+                "\"args\":[\"mcp-server-time\"],\"trusted\":true,\"enabled\":true}]}\n",
+                mcp::configPath().c_str());
+        return 2;
+    }
+
+    mgr.startEnabled();
+    printf("[mcp] starting %zu server(s), waiting for handshakes\n", mgr.serverNames().size());
+    // Wait for every server we asked to start to settle (ready or dead).
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
+    for (;;) {
+        bool settled = true;
+        for (const auto& name : mgr.serverNames()) {
+            if (!mgr.enabledOf(name) || !mgr.trustedOf(name)) continue;
+            const auto st = mgr.connState(name);
+            if (st != mcp::ConnState::Ready && st != mcp::ConnState::Dead &&
+                st != mcp::ConnState::Stopped)
+                settled = false;
+        }
+        if (settled) break;
+        if (std::chrono::steady_clock::now() >= deadline) {
+            fprintf(stderr, "[mcp] timed out waiting for servers to settle\n");
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    int rc = 0;
+    printf("config: %s\n", cfgPath.c_str());
+    for (const auto& name : mgr.serverNames()) {
+        const auto st = mgr.connState(name);
+        printf("\n%-16s state=%-12s protocol=%-9s tools=%zu spawns=%u\n", name.c_str(),
+               mcp::connStateName(st), mgr.protocolOf(name).c_str(), mgr.toolCount(name),
+               mgr.spawnCount(name));
+        if (!mgr.trustedOf(name)) {
+            printf("  skipped: trusted=false (set \"trusted\": true to allow it)\n");
+            continue;
+        }
+        if (!mgr.enabledOf(name)) {
+            printf("  skipped: enabled=false\n");
+            continue;
+        }
+        if (st != mcp::ConnState::Ready) {
+            printf("  FAILED: %s\n", mgr.lastError(name).c_str());
+            rc = 1;
+        }
+        for (const auto& tool : mgr.toolNames(name)) printf("  - %s\n", tool.c_str());
+    }
+
+    if (!callServer.empty()) {
+        nlohmann::json args = nlohmann::json::object();
+        for (const auto& kv : callArgs) {
+            const size_t eq = kv.find('=');
+            const std::string key = kv.substr(0, eq);
+            const std::string raw = kv.substr(eq + 1);
+            nlohmann::json value;
+            try {
+                value = nlohmann::json::parse(raw);
+            } catch (...) {
+                value = raw;
+            }
+            args[key] = value;
+        }
+        printf("\ncall %s / %s %s\n", callServer.c_str(), callTool.c_str(), args.dump().c_str());
+        const std::string r = mgr.callTool(callServer, callTool, args.dump(), nullptr);
+        printf("result: %s\n", r.c_str());
+        if (r.rfind("Error:", 0) == 0) rc = 1;
+    }
+
+    mgr.shutdownAll();
+    return rc;
+}
+
 int main(int argc, char** argv) {
     const int installExit = runInstallCommand(argc, argv);
     if (installExit >= 0) return installExit;
 
-    tui::initTerminal();
+    // SystemUtil is the only implementation of "where is my exe / config dir",
+    // and Instance() THROWS when Init() has not run yet (isystem_util.cpp:14).
+    // --mcp-check resolves projv_files/mcp.json through getProjvDir(), so the
+    // platform layer has to be up BEFORE the headless path, not after it. That
+    // ordering mistake is what made the first --mcp-check die with 0xC0000409
+    // and not one line of output.
     ISystemUtil* sys = CreateSystemUtil();
     SystemUtil::Init(sys);
+
+    const int mcpExit = runMcpCheck(argc, argv);
+    if (mcpExit >= 0) return mcpExit;
+
+    tui::initTerminal();
     IProcessRunner* procRunner = CreateProcessRunner();
 
 #ifndef PROJV_RELEASE
@@ -269,6 +419,7 @@ int main(int argc, char** argv) {
     std::string input;
     bool show_config = false;
     bool show_approval = false;
+    bool show_mcp = false;
     bool show_open = false;
     bool show_theme = false;
     bool show_theme_editor = false;
@@ -377,6 +528,10 @@ int main(int argc, char** argv) {
         }
         if (e == Event::F3) {
             app.newChat();
+            return true;
+        }
+        if (e == Event::F4) {
+            show_mcp = true;
             return true;
         }
         if (e == Event::F5) {
@@ -594,12 +749,15 @@ int main(int argc, char** argv) {
                 return hbox({std::move(cap), text(" " + label) | dim});
             };
             els.push_back(hbox({
-                hint(keycap("F1"), "help"),    text("  "), hint(keycap("F2"), "cfg"),    text("  "),
-                hint(keycap("F3"), "new"),     text("  "), hint(keycap("F5"), "open"),   text("  "),
-                hint(keycap("F6"), "theme"),   text("  "), hint(keycap("F7"), "edit"),   text("  "),
-                hint(keycap("F8"), "think"),   text("  "), hint(keycap("F9"), "todo"),   text("  "),
-                hint(keycap("F10"), "model"),  text("  "), hint(keycap("↑↓"), "scroll"), text("  "),
-                hint(keycap("Enter"), "send"), text("  "), hint(keycap("Esc"), "quit"),
+                // Single-space gaps: 13 entries now that F4 (mcp) is here, and the
+                // row must still fit an 80...120 column terminal.
+                hint(keycap("F1"), "help"),    text(" "), hint(keycap("F2"), "cfg"),   text(" "),
+                hint(keycap("F3"), "new"),     text(" "), hint(keycap("F4"), "mcp"),   text(" "),
+                hint(keycap("F5"), "open"),    text(" "), hint(keycap("F6"), "theme"), text(" "),
+                hint(keycap("F7"), "edit"),    text(" "), hint(keycap("F8"), "think"), text(" "),
+                hint(keycap("F9"), "todo"),    text(" "), hint(keycap("F10"), "model"), text(" "),
+                hint(keycap("↑↓"), "scroll"),  text(" "), hint(keycap("Enter"), "send"), text(" "),
+                hint(keycap("Esc"), "quit"),
             }));
         }
         return vbox(std::move(els));
@@ -611,6 +769,7 @@ int main(int argc, char** argv) {
     Component config_dialog = config_view::makeConfigDialog(app, [&] { show_config = false; });
     Component approval_dialog =
         config_view::makeApprovalDialog(app, [&] { show_approval = false; });
+    Component mcp_dialog = mcp_view::makeMcpDialog(app, [&] { show_mcp = false; });
 
     // F5: session picker (sessions live in a fixed directory).
     MenuOption open_opt;
@@ -693,13 +852,14 @@ int main(int argc, char** argv) {
     Component welcome = config_view::makeWelcome(app, [&] { showWelcome = false; });
 
     Component with_modals =
-        Modal(Modal(Modal(Modal(Modal(Modal(Modal(main_renderer, config_dialog, &show_config),
-                                            approval_dialog, &show_approval),
-                                      open_dialog, &show_open),
-                                theme_menu, &show_theme),
-                          theme_editor_dlg, &show_theme_editor),
-                    model_dialog, &show_model),
-              about_dialog, &show_about);
+        Modal(Modal(Modal(Modal(Modal(Modal(Modal(Modal(main_renderer, config_dialog, &show_config),
+                                                   approval_dialog, &show_approval),
+                                             mcp_dialog, &show_mcp),
+                                       open_dialog, &show_open),
+                                 theme_menu, &show_theme),
+                           theme_editor_dlg, &show_theme_editor),
+                     model_dialog, &show_model),
+               about_dialog, &show_about);
 
     // Welcome page is a modal overlay while no API key is configured; once
     // saved, showWelcome flips false and the main UI takes focus. This keeps

@@ -20,6 +20,12 @@ struct ToolDefinition {
     std::string name;
     std::string description;
     std::vector<ToolParameter> parameters;
+    // Non-empty -> toJsonSchema() returns this verbatim. MCP tools use it: the
+    // server's own JSON Schema is forwarded unchanged, so nested objects, enums,
+    // $ref and required arrays survive. ToolParameter can express none of those,
+    // and the executor already receives raw JSON -- the schema only shapes what
+    // the model sees, it never participates in transport.
+    std::string inputSchemaJson;
 
     // Serialize to JSON for the API request
     std::string toJsonSchema() const;

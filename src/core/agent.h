@@ -11,6 +11,7 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <set>
 #include <vector>
 
 enum class AgentPhase { Idle, Streaming, ExecutingTools, AwaitApproval, Error };
@@ -70,6 +71,22 @@ class Agent {
     // Replace the first system message in session with a new prompt.
     // Keeps all other messages intact -- used for role switching without clearing context.
     void replaceSystemPrompt(const std::string& newPrompt);
+
+    // --- Tool visibility (two orthogonal channels) ----------------------
+    //   allowedTools_  -- parsed from the "tools available:" line of the role
+    //                     prompt. Empty means "no restriction": the old escape
+    //                     hatch, kept byte-for-byte.
+    //   autoToolNames_ -- tools that become visible by being registered. MCP
+    //                     tool names only exist at runtime (mcp__fs__read_file),
+    //                     so a user cannot pre-write them into a prompt.
+    // They must stay separate: pushing MCP names into allowedTools_ would make
+    // it non-empty and silently disable every builtin for a user who deleted the
+    // tools line on purpose. Query-time only -- never cached, because there are
+    // three setSystemPrompt/replaceSystemPrompt call sites.
+    bool isToolAllowed(const std::string& name) const;
+    void addAutoTools(const std::vector<std::string>& names);
+    void removeAutoTools(const std::vector<std::string>& names);
+    size_t autoToolCount() const { return autoToolNames_.size(); }
     void setWorkspacePath(const std::string& ws) { workspacePath_ = ws; }
     void setContextWindow(size_t window) {
         configContextWindow = window;
@@ -166,6 +183,9 @@ class Agent {
     std::string workspacePath_;
     std::string systemPrompt_;
     std::vector<std::string> allowedTools_;
+    // Tool names that are visible because they were registered at runtime (MCP).
+    // Written only at a turn boundary, on the agent thread, by McpManager.
+    std::set<std::string> autoToolNames_;
     size_t configContextWindow = 0;
     int configMaxTokens = 65536;
     double configTemperature = 0.0;

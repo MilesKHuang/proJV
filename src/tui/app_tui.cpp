@@ -294,6 +294,20 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     // "/clear" paths use, so a conversation always starts with the same prefix.
     injectWorkspaceContext();
 
+    // MCP: read projv_files/mcp.json and spawn every enabled + trusted server.
+    // The config file is created empty on first run, like ensureDefaultPrompts().
+    // Spawning happens on per-server worker threads, so nothing here blocks the
+    // UI; tools are registered at the first turn boundary (see runAgentTurnLoop),
+    // which is also why the context block below may come back empty on a cold
+    // start and is retried there.
+    mcpManager_ = std::make_unique<mcp::Manager>();
+    mcpManager_->setWorkDir(getWorkspaceDir());
+    mcp::ensureConfigFile(mcp::configPath());
+    if (!mcpManager_->loadFromJson(mcp::configPath()))
+        debugLogf("[TuiApp] mcp.json: %s", mcpManager_->configError().c_str());
+    mcpManager_->startEnabled();
+    injectMcpContext();
+
     // Theme: load from projv_files/theme/, prefer config.themeName.
     ThemeManager::instance().init(getThemeDir(), config.themeName);
     ThemeManager::instance().onThemeChanged = [this](const std::string& name) {
@@ -524,6 +538,21 @@ void TuiApp::runAgentTurnLoop() {
     }
 
     for (;;) {
+        // --- Turn boundary (the only writer's window) ----------------------
+        // Both calls below mutate state the Agent thread reads while building a
+        // request (ToolRegistry's bare unordered_maps, Agent's auto-tool set).
+        // Running them here -- on the agent thread, with no turn in flight -- is
+        // what lets the registry stay lock-free.
+        if (toolsReloadRequested_.exchange(false)) {
+            debugLogf("[TuiApp] applying deferred tool reload (config saved mid-turn)");
+            setupTools();
+            applyConfigToAgent();
+        }
+        if (mcpManager_) mcpManager_->syncTools(tools, *agent);
+        // A cold start races the servers' handshakes, so the MCP block may have
+        // come back empty in initialize(); retry until it lands once.
+        if (!mcpContextInjected_) injectMcpContext();
+
         agent->newTurn();
         agent->run();
 
@@ -763,6 +792,9 @@ void TuiApp::shutdown() {
     if (agent) agent->cancel();
     joinAgentThread();
     joinModelsThread();
+    // MCP last: killing servers is only safe once no callTool can be in flight,
+    // and every server's worker thread is joined here (never detached).
+    if (mcpManager_) mcpManager_->shutdownAll();
     tools.setProcessRunner(nullptr); // detach before main deletes the runner
     delete agent;
     agent = nullptr;
@@ -848,12 +880,19 @@ void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUr
     }
 
     client.setConfig(config);
-    setupTools(); // re-register tools with new workspace path
-    agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
-    agent->setRequestParams(config.maxTokens, config.temperature);
-    agent->setReasoningEffort(config.reasoningEffort);
-    agent->setModel(config.model);
-    agent->setContextWindow(0); // reset auto-detect on model switch
+    // Tool-table writes must not race the agent thread: ToolRegistry's maps are a
+    // bare unordered_map and the Agent iterates them in buildChatRequest() ->
+    // getFilteredToolDefinitions(). While a turn (or a skill -- it sets the same
+    // busy flag) is running, both the rebuild and the Agent setters are deferred
+    // to the next turn boundary (runAgentTurnLoop). This is the pre-existing F2
+    // race the MCP design surfaced; it is fixed here rather than worked around.
+    if (isBusy()) {
+        toolsReloadRequested_.store(true);
+        debugLogf("[TuiApp] config saved during a running turn: tool reload deferred");
+    } else {
+        setupTools(); // re-register tools with new workspace path
+        applyConfigToAgent();
+    }
     config.loadError.clear();
 }
 
@@ -883,6 +922,44 @@ void TuiApp::injectWorkspaceContext() {
     }
 }
 
+void TuiApp::injectMcpContext() {
+    if (!agent || !mcpManager_) return;
+    // Only Ready servers are listed: naming a tool the model cannot call is
+    // worse than saying nothing. Empty at a cold start, retried at the turn
+    // boundary once the servers have finished their handshake.
+    std::string ctx = mcpManager_->buildContextSnippet();
+    if (ctx.empty()) return;
+    // Same shape as the workspace context above: one system message, injected
+    // once at a conversation start, never re-appended per turn.
+    agent->addPersistedMessage(Message::System(ctx));
+    mcpContextInjected_ = true;
+    debugLogf("[TuiApp] Injected MCP context (%zu chars)", ctx.size());
+}
+
+void TuiApp::applyConfigToAgent() {
+    if (!agent) return;
+    agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
+    agent->setRequestParams(config.maxTokens, config.temperature);
+    agent->setReasoningEffort(config.reasoningEffort);
+    agent->setModel(config.model);
+    agent->setContextWindow(0); // reset auto-detect on model switch
+}
+
+void TuiApp::setMcpEnabled(const std::string& name, bool enabled) {
+    if (!mcpManager_) return;
+    if (isBusy()) {
+        // Idle-only by design: start/stop touches the process tree and the tool
+        // table, and neither may interleave with a running turn.
+        debugLogf("[TuiApp] setMcpEnabled('%s') refused: a turn is running", name.c_str());
+        return;
+    }
+    mcpManager_->setEnabled(name, enabled);
+    // Refresh the "which MCP tools exist" block for the next turn. Tools
+    // themselves are registered/unregistered by syncTools at the turn boundary.
+    mcpContextInjected_ = false;
+    injectMcpContext();
+}
+
 void TuiApp::reinitConversation(bool keepStorage) {
     if (!agent) return;
     agent->cancel();
@@ -901,6 +978,8 @@ void TuiApp::reinitConversation(bool keepStorage) {
         agent->addPersistedMessage(Message::System(sp));
     }
     injectWorkspaceContext();
+    mcpContextInjected_ = false;
+    injectMcpContext();
     if (keepStorage) {
         // "/clear" keeps the session file and the on-screen history; the model
         // simply starts from an empty context again.

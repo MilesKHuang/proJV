@@ -12,6 +12,14 @@ class IProcessRunner; // platform/iprocess_runner.h
 class ToolRegistry {
   public:
     void registerTool(const ToolDefinition& def, ToolExecutor executor);
+    // Register only when the name is free. MCP uses this so an external server
+    // can never silently take over a builtin: the mcp__<server>__<tool> prefix
+    // makes a collision structurally impossible, but the guard is the cheap half
+    // of that promise. Returns true when the tool was actually added.
+    bool registerToolIfAbsent(const ToolDefinition& def, ToolExecutor executor);
+    // Drop every tool whose name starts with `prefix`; returns how many went.
+    // Used on a turn boundary when a server stops (see McpManager::syncTools).
+    size_t unregisterByNamePrefix(const std::string& prefix);
     std::vector<ToolDefinition> getToolDefinitions() const;
     std::string execute(const std::string& name, const std::string& args);
 

@@ -38,6 +38,7 @@ set(TEST_SOURCES
     unit/test_view_image.cpp
     unit/test_osc7501.cpp
     unit/test_install_shim.cpp
+    unit/test_mcp.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
@@ -59,7 +60,27 @@ set(TEST_SOURCES
     ${SRC_DIR}/tui/theme_editor_view.cpp
 )
 
+# ── MCP test fixture ─────────────────────────────────────────────────────
+# MCP is a process protocol, so the test spawns a real executable. It must be its
+# own target: linking the code into proJV_tests would produce a "server" that is
+# already inside the test process and never exercises a pipe.
+add_executable(fake_mcp_server fakes/fake_mcp_server.cpp)
+target_include_directories(fake_mcp_server PRIVATE ${EXTERNAL_DIR})
+if(WIN32)
+    target_compile_definitions(fake_mcp_server PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
+if(MSVC)
+    target_compile_options(fake_mcp_server PRIVATE /utf-8)
+endif()
+
 add_executable(proJV_tests ${TEST_SOURCES})
+
+# test_mcp.cpp spawns the fixture. It resolves the executable next to the test
+# binary at run time (fakeServerPath()) instead of baking an absolute path in:
+# a Windows path inside a generated string literal turns its backslashes into
+# escape sequences (\w, \p ...), and the two binaries always land side by side.
+add_dependencies(proJV_tests fake_mcp_server)
 
 target_include_directories(proJV_tests PRIVATE
     ${EXTERNAL_DIR}

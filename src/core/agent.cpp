@@ -817,8 +817,7 @@ ToolResult Agent::executeTool(const ToolCall& call) {
     // runs (the writing tools record into a thread_local slot). Reset before the
     // allowlist check as well, so the early returns stay clean.
     diff_capture::reset();
-    if (!allowedTools_.empty() &&
-        std::find(allowedTools_.begin(), allowedTools_.end(), call.name) == allowedTools_.end()) {
+    if (!isToolAllowed(call.name)) {
         r.content = "Error: Tool '" + call.name + "' not allowed.";
         r.isError = true;
         return r;
@@ -957,13 +956,32 @@ ChatRequest Agent::buildChatRequest() const {
     return req;
 }
 
+bool Agent::isToolAllowed(const std::string& name) const {
+    // Auto-registered tools (MCP) win first: they are not in the prompt and
+    // never will be.
+    if (autoToolNames_.count(name)) return true;
+    // Then the old rule, unchanged: an empty allowlist means "no restriction".
+    if (allowedTools_.empty()) return true;
+    return std::find(allowedTools_.begin(), allowedTools_.end(), name) != allowedTools_.end();
+}
+
+void Agent::addAutoTools(const std::vector<std::string>& names) {
+    for (const auto& n : names)
+        if (!n.empty()) autoToolNames_.insert(n);
+}
+
+void Agent::removeAutoTools(const std::vector<std::string>& names) {
+    for (const auto& n : names) autoToolNames_.erase(n);
+}
+
 std::vector<ToolDefinition> Agent::getFilteredToolDefinitions() const {
     auto all = toolRegistry.getToolDefinitions();
-    if (allowedTools_.empty()) return all;
+    // Fast path: nothing is restricted and nothing was auto-registered, so the
+    // whole registry goes out (the pre-MCP behaviour).
+    if (allowedTools_.empty() && autoToolNames_.empty()) return all;
     std::vector<ToolDefinition> f;
     for (auto& d : all)
-        if (std::find(allowedTools_.begin(), allowedTools_.end(), d.name) != allowedTools_.end())
-            f.push_back(d);
+        if (isToolAllowed(d.name)) f.push_back(d);
     return f;
 }
 

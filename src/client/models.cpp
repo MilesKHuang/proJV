@@ -5,6 +5,9 @@
 
 // --- ToolDefinition ------------------------------------------------
 std::string ToolDefinition::toJsonSchema() const {
+    // MCP pass-through: the server gave us a schema the 4-type ToolParameter
+    // model cannot express. Forward it byte for byte instead of degrading it.
+    if (!inputSchemaJson.empty()) return inputSchemaJson;
     try {
         nlohmann::json schema;
         schema["type"] = "object";

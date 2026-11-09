@@ -7,6 +7,27 @@ void ToolRegistry::registerTool(const ToolDefinition& def, ToolExecutor executor
     executors[def.name] = executor;
 }
 
+bool ToolRegistry::registerToolIfAbsent(const ToolDefinition& def, ToolExecutor executor) {
+    if (definitions.find(def.name) != definitions.end()) return false;
+    definitions[def.name] = def;
+    executors[def.name] = std::move(executor);
+    return true;
+}
+
+size_t ToolRegistry::unregisterByNamePrefix(const std::string& prefix) {
+    size_t removed = 0;
+    for (auto it = definitions.begin(); it != definitions.end();) {
+        if (it->first.rfind(prefix, 0) == 0) {
+            executors.erase(it->first);
+            it = definitions.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    return removed;
+}
+
 std::vector<ToolDefinition> ToolRegistry::getToolDefinitions() const {
     std::vector<ToolDefinition> result;
     for (const auto& [name, def] : definitions) {

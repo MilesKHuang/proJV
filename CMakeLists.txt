@@ -110,6 +110,12 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/skill_runner.cpp
     ${SRC_DIR}/core/skills_builtin.cpp
     ${SRC_DIR}/core/terminal_status.cpp
+    # MCP client (stdio JSON-RPC): framing, three-pipe child control, config,
+    # resident server pool. Platform-agnostic; the #ifdefs live in mcp_process.
+    ${SRC_DIR}/core/mcp_protocol.cpp
+    ${SRC_DIR}/core/mcp_config.cpp
+    ${SRC_DIR}/core/mcp_process.cpp
+    ${SRC_DIR}/core/mcp_manager.cpp
     # Install / shim management (--install / --post-install / --uninstall /
     # --purge). Cross-platform: std::filesystem plus a few #ifdef blocks, so the
     # unit tests link it from here.
@@ -133,6 +139,10 @@ set(HEADERS
     ${SRC_DIR}/core/skill_runner.h
     ${SRC_DIR}/core/skills_builtin.h
     ${SRC_DIR}/core/terminal_status.h
+    ${SRC_DIR}/core/mcp_protocol.h
+    ${SRC_DIR}/core/mcp_config.h
+    ${SRC_DIR}/core/mcp_process.h
+    ${SRC_DIR}/core/mcp_manager.h
     ${SRC_DIR}/platform/install_shim.h
     ${SRC_DIR}/tools/file_tool.h
     ${SRC_DIR}/tools/diff_capture.h
@@ -216,6 +226,7 @@ add_executable(proJV_tui
     ${SRC_DIR}/tui/todo_view.cpp
     ${SRC_DIR}/tui/approval_logic.cpp
     ${SRC_DIR}/tui/config_view.cpp
+    ${SRC_DIR}/tui/mcp_view.cpp
     ${SRC_DIR}/tui/theme_map.cpp
     ${SRC_DIR}/tui/theme_colors.cpp
     ${SRC_DIR}/tui/theme_manager.cpp
@@ -271,6 +282,7 @@ if(PROJV_BUILD_E2E)
         ${SRC_DIR}/tui/todo_view.cpp
         ${SRC_DIR}/tui/approval_logic.cpp
         ${SRC_DIR}/tui/config_view.cpp
+        ${SRC_DIR}/tui/mcp_view.cpp
         ${SRC_DIR}/tui/theme_map.cpp
         ${SRC_DIR}/tui/theme_colors.cpp
         ${SRC_DIR}/tui/theme_manager.cpp

@@ -390,8 +390,19 @@ void SkillRunner::loadAgents() {
         // no explicit action in the program -- still have a verb to answer with.
         for (const auto& kv : jsonDefs)
             sa->registerToolDef(kv.second);
-        for (const auto& t : config_.tools)
+        // MCP tools are main-agent only, and this loop is the boundary that
+        // enforces it. A skill spawns subagents concurrently (max_parallel,
+        // default 16); two of them calling one MCP server would write the same
+        // stdin at the same time. Skipping the name here is the fix -- not a
+        // warning and not a per-call lock.
+        for (const auto& t : config_.tools) {
+            if (t.rfind("mcp__", 0) == 0) {
+                debugLogf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers",
+                          t.c_str());
+                continue;
+            }
             if (regDefs.count(t)) sa->registerToolDef(regDefs[t]);
+        }
 
         if (config_.dynamicDispatch && drivers.count(ag.id)) {
             ToolDefinition ra;
