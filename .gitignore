@@ -48,8 +48,12 @@ dist/
 dist_linux/
 build_strict/
 
-# local planning archive (never published)
+# local planning archive (never published). docs/temp/ is the scratch directory
+# those notes are written in: a design doc that lives there is working material,
+# not repository content, and once it is finished it moves to docs/archive/ --
+# still local, still never published.
 docs/archive/
+docs/temp/
 
 # Agent artifacts: design/architecture documents and diagrams written by the
 # designer prompts and the diagram tool. Not repository content.
