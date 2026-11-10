@@ -52,21 +52,21 @@ Component makeMcpDialog(TuiApp& app, std::function<void()> onClose) {
     Component container = Container::Vertical({menu, buttons});
 
     auto root = container | CatchEvent([&app, selected, onClose](Event e) {
-                     if (e == Event::Escape) {
-                         onClose();
-                         return true;
-                     }
-                     if (e.is_character() && (e.character() == "r" || e.character() == "R")) {
-                         if (!app.isBusy()) {
-                             if (mcp::Manager* m = app.mcpManager()) {
-                                 const std::string name = selectedServer(app, *selected);
-                                 if (!name.empty()) m->restart(name);
-                             }
-                         }
-                         return true;
-                     }
-                     return false;
-                 });
+                    if (e == Event::Escape) {
+                        onClose();
+                        return true;
+                    }
+                    if (e.is_character() && (e.character() == "r" || e.character() == "R")) {
+                        if (!app.isBusy()) {
+                            if (mcp::Manager* m = app.mcpManager()) {
+                                const std::string name = selectedServer(app, *selected);
+                                if (!name.empty()) m->restart(name);
+                            }
+                        }
+                        return true;
+                    }
+                    return false;
+                });
 
     return Renderer(root, [&app, entries, selected, menu, restartBtn, closeBtn] {
         mcp::Manager* m = app.mcpManager();

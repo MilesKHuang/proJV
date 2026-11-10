@@ -38,7 +38,6 @@ struct ToolCall {
     int index = 0;         // position in tool_calls array (for parallel calls)
 
     bool valid = true;
-    std::string parseError;
 };
 
 struct ToolResult {
@@ -135,7 +134,6 @@ inline const std::string& kReasoningEffortDefault() {
     static const std::string v = "max";
     return v;
 }
-
 
 struct ChatRequest {
     std::string model = "deepseek-v4-flash";
@@ -263,11 +261,8 @@ inline size_t contextWindowForModel(const std::string& model) {
 
 // --- Model info (fetched from API + pricing) ----------------------
 struct ModelInfo {
-    std::string id;               // e.g. "deepseek-v4-flash"
-    std::string label;            // display name (same as id when simplified)
-    double inputPricePerM = 0.0;  // $ per 1M input tokens
-    double outputPricePerM = 0.0; // $ per 1M output tokens
-    bool supportsTools = true;
+    std::string id;    // e.g. "deepseek-v4-flash"
+    std::string label; // display name (same as id when simplified)
 };
 
 // Session is defined in core/session.h

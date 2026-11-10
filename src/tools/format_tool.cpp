@@ -124,8 +124,8 @@ std::string normalizeWhitespace(const std::string& in) {
 
 } // namespace
 
-void registerFormatTool(ToolRegistry& registry, const ToolPaths& paths,
-                        IProcessRunner* procRunner, const std::string& clangFormatPath) {
+void registerFormatTool(ToolRegistry& registry, const ToolPaths& paths, IProcessRunner* procRunner,
+                        const std::string& clangFormatPath) {
     ToolDefinition def;
     def.name = "format_file";
     def.description =
@@ -226,7 +226,8 @@ void registerFormatTool(ToolRegistry& registry, const ToolPaths& paths,
             std::string after;
             if (!readWholeFile(resolved, after)) return "Error: Cannot read back: " + resolved;
             if (after == before) return "No changes: " + resolved + " (already formatted)";
-            diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before, after);
+            diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before,
+                                 after);
             const int changed = diffLines(before, after);
             return "Formatted (clang-format): " + resolved + " - " + std::to_string(changed) +
                    " line(s) changed";

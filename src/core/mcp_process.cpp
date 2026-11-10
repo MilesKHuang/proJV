@@ -85,7 +85,8 @@ std::wstring buildEnvBlock(const std::map<std::string, std::string>& overrides) 
         }
         FreeEnvironmentStringsW(cur);
     }
-    for (const auto& kv : overrides) entries.push_back(toWide(kv.first + "=" + kv.second));
+    for (const auto& kv : overrides)
+        entries.push_back(toWide(kv.first + "=" + kv.second));
     std::wstring block;
     for (auto& e : entries) {
         block += e;
@@ -330,10 +331,12 @@ bool spawn(const SpawnSpec& spec, ProcHandles& h, std::string& err) {
         close(errPipe[0]);
         close(errPipe[1]);
         if (!spec.workDir.empty() && chdir(spec.workDir.c_str()) != 0) _exit(127);
-        for (const auto& kv : spec.env) setenv(kv.first.c_str(), kv.second.c_str(), 1);
+        for (const auto& kv : spec.env)
+            setenv(kv.first.c_str(), kv.second.c_str(), 1);
         std::vector<char*> argv;
         argv.push_back(const_cast<char*>(spec.command.c_str()));
-        for (const auto& a : spec.args) argv.push_back(const_cast<char*>(a.c_str()));
+        for (const auto& a : spec.args)
+            argv.push_back(const_cast<char*>(a.c_str()));
         argv.push_back(nullptr);
         execvp(spec.command.c_str(), argv.data());
         _exit(127);

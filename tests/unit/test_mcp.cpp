@@ -71,15 +71,15 @@ std::string tempFile(const std::string& tag) {
 }
 
 // One server entry, built with nlohmann so no path needs manual escaping.
-std::string configWith(const std::string& name, const std::string& mode, bool trusted,
-                       bool enabled, int timeoutMs,
-                       const std::vector<std::string>& extraArgs = {},
+std::string configWith(const std::string& name, const std::string& mode, bool trusted, bool enabled,
+                       int timeoutMs, const std::vector<std::string>& extraArgs = {},
                        const std::string& protocol = "stateful") {
     nlohmann::json srv;
     srv["name"] = name;
     srv["command"] = fakeServerPath();
     srv["args"] = nlohmann::json::array({"--mode=" + mode});
-    for (const auto& a : extraArgs) srv["args"].push_back(a);
+    for (const auto& a : extraArgs)
+        srv["args"].push_back(a);
     srv["protocol"] = protocol;
     srv["trusted"] = trusted;
     srv["enabled"] = enabled;
@@ -94,8 +94,7 @@ void writeText(const std::string& path, const std::string& text) {
     f << text;
 }
 
-bool waitForState(mcp::Manager& m, const std::string& name, mcp::ConnState want,
-                  int ms = 20000) {
+bool waitForState(mcp::Manager& m, const std::string& name, mcp::ConnState want, int ms = 20000) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
     while (std::chrono::steady_clock::now() < deadline) {
         if (m.connState(name) == want) return true;
@@ -501,8 +500,7 @@ TEST_CASE("mcp: shutdownAll reaps grandchild processes too") {
     const std::string pidFile = tempFile("forkpid");
     {
         const std::string path = tempFile("forkcfg");
-        writeText(path,
-                  configWith("fake", "fork", true, true, 20000, {"--pidfile=" + pidFile}));
+        writeText(path, configWith("fake", "fork", true, true, 20000, {"--pidfile=" + pidFile}));
         mcp::Manager m;
         m.setWorkDir(".");
         REQUIRE(m.loadFromJson(path));

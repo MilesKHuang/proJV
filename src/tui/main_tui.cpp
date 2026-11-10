@@ -92,8 +92,7 @@ class ObserveWidthNode : public ftxui::Node {
 };
 
 ftxui::Element observeWidth(ftxui::Element child, std::function<void(int)> on_width) {
-    return std::make_shared<ObserveWidthNode>(ftxui::unpack(std::move(child)),
-                                              std::move(on_width));
+    return std::make_shared<ObserveWidthNode>(ftxui::unpack(std::move(child)), std::move(on_width));
 }
 
 // Map a subagent activity to the theme color of its state word (mirrors
@@ -350,7 +349,8 @@ static int runMcpCheck(int argc, char** argv) {
             printf("  FAILED: %s\n", mgr.lastError(name).c_str());
             rc = 1;
         }
-        for (const auto& tool : mgr.toolNames(name)) printf("  - %s\n", tool.c_str());
+        for (const auto& tool : mgr.toolNames(name))
+            printf("  - %s\n", tool.c_str());
     }
 
     if (!callServer.empty()) {
@@ -647,7 +647,7 @@ int main(int argc, char** argv) {
 
         // Chat area (row-granular scrolling via focusPosition).
         Element chat = chat_view::renderBubbles(app.bubbles(), app.reasoningExpanded(),
-                                               app.chatContentWidth());
+                                                app.chatContentWidth());
 
         // Live streaming: append the in-progress bubble.
         if (app.getPhase() == AgentPhase::Streaming) {
@@ -657,13 +657,11 @@ int main(int argc, char** argv) {
             }
         }
 
-        Element chatColumn =
-            observeHeight(observeHeight(observeWidth(chat, [&](int cols) {
-                                          app.setChatContentWidth(cols);
-                                      }),
-                                        [&](int rows) { app.setChatContentRows(rows); }) |
-                              focusPosition(0, app.chatFocusRow()) | vscroll_indicator | yframe,
-                          [&](int rows) { app.setChatViewportRows(rows); });
+        Element chatColumn = observeHeight(
+            observeHeight(observeWidth(chat, [&](int cols) { app.setChatContentWidth(cols); }),
+                          [&](int rows) { app.setChatContentRows(rows); }) |
+                focusPosition(0, app.chatFocusRow()) | vscroll_indicator | yframe,
+            [&](int rows) { app.setChatViewportRows(rows); });
 
         // Right-side dock: TODO panel on top, live Agent status below
         // (legacy GUI layout, not a bottom strip).
@@ -751,12 +749,12 @@ int main(int argc, char** argv) {
             els.push_back(hbox({
                 // Single-space gaps: 13 entries now that F4 (mcp) is here, and the
                 // row must still fit an 80...120 column terminal.
-                hint(keycap("F1"), "help"),    text(" "), hint(keycap("F2"), "cfg"),   text(" "),
-                hint(keycap("F3"), "new"),     text(" "), hint(keycap("F4"), "mcp"),   text(" "),
-                hint(keycap("F5"), "open"),    text(" "), hint(keycap("F6"), "theme"), text(" "),
-                hint(keycap("F7"), "edit"),    text(" "), hint(keycap("F8"), "think"), text(" "),
-                hint(keycap("F9"), "todo"),    text(" "), hint(keycap("F10"), "model"), text(" "),
-                hint(keycap("↑↓"), "scroll"),  text(" "), hint(keycap("Enter"), "send"), text(" "),
+                hint(keycap("F1"), "help"),   text(" "), hint(keycap("F2"), "cfg"),     text(" "),
+                hint(keycap("F3"), "new"),    text(" "), hint(keycap("F4"), "mcp"),     text(" "),
+                hint(keycap("F5"), "open"),   text(" "), hint(keycap("F6"), "theme"),   text(" "),
+                hint(keycap("F7"), "edit"),   text(" "), hint(keycap("F8"), "think"),   text(" "),
+                hint(keycap("F9"), "todo"),   text(" "), hint(keycap("F10"), "model"),  text(" "),
+                hint(keycap("↑↓"), "scroll"), text(" "), hint(keycap("Enter"), "send"), text(" "),
                 hint(keycap("Esc"), "quit"),
             }));
         }
@@ -853,13 +851,13 @@ int main(int argc, char** argv) {
 
     Component with_modals =
         Modal(Modal(Modal(Modal(Modal(Modal(Modal(Modal(main_renderer, config_dialog, &show_config),
-                                                   approval_dialog, &show_approval),
-                                             mcp_dialog, &show_mcp),
-                                       open_dialog, &show_open),
-                                 theme_menu, &show_theme),
-                           theme_editor_dlg, &show_theme_editor),
-                     model_dialog, &show_model),
-               about_dialog, &show_about);
+                                                  approval_dialog, &show_approval),
+                                            mcp_dialog, &show_mcp),
+                                      open_dialog, &show_open),
+                                theme_menu, &show_theme),
+                          theme_editor_dlg, &show_theme_editor),
+                    model_dialog, &show_model),
+              about_dialog, &show_about);
 
     // Welcome page is a modal overlay while no API key is configured; once
     // saved, showWelcome flips false and the main UI takes focus. This keeps

@@ -179,8 +179,7 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
     return true;
 }
 
-bool saveEnabled(const std::string& path, const std::string& name, bool enabled,
-                 std::string& err) {
+bool saveEnabled(const std::string& path, const std::string& name, bool enabled, std::string& err) {
     err.clear();
     std::ifstream f(path, std::ios::binary);
     if (!f) {

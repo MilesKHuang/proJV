@@ -21,17 +21,14 @@ constexpr const char* kMarker = "projv-shim v1";
 
 // What to do with one file of the package when installing over an existing tree.
 enum class CopyRule {
-    Overwrite,      // the binary and the docs: a new version must win
-    KeepIfMissing,  // theme / pytool / skills: never clobber user edits
-    Never           // config.toml, sessions, logs, prompts: user data
+    Overwrite,     // the binary and the docs: a new version must win
+    KeepIfMissing, // theme / pytool / skills: never clobber user edits
+    Never          // config.toml, sessions, logs, prompts: user data
 };
 
 // The copy decision for a path relative to the package root, using forward
 // slashes ("projv_files/theme/a.json"). Pure.
 CopyRule copy_rule(const std::string& relativePath);
-
-// True for the directories whose *contents* are copied under KeepIfMissing.
-bool is_keep_if_missing_tree(const std::string& relativePath);
 
 // The Windows shim: four lines, absolute path, forwards the exit code. Pure.
 // `name` is "projv" or "projv_tui"; `exePath` is the absolute binary path.
@@ -53,16 +50,16 @@ bool is_inside(const std::string& child, const std::string& parent);
 
 // The self-check block printed after an install.
 // Pure: the paths and the PATH verdict are inputs, not lookups.
-std::string summary(const std::string& installed, const std::string& shimPath,
-                    bool shimInPath, const std::string& resolvable,
-                    const std::string& next, const std::string& undo);
+std::string summary(const std::string& installed, const std::string& shimPath, bool shimInPath,
+                    const std::string& resolvable, const std::string& next,
+                    const std::string& undo);
 
 // --- the filesystem entry points -------------------------------------
 struct Options {
-    std::string home;      // install directory (PROJV_HOME overrides the default)
-    std::string shimDir;   // where the shims go (PROJV_SHIM_DIR overrides)
-    std::string exePath;   // absolute path of the running binary
-    std::string exeDir;    // directory of the running binary == package root
+    std::string home;       // install directory (PROJV_HOME overrides the default)
+    std::string shimDir;    // where the shims go (PROJV_SHIM_DIR overrides)
+    std::string exePath;    // absolute path of the running binary
+    std::string exeDir;     // directory of the running binary == package root
     std::string packageArg; // optional explicit package root for --install
 };
 

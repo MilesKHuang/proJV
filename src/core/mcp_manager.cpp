@@ -36,7 +36,8 @@ std::string oneLine(const std::string& s, size_t maxLen) {
             break;
         }
     }
-    while (!out.empty() && out.back() == ' ') out.pop_back();
+    while (!out.empty() && out.back() == ' ')
+        out.pop_back();
     return out;
 }
 
@@ -179,7 +180,8 @@ unsigned Manager::spawnCount(const std::string& name) const {
 std::vector<std::string> Manager::serverNames() const {
     std::vector<std::string> names;
     names.reserve(servers_.size());
-    for (const auto& up : servers_) names.push_back(up->cfg.name);
+    for (const auto& up : servers_)
+        names.push_back(up->cfg.name);
     return names;
 }
 
@@ -234,8 +236,7 @@ bool Manager::reloadIfChanged(const std::string& path) {
         configError_ = err;
         configStamp_ = ticks;
         configSize_ = size;
-        debugLogf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(),
-                  err.c_str());
+        debugLogf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(), err.c_str());
         return false;
     }
     configPath_ = path;
@@ -244,7 +245,8 @@ bool Manager::reloadIfChanged(const std::string& path) {
     configSize_ = size;
 
     std::set<std::string> wanted;
-    for (const auto& cfg : loaded) wanted.insert(cfg.name);
+    for (const auto& cfg : loaded)
+        wanted.insert(cfg.name);
 
     for (auto& up : servers_) {
         ServerHandle& h = *up;
@@ -295,8 +297,8 @@ bool Manager::reloadIfChanged(const std::string& path) {
             ++toggled;
         }
     }
-    debugLogf("[mcp] reloaded '%s': %d added, %d changed, %d toggled", path.c_str(), added,
-              changed, toggled);
+    debugLogf("[mcp] reloaded '%s': %d added, %d changed, %d toggled", path.c_str(), added, changed,
+              toggled);
     // True means "the new list was applied", not "a process moved": a
     // description-only edit changes no process but must still refresh the map.
     return true;
@@ -411,8 +413,8 @@ void Manager::setEnabled(const std::string& name, bool enabled) {
     if (!configPath_.empty()) {
         std::string err;
         if (!saveEnabled(configPath_, name, enabled, err))
-            debugLogf("[mcp] could not persist enabled=%d for '%s': %s", (int)enabled,
-                      name.c_str(), err.c_str());
+            debugLogf("[mcp] could not persist enabled=%d for '%s': %s", (int)enabled, name.c_str(),
+                      err.c_str());
         else
             rememberStamp(configPath_); // our own write is not an external change
     }
@@ -422,7 +424,6 @@ void Manager::setEnabled(const std::string& name, bool enabled) {
     else
         stop(name);
 }
-
 
 void Manager::logStderr(ServerHandle& h, std::string& errBuf) {
     size_t nl;
@@ -484,8 +485,7 @@ bool Manager::handshake(ServerHandle& h, std::string& err) {
     }
     nlohmann::json params = {{"protocolVersion", kOfferedProtocolVersion},
                              {"capabilities", nlohmann::json::object()},
-                             {"clientInfo",
-                              {{"name", "proJV"}, {"version", PROJV_VERSION}}}};
+                             {"clientInfo", {{"name", "proJV"}, {"version", PROJV_VERSION}}}};
     nlohmann::json result;
     auto poll = [&h] { return h.cancelRequested.load(); };
     if (!requestResponse(h, "initialize", params, poll, h.cfg.timeoutMs, result, err)) {
@@ -673,7 +673,6 @@ bool Manager::requestResponse(ServerHandle& h, const std::string& method, nlohma
 
 } // namespace mcp
 
-
 namespace mcp {
 
 Manager::SyncResult Manager::syncTools(ToolRegistry& registry) {
@@ -719,8 +718,7 @@ Manager::SyncResult Manager::syncTools(ToolRegistry& registry) {
             // The executor closes over the Manager, never over the handle: a
             // restart may replace the process while the name stays the same.
             ToolExecutor ex = [this, &registry, server, tool](const std::string& args) {
-                return callTool(server, tool, args,
-                                [&registry] { return registry.isCancelled(); });
+                return callTool(server, tool, args, [&registry] { return registry.isCancelled(); });
             };
             if (registry.registerToolIfAbsent(def, ex)) {
                 added.push_back(def.name);
@@ -759,8 +757,7 @@ std::string Manager::callTool(const std::string& server, const std::string& tool
         } catch (const std::exception&) {
             return "Error: " + label + ": arguments are not valid JSON";
         }
-        if (!args.is_object())
-            return "Error: " + label + ": arguments must be a JSON object";
+        if (!args.is_object()) return "Error: " + label + ": arguments must be a JSON object";
     }
 
     nlohmann::json params = {{"name", tool}, {"arguments", args}};

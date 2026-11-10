@@ -380,8 +380,7 @@ void SkillRunner::loadAgents() {
     skillTools.reserve(config_.tools.size());
     for (const auto& t : config_.tools) {
         if (t.rfind("mcp__", 0) == 0) {
-            debugLogf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers",
-                      t.c_str());
+            debugLogf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers", t.c_str());
             continue;
         }
         skillTools.push_back(t);

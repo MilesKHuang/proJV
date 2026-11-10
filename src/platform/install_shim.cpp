@@ -101,8 +101,7 @@ std::string envOr(const char* name, const std::string& fallback) {
 }
 
 // Write one shim. Returns the path written, or "" on failure.
-std::string writeShim(const std::string& dir, const std::string& name,
-                      const std::string& exePath) {
+std::string writeShim(const std::string& dir, const std::string& name, const std::string& exePath) {
     std::error_code ec;
     fs::create_directories(dir, ec);
 #ifdef _WIN32
@@ -124,7 +123,9 @@ std::string writeShim(const std::string& dir, const std::string& name,
 
 } // namespace
 
-void Report::add(const std::string& line) { lines.push_back(line); }
+void Report::add(const std::string& line) {
+    lines.push_back(line);
+}
 
 std::string Report::text() const {
     std::string out;
@@ -151,16 +152,11 @@ CopyRule copy_rule(const std::string& relativePath) {
     return CopyRule::Never;
 }
 
-bool is_keep_if_missing_tree(const std::string& relativePath) {
-    const std::string p = lowerCopy(normalizeSlashes(relativePath));
-    return startsWith(p, "projv_files/theme") || startsWith(p, "projv_files/pytool") ||
-           startsWith(p, "projv_files/skills");
-}
-
 std::string shim_cmd(const std::string&, const std::string& exePath) {
     std::ostringstream out;
     out << "@echo off\r\n";
-    out << "rem " << kMarker << " -- created by proJV --install; `proJV_tui --uninstall` removes it\r\n";
+    out << "rem " << kMarker
+        << " -- created by proJV --install; `proJV_tui --uninstall` removes it\r\n";
     out << "\"" << exePath << "\" %*\r\n";
     out << "exit /b %ERRORLEVEL%\r\n";
     return out.str();
@@ -169,17 +165,21 @@ std::string shim_cmd(const std::string&, const std::string& exePath) {
 std::string shim_sh(const std::string& exePath) {
     std::ostringstream out;
     out << "#!/bin/sh\n";
-    out << "# " << kMarker << " -- created by proJV --install; `proJV_tui --uninstall` removes it\n";
+    out << "# " << kMarker
+        << " -- created by proJV --install; `proJV_tui --uninstall` removes it\n";
     out << "exec \"" << exePath << "\" \"$@\"\n";
     return out.str();
 }
 
-bool has_marker(const std::string& text) { return text.find(kMarker) != std::string::npos; }
+bool has_marker(const std::string& text) {
+    return text.find(kMarker) != std::string::npos;
+}
 
 bool path_contains(const std::string& existing, const std::string& dir) {
     if (dir.empty()) return false;
     std::string wanted = normalizeSlashes(dir);
-    while (!wanted.empty() && wanted.back() == '/') wanted.pop_back();
+    while (!wanted.empty() && wanted.back() == '/')
+        wanted.pop_back();
     std::string current;
     std::stringstream ss(existing);
 #ifdef _WIN32
@@ -189,7 +189,8 @@ bool path_contains(const std::string& existing, const std::string& dir) {
 #endif
     while (std::getline(ss, current, separator)) {
         std::string candidate = normalizeSlashes(current);
-        while (!candidate.empty() && candidate.back() == '/') candidate.pop_back();
+        while (!candidate.empty() && candidate.back() == '/')
+            candidate.pop_back();
         if (lowerCopy(candidate) == lowerCopy(wanted)) return true;
     }
     return false;
@@ -350,14 +351,13 @@ int run_install(const Options& optIn) {
 
     const bool inPath = isDirOnPath(opt.shimDir);
     if (!inPath) {
-        report.add("note: " + opt.shimDir +
-                   " is not on PATH; add it once, then reopen the shell");
+        report.add("note: " + opt.shimDir + " is not on PATH; add it once, then reopen the shell");
     }
 
     report.add("copied " + std::to_string(copied) + " file(s), kept " + std::to_string(kept) +
                " existing file(s)");
-    report.add(summary(opt.home, shim, inPath, shim, "cd <project> && projv",
-                       "projv_tui --uninstall"));
+    report.add(
+        summary(opt.home, shim, inPath, shim, "cd <project> && projv", "projv_tui --uninstall"));
     std::printf("%s", report.text().c_str());
     return shim.empty() ? 1 : 0;
 }
@@ -371,8 +371,7 @@ int run_post_install(const Options& optIn) {
         report.add("warning: " + exe.string() + " not found; run --install from the package");
     const std::string shim = writeShim(opt.shimDir, "projv", exe.string());
     const std::string shim2 = writeShim(opt.shimDir, "projv_tui", exe.string());
-    if (shim.empty() || shim2.empty())
-        report.add("warning: the `projv` command was not created");
+    if (shim.empty() || shim2.empty()) report.add("warning: the `projv` command was not created");
     report.add(summary(opt.home, shim, isDirOnPath(opt.shimDir), shim, "cd <project> && projv",
                        "projv_tui --uninstall"));
     std::printf("%s", report.text().c_str());

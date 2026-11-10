@@ -14,18 +14,17 @@ using namespace diff_view;
 
 namespace {
 
-const char* kOneChange =
-    "--- a/x.cpp\n"
-    "+++ b/x.cpp\n"
-    "@@ -10,7 +10,7 @@\n"
-    " line10\n"
-    " line11\n"
-    " line12\n"
-    "-old13\n"
-    "+new13\n"
-    " line14\n"
-    " line15\n"
-    " line16\n";
+const char* kOneChange = "--- a/x.cpp\n"
+                         "+++ b/x.cpp\n"
+                         "@@ -10,7 +10,7 @@\n"
+                         " line10\n"
+                         " line11\n"
+                         " line12\n"
+                         "-old13\n"
+                         "+new13\n"
+                         " line14\n"
+                         " line15\n"
+                         " line16\n";
 
 } // namespace
 
@@ -77,12 +76,11 @@ TEST_CASE("diff_view: context is trimmed to the requested depth") {
 }
 
 TEST_CASE("diff_view: three removals and one addition pair by index") {
-    const std::string patch =
-        "@@ -1,1 +1,1 @@\n"
-        "-a\n"
-        "-b\n"
-        "-c\n"
-        "+d\n";
+    const std::string patch = "@@ -1,1 +1,1 @@\n"
+                              "-a\n"
+                              "-b\n"
+                              "-c\n"
+                              "+d\n";
     const std::vector<Row> rows = alignRows(patch, 2);
     REQUIRE(rows.size() == 4); // header + 3 paired rows
     CHECK(rows[1].oldNo == 1);
@@ -98,10 +96,9 @@ TEST_CASE("diff_view: three removals and one addition pair by index") {
 }
 
 TEST_CASE("diff_view: a new file starts at line 1 on the added side only") {
-    const std::string patch =
-        "@@ -0,0 +1,2 @@\n"
-        "+hello\n"
-        "+world\n";
+    const std::string patch = "@@ -0,0 +1,2 @@\n"
+                              "+hello\n"
+                              "+world\n";
     const std::vector<Row> rows = alignRows(patch, 2);
     REQUIRE(rows.size() == 3);
     CHECK(rows[1].oldNo == 0);
@@ -113,11 +110,10 @@ TEST_CASE("diff_view: a new file starts at line 1 on the added side only") {
 }
 
 TEST_CASE("diff_view: the truncation marker survives as a full-width row") {
-    const std::string patch =
-        "@@ -1,1 +1,1 @@\n"
-        "-a\n"
-        "+b\n"
-        "... diff truncated (12 more lines)\n";
+    const std::string patch = "@@ -1,1 +1,1 @@\n"
+                              "-a\n"
+                              "+b\n"
+                              "... diff truncated (12 more lines)\n";
     const std::vector<Row> rows = alignRows(patch, 2);
     REQUIRE(rows.size() == 3);
     CHECK(rows[2].isHeader);
@@ -152,15 +148,14 @@ TEST_CASE("diff_view: the row cap keeps the head and reports the total") {
 }
 
 TEST_CASE("diff_view: numbers restart from each hunk header") {
-    const std::string patch =
-        "--- a/x\n"
-        "+++ b/x\n"
-        "@@ -1,1 +1,1 @@\n"
-        "-a\n"
-        "+b\n"
-        "@@ -100,1 +200,1 @@\n"
-        "-c\n"
-        "+d\n";
+    const std::string patch = "--- a/x\n"
+                              "+++ b/x\n"
+                              "@@ -1,1 +1,1 @@\n"
+                              "-a\n"
+                              "+b\n"
+                              "@@ -100,1 +200,1 @@\n"
+                              "-c\n"
+                              "+d\n";
     const std::vector<Row> rows = alignRows(patch, 2);
     REQUIRE(rows.size() == 4);
     CHECK(rows[1].oldNo == 1);

@@ -53,9 +53,9 @@ struct ServerHandle {
     std::thread worker;
     std::atomic<ConnState> state{ConnState::Stopped};
     std::atomic<bool> cancelRequested{false};
-    std::string lastError;               // worker -> UI, read without a lock
-    std::vector<ToolDefinition> tools;   // snapshot from tools/list, worker writes
-    std::vector<std::string> toolNames;  // registered names (mcp__<server>__<tool>)
+    std::string lastError;                    // worker -> UI, read without a lock
+    std::vector<ToolDefinition> tools;        // snapshot from tools/list, worker writes
+    std::vector<std::string> toolNames;       // registered names (mcp__<server>__<tool>)
     std::vector<std::string> registeredNames; // what is in the registry right now
     ProcHandles proc;
     long long nextId = 1;
@@ -151,8 +151,7 @@ class Manager {
     //                which the Agent reads as a tool failure)
     //   real      -- "Error: <server> / <tool>: <reason>"
     std::string callTool(const std::string& server, const std::string& tool,
-                         const std::string& argsJson,
-                         const std::function<bool()>& cancelPoll);
+                         const std::string& argsJson, const std::function<bool()>& cancelPoll);
 
   private:
     ServerHandle* find(const std::string& name);

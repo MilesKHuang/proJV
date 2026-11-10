@@ -86,11 +86,10 @@ std::string makeRequest(long long id, const std::string& method, nlohmann::json 
         // The three keys are mandatory in modern mode: a server answers -32602
         // Invalid params when protocolVersion or clientCapabilities is missing.
         if (!params.is_object()) params = nlohmann::json::object();
-        params["_meta"] = {
-            {"io.modelcontextprotocol/protocolVersion", kModernProtocolVersion},
-            {"io.modelcontextprotocol/clientCapabilities", nlohmann::json::object()},
-            {"io.modelcontextprotocol/clientInfo",
-             {{"name", "proJV"}, {"version", clientVersion}}}};
+        params["_meta"] = {{"io.modelcontextprotocol/protocolVersion", kModernProtocolVersion},
+                           {"io.modelcontextprotocol/clientCapabilities", nlohmann::json::object()},
+                           {"io.modelcontextprotocol/clientInfo",
+                            {{"name", "proJV"}, {"version", clientVersion}}}};
     }
     if (!params.is_null()) req["params"] = std::move(params);
 

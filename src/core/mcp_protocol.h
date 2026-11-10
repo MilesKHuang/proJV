@@ -32,7 +32,7 @@ inline const char* kModernProtocolVersion = "2026-07-28";
 
 inline const std::vector<std::string>& kKnownProtocolVersions() {
     static const std::vector<std::string> v = {"2024-11-05", "2025-03-26", "2025-06-18",
-                                              "2025-11-25", "2026-07-28"};
+                                               "2025-11-25", "2026-07-28"};
     return v;
 }
 
@@ -41,9 +41,9 @@ bool isKnownProtocolVersion(const std::string& v);
 // One parsed message from the server's stdout. The three shapes are mutually
 // exclusive and are decided by which fields exist.
 struct Message {
-    bool parseOk = false;       // a JSON object we could classify
-    bool isResponse = false;    // has "id" and ("result" or "error")
-    bool isRequest = false;     // has "method" and "id": server asking us
+    bool parseOk = false;        // a JSON object we could classify
+    bool isResponse = false;     // has "id" and ("result" or "error")
+    bool isRequest = false;      // has "method" and "id": server asking us
     bool isNotification = false; // has "method" but no "id"
     long long id = -1;
     std::string method;

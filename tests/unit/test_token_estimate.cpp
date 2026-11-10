@@ -25,7 +25,7 @@ TEST_CASE("token estimate: ASCII text follows the 0.3 token/char rule") {
 
 TEST_CASE("token estimate: CJK text follows the 0.6 token/char rule") {
     const std::string s = "\xe4\xb8\xad\xe6\x96\x87\xe5\xad\x97\xe7\xac\xa6" // 中文字符
-                          "\xe6\xb5\x8b\xe8\xaf\x95";                         // 测试
+                          "\xe6\xb5\x8b\xe8\xaf\x95";                        // 测试
     // 6 Chinese characters, 18 bytes (3 bytes each in UTF-8).
     CHECK(s.size() == 18);
     checkWithin20Percent(estimateTokensForText(s), 6 * 0.6);
@@ -46,14 +46,13 @@ TEST_CASE("token estimate: Chinese is no longer charged per UTF-8 byte") {
 
 TEST_CASE("token estimate: edges") {
     CHECK(estimateTokensForText("") == 0);
-    CHECK(estimateTokensForText("a") == 1);                    // never 0 for real text
-    CHECK(estimateTokensForText("\xe4\xb8\xad") == 1);         // single 中
-    CHECK(estimateTokensForText("\xf0\x9f\x99\x82") == 1);     // single emoji
+    CHECK(estimateTokensForText("a") == 1);                // never 0 for real text
+    CHECK(estimateTokensForText("\xe4\xb8\xad") == 1);     // single 中
+    CHECK(estimateTokensForText("\xf0\x9f\x99\x82") == 1); // single emoji
 }
 
 TEST_CASE("token estimate: Session shares the same implementation") {
-    const std::string samples[] = {"plain english text", "\xe4\xb8\xad\xe6\x96\x87 mixed",
-                                   ""};
+    const std::string samples[] = {"plain english text", "\xe4\xb8\xad\xe6\x96\x87 mixed", ""};
     for (const auto& s : samples)
         CHECK(Session::estimateTokens(s) == estimateTokensForText(s));
 }

@@ -474,10 +474,8 @@ TEST_CASE("diff capture: md_file records on the write and the edit branch") {
     CHECK(has(w.unified, "+# Title"));
 
     diff_capture::reset();
-    run(reg, "md_file", {{"action", "edit"},
-                         {"path", "doc.md"},
-                         {"search", "# Title"},
-                         {"replace", "# Renamed"}});
+    run(reg, "md_file",
+        {{"action", "edit"}, {"path", "doc.md"}, {"search", "# Title"}, {"replace", "# Renamed"}});
     const diff_capture::Entry ed = diff_capture::take();
     CHECK(has(ed.unified, "-# Title"));
     CHECK(has(ed.unified, "+# Renamed"));

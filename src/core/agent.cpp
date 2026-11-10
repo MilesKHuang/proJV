@@ -976,7 +976,8 @@ void Agent::addAutoTools(const std::vector<std::string>& names) {
 }
 
 void Agent::removeAutoTools(const std::vector<std::string>& names) {
-    for (const auto& n : names) autoToolNames_.erase(n);
+    for (const auto& n : names)
+        autoToolNames_.erase(n);
 }
 
 std::vector<ToolDefinition> Agent::getFilteredToolDefinitions() const {

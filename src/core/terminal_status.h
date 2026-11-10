@@ -30,10 +30,8 @@ namespace terminal_status {
 // Limits from the spec. A sequence longer than kMaxSequence is dropped whole:
 // the host would discard (or mis-parse) it anyway.
 constexpr size_t kMaxSequence = 4096;
-constexpr size_t kMaxKey = 16;
 constexpr size_t kMaxMsgPlain = 2048;
 constexpr size_t kMaxMsgEncoded = 2732; // base64(2048)
-constexpr size_t kMaxTitlePlain = 192;
 constexpr size_t kMaxApp = 32;
 constexpr size_t kMaxId = 128;
 

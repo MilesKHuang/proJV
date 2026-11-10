@@ -93,7 +93,6 @@ void from_json(const nlohmann::json& j, ToolCall& tc) {
     }
     // index is not serialized; it is positional in the array
     tc.valid = true;
-    tc.parseError.clear();
 }
 
 // Resolve an attachment to a data: URL. Prefers the cached form; falls back to

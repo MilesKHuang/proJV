@@ -44,7 +44,6 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
 
 // Set one entry's `enabled` flag and write the file back, preserving every
 // other key byte-for-byte at the JSON level (unknown fields survive).
-bool saveEnabled(const std::string& path, const std::string& name, bool enabled,
-                 std::string& err);
+bool saveEnabled(const std::string& path, const std::string& name, bool enabled, std::string& err);
 
 } // namespace mcp

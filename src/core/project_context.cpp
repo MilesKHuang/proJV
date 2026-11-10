@@ -67,10 +67,26 @@ std::string buildProjectContext(const std::string& workspacePath) {
         "__pycache__", ".pytest_cache", ".mypy_cache",  "nix",      "deploy", "integrations",
         "fuzzing",     "docs",          "examples",     "tests",    "test",   ".github"};
 
-    static const std::vector<std::string> srcExts = {
-        ".cpp",  ".c",     ".h",      ".hpp",        ".rs",      ".py",    ".go",
-        ".ts",   ".js",    ".toml",   ".json",       ".yaml",    ".yml",   ".cmake",
-        ".txt",  ".md",    "CMakeLists.txt",          "Makefile", "Cargo.toml", "package.json"};
+    static const std::vector<std::string> srcExts = {".cpp",
+                                                     ".c",
+                                                     ".h",
+                                                     ".hpp",
+                                                     ".rs",
+                                                     ".py",
+                                                     ".go",
+                                                     ".ts",
+                                                     ".js",
+                                                     ".toml",
+                                                     ".json",
+                                                     ".yaml",
+                                                     ".yml",
+                                                     ".cmake",
+                                                     ".txt",
+                                                     ".md",
+                                                     "CMakeLists.txt",
+                                                     "Makefile",
+                                                     "Cargo.toml",
+                                                     "package.json"};
 
     auto shouldSkip = [](const std::string& name) -> bool {
         if (name.empty() || name[0] == '.') return true;
@@ -140,7 +156,8 @@ std::string buildProjectContext(const std::string& workspacePath) {
             std::string line = "  " + name + "/";
             if (!subs.empty()) {
                 line += ":";
-                for (const auto& s : subs) line += " " + s;
+                for (const auto& s : subs)
+                    line += " " + s;
             }
             line += "\n";
             if (used + line.size() > budget) {

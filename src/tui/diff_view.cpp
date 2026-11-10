@@ -34,9 +34,11 @@ int digitCount(int n) {
 }
 
 bool readInt(const std::string& s, size_t& i, int& out) {
-    while (i < s.size() && s[i] == ' ') ++i;
+    while (i < s.size() && s[i] == ' ')
+        ++i;
     const size_t begin = i;
-    while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i]))) ++i;
+    while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])))
+        ++i;
     if (i == begin) return false;
     out = std::stoi(s.substr(begin, i - begin));
     return true;
@@ -71,8 +73,8 @@ bool isContextRow(const Row& r) {
 }
 
 // Emit the pending run of removals and additions as paired rows.
-void flushRun(std::vector<Row>& out, std::vector<std::string>& dels,
-              std::vector<std::string>& adds, int& oldNo, int& newNo) {
+void flushRun(std::vector<Row>& out, std::vector<std::string>& dels, std::vector<std::string>& adds,
+              int& oldNo, int& newNo) {
     const size_t pairs = std::max(dels.size(), adds.size());
     for (size_t k = 0; k < pairs; ++k) {
         Row r;
@@ -96,9 +98,11 @@ void flushRun(std::vector<Row>& out, std::vector<std::string>& dels,
 void trimContext(std::vector<Row>& rows, int keep) {
     if (keep < 0) keep = 0;
     size_t lead = 0;
-    while (lead < rows.size() && isContextRow(rows[lead])) ++lead;
+    while (lead < rows.size() && isContextRow(rows[lead]))
+        ++lead;
     size_t trail = 0;
-    while (trail < rows.size() - lead && isContextRow(rows[rows.size() - 1 - trail])) ++trail;
+    while (trail < rows.size() - lead && isContextRow(rows[rows.size() - 1 - trail]))
+        ++trail;
     const size_t dropLead = lead > static_cast<size_t>(keep) ? lead - keep : 0;
     const size_t dropTrail = trail > static_cast<size_t>(keep) ? trail - keep : 0;
     if (dropTrail > 0) rows.erase(rows.end() - dropTrail, rows.end());
@@ -182,7 +186,8 @@ std::vector<Row> alignRows(const std::string& unified, int contextLines, int max
             }
             flushRun(hunk, dels, adds, oldNo, newNo);
             trimContext(hunk, contextLines);
-            for (auto& row : hunk) rows.push_back(std::move(row));
+            for (auto& row : hunk)
+                rows.push_back(std::move(row));
             continue;
         }
 
@@ -213,7 +218,7 @@ ftxui::Element renderUnified(const std::string& unified, const Colors& colors, i
     }
     if (total > keep) {
         els.push_back(ftxui::text("... (" + std::to_string(total - keep) +
-                                 " more lines, full diff in session db)") |
+                                  " more lines, full diff in session db)") |
                       ftxui::dim);
     }
     return ftxui::vbox(std::move(els));
@@ -258,7 +263,7 @@ ftxui::Element renderSplit(const std::string& unified, const Colors& colors, int
     }
     if (total > static_cast<int>(rows.size())) {
         els.push_back(ftxui::text("... (" + std::to_string(total - rows.size()) +
-                                 " more rows, full diff in session db)") |
+                                  " more rows, full diff in session db)") |
                       ftxui::dim);
     }
     return ftxui::vbox(std::move(els));

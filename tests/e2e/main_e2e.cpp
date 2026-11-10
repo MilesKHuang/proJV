@@ -222,8 +222,8 @@ int main(int argc, char** argv) {
     {
         bool autoBubble = false;
         for (const auto& b : app.bubbles())
-            if (b.synthetic && b.role == "user" && b.content.find("[Image] shot.png") !=
-                                                         std::string::npos)
+            if (b.synthetic && b.role == "user" &&
+                b.content.find("[Image] shot.png") != std::string::npos)
                 autoBubble = true;
         check(autoBubble, "bubble: synthetic user bubble with [Image] shot.png");
     }

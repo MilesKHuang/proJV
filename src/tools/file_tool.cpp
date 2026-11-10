@@ -32,14 +32,6 @@ static constexpr const char* TOOL_GREP_FILES_DESC =
 // MAX_WRITE_CONTENT_SIZE -- write_file size limit
 static constexpr size_t MAX_WRITE_CONTENT_SIZE = 8 * 1024;
 
-// Workspace violation constants
-static constexpr const char* WS_VIOLATION_PREFIX_INTERNAL = "__WORKSPACE_VIOLATION__:";
-static constexpr const char* WS_VIOLATION_VALIDATE_ERROR = " Path '";
-static constexpr const char* WS_VIOLATION_VALIDATE_MIDDLE =
-    "' is outside the workspace. Only files inside the workspace can be accessed. "
-    "Use /workspace to check the current workspace, which is the directory proJV was "
-    "launched from.";
-
 #include <sstream>
 #include <filesystem>
 #include <regex>

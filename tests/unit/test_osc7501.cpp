@@ -29,7 +29,9 @@ bool startsWith(const std::string& s, const std::string& p) {
 bool endsWith(const std::string& s, const std::string& p) {
     return s.size() >= p.size() && s.compare(s.size() - p.size(), p.size(), p) == 0;
 }
-bool contains(const std::string& s, const std::string& p) { return s.find(p) != std::string::npos; }
+bool contains(const std::string& s, const std::string& p) {
+    return s.find(p) != std::string::npos;
+}
 
 // Every test starts from a clean module: no sink, no probe, no pending state.
 struct Fresh {
@@ -86,7 +88,10 @@ TEST_CASE("osc7501: C1 controls (U+0080..U+009F) never reach the host") {
 TEST_CASE("osc7501: non-control UTF-8 above the C1 range survives") {
     // U+00A0 (0xC2 0xA0) shares the 0xC2 lead byte but is legal payload: the
     // filter must key on the codepoint, not on the lead byte.
-    const std::string seq = encode("working", "", "a\xC2\xA0" "b", "projv", "main", -1);
+    const std::string seq = encode("working", "",
+                                   "a\xC2\xA0"
+                                   "b",
+                                   "projv", "main", -1);
     CHECK(contains(seq, "msg=YcKgYg=="));
 }
 

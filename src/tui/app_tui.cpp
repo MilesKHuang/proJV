@@ -927,9 +927,8 @@ void TuiApp::injectFixedBlocks() {
     // builder always emits every line), because the fixed prefix must keep a
     // constant message count -- a varying count moves the compaction summary and
     // the per-turn block, and breaks the request prefix cache.
-    const std::string env =
-        ctx::buildEnvironment(ws, projv, ws, config.cppCompilerPath, config.pythonPath,
-                              config.clangFormatPath);
+    const std::string env = ctx::buildEnvironment(ws, projv, ws, config.cppCompilerPath,
+                                                  config.pythonPath, config.clangFormatPath);
     agent->addPersistedMessage(Message::System(env));
     // P2: directory tree + AGENTS.md, one message, same reason.
     const std::string project = buildProjectBlock(ws);
@@ -941,9 +940,8 @@ void TuiApp::injectFixedBlocks() {
 void TuiApp::refreshEnvironmentBlock() {
     if (!agent) return;
     const std::string ws = getWorkspaceDir();
-    const std::string env =
-        ctx::buildEnvironment(ws, getProjvDir(), ws, config.cppCompilerPath, config.pythonPath,
-                              config.clangFormatPath);
+    const std::string env = ctx::buildEnvironment(ws, getProjvDir(), ws, config.cppCompilerPath,
+                                                  config.pythonPath, config.clangFormatPath);
     if (agent->replaceEnvironmentBlock(env))
         debugLogf("[TuiApp] environment block refreshed (%s)", ctx::describe(env).c_str());
 }

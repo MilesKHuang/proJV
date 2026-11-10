@@ -60,8 +60,8 @@ const char* kSkills = PROJV_EXAMPLE_SKILLS_DIR;
 SkillConfig load(const std::string& name) {
     SkillConfig cfg;
     std::string err;
-    const bool ok = SkillConfig::loadFromJson(std::string(kSkills) + "/" + name + "/config.json",
-                                              cfg, err);
+    const bool ok =
+        SkillConfig::loadFromJson(std::string(kSkills) + "/" + name + "/config.json", cfg, err);
     CHECK(ok);
     CHECK(err.empty());
     return cfg;
@@ -120,8 +120,8 @@ TEST_CASE("sop: the three configs load with a clean bill (no unknown keys)") {
                 }
         CHECK(actions >= 2);
         // Every declared verb tool parses and is reachable from the folder.
-        for (auto& e : std::filesystem::directory_iterator(std::string(kSkills) + "/" + name +
-                                                           "/tools")) {
+        for (auto& e :
+             std::filesystem::directory_iterator(std::string(kSkills) + "/" + name + "/tools")) {
             if (e.path().extension() != ".json") continue;
             auto j = nlohmann::json::parse(readFile(e.path().string()));
             CHECK(!j.value("name", std::string("")).empty());
@@ -149,9 +149,9 @@ TEST_CASE("sop: steve is a script - 7 roles, no driver, engine-counted votes") {
             reviseStep = static_cast<int>(i);
         }
     }
-    CHECK(voteActions == 7);   // all seven, Steve included
-    CHECK(voteSteps == 1);     // exactly one vote step per round
-    CHECK(reviseSteps == 1);   // the PM revision is the only round>1 text step
+    CHECK(voteActions == 7); // all seven, Steve included
+    CHECK(voteSteps == 1);   // exactly one vote step per round
+    CHECK(reviseSteps == 1); // the PM revision is the only round>1 text step
     CHECK(reviseStep >= 0);
     CHECK(voteStep >= 0);
     CHECK(reviseStep < voteStep); // revise first, then vote, inside the round
@@ -235,13 +235,13 @@ TEST_CASE("sop: one dissent sends the plan back to PM, then it converges") {
         rec.add("design_ux", m);
         if (verb == "design_vote") {
             const bool first = (++uxVotes == 1);
-            return makeCall("design_vote",
-                            nlohmann::json{
-                                {"agree", !first},
-                                {"agreed_points", nlohmann::json::array()},
-                                {"concerns", first ? nlohmann::json::array({"broken flow"})
-                                                   : nlohmann::json::array()},
-                                {"suggested_tweak", first ? "add the empty state" : "none"}});
+            return makeCall(
+                "design_vote",
+                nlohmann::json{{"agree", !first},
+                               {"agreed_points", nlohmann::json::array()},
+                               {"concerns", first ? nlohmann::json::array({"broken flow"})
+                                                  : nlohmann::json::array()},
+                               {"suggested_tweak", first ? "add the empty state" : "none"}});
         }
         return makeCall("design_turn", nlohmann::json{{"kind", "design"}, {"text", "UX DESIGN"}});
     });
@@ -259,9 +259,9 @@ TEST_CASE("sop: one dissent sends the plan back to PM, then it converges") {
                                            {"suggested_tweak", "none"}});
         if (verb == "write_steve_doc")
             return makeCall("write_steve_doc", nlohmann::json{{"doc_markdown", "# REVISED PLAN"}});
-        return makeCall("design_turn",
-                        nlohmann::json{{"kind", "plan"},
-                                       {"text", "PLAN v" + std::to_string(++pmTurns)}});
+        return makeCall(
+            "design_turn",
+            nlohmann::json{{"kind", "plan"}, {"text", "PLAN v" + std::to_string(++pmTurns)}});
     });
     sr.setResponder("design_qa", role("design_qa", "QA CRITERIA"));
 
@@ -294,11 +294,11 @@ TEST_CASE("sop: avenger dispatches the core three in one reply, then stops") {
         }
         if (++starkTurns == 1) {
             for (const char* id : {"research_mkt", "research_user", "research_oss"}) {
-                ToolCall tc = makeCall(
-                    "request_agent",
-                    nlohmann::json{{"agent_id", id},
-                                   {"message", "Topic: sop test, slug sop-test, write "
-                                               "docs/sop/avenger_sop-test_x.md"}});
+                ToolCall tc =
+                    makeCall("request_agent",
+                             nlohmann::json{{"agent_id", id},
+                                            {"message", "Topic: sop test, slug sop-test, write "
+                                                        "docs/sop/avenger_sop-test_x.md"}});
                 tc.id = std::string("ra_") + id;
                 out.push_back(tc);
             }
@@ -318,8 +318,8 @@ TEST_CASE("sop: avenger dispatches the core three in one reply, then stops") {
     for (const char* id : {"research_tech", "research_comp", "research_money"}) {
         sr.setResponder(id, [&rec, id](const std::string&, const std::vector<Message>& m) {
             rec.add(id, m);
-            return makeCall("research_turn", nlohmann::json{{"summary", "woken"},
-                                                            {"report_path", "docs/sop/x.md"}});
+            return makeCall("research_turn",
+                            nlohmann::json{{"summary", "woken"}, {"report_path", "docs/sop/x.md"}});
         });
     }
 
@@ -353,9 +353,9 @@ TEST_CASE("sop: musk pairs a task - dev, then an independent test, then stops") 
         }
         const int n = ++muskTurns;
         if (n == 1)
-            out.push_back(makeCall(
-                "request_agent",
-                nlohmann::json{{"agent_id", "dev_1"}, {"message", "DoD: cli prints 3 rows"}}));
+            out.push_back(
+                makeCall("request_agent", nlohmann::json{{"agent_id", "dev_1"},
+                                                         {"message", "DoD: cli prints 3 rows"}}));
         else if (n == 2)
             out.push_back(makeCall(
                 "request_agent",

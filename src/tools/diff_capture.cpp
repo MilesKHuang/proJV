@@ -57,8 +57,7 @@ std::vector<Op> lcsOps(const std::vector<std::string>& a, const std::vector<std:
     auto at = [&](size_t i, size_t j) -> uint32_t& { return dp[i * stride + j]; };
     for (size_t i = n; i-- > 0;) {
         for (size_t j = m; j-- > 0;) {
-            at(i, j) = (a[i] == b[j]) ? at(i + 1, j + 1) + 1
-                                      : std::max(at(i + 1, j), at(i, j + 1));
+            at(i, j) = (a[i] == b[j]) ? at(i + 1, j + 1) + 1 : std::max(at(i + 1, j), at(i, j + 1));
         }
     }
     std::vector<Op> ops;
@@ -77,8 +76,10 @@ std::vector<Op> lcsOps(const std::vector<std::string>& a, const std::vector<std:
             ++j;
         }
     }
-    for (; i < n; ++i) ops.push_back({'-', a[i]});
-    for (; j < m; ++j) ops.push_back({'+', b[j]});
+    for (; i < n; ++i)
+        ops.push_back({'-', a[i]});
+    for (; j < m; ++j)
+        ops.push_back({'+', b[j]});
     return ops;
 }
 
@@ -125,9 +126,11 @@ std::string makeUnifiedDiff(const std::string& before, const std::string& after,
     // lines, and this keeps both the table and the emitted patch small.
     const size_t minSize = std::min(a.size(), b.size());
     size_t head = 0;
-    while (head < minSize && a[head] == b[head]) ++head;
+    while (head < minSize && a[head] == b[head])
+        ++head;
     size_t tail = 0;
-    while (tail < minSize - head && a[a.size() - 1 - tail] == b[b.size() - 1 - tail]) ++tail;
+    while (tail < minSize - head && a[a.size() - 1 - tail] == b[b.size() - 1 - tail])
+        ++tail;
 
     const std::vector<std::string> midA(a.begin() + head, a.end() - tail);
     const std::vector<std::string> midB(b.begin() + head, b.end() - tail);
@@ -135,8 +138,10 @@ std::string makeUnifiedDiff(const std::string& before, const std::string& after,
 
     std::vector<Op> ops;
     if (midA.size() * midB.size() > kMaxDpCells) {
-        for (const auto& line : midA) ops.push_back({'-', line});
-        for (const auto& line : midB) ops.push_back({'+', line});
+        for (const auto& line : midA)
+            ops.push_back({'-', line});
+        for (const auto& line : midB)
+            ops.push_back({'+', line});
     } else {
         ops = lcsOps(midA, midB);
     }
@@ -160,16 +165,17 @@ std::string makeUnifiedDiff(const std::string& before, const std::string& after,
                   newHunkStart, newCount);
     lines.push_back(header);
 
-    for (size_t k = head - leadCtx; k < head; ++k) lines.push_back(" " + a[k]);
-    for (const auto& op : ops) lines.push_back(std::string(1, op.tag) + op.text);
+    for (size_t k = head - leadCtx; k < head; ++k)
+        lines.push_back(" " + a[k]);
+    for (const auto& op : ops)
+        lines.push_back(std::string(1, op.tag) + op.text);
     for (size_t k = a.size() - tail; k < a.size() - tail + trailCtx; ++k)
         lines.push_back(" " + a[k]);
 
     // Two independent caps. The line cap keeps the bubble readable; the char cap
     // stops one 5k-character minified line from blowing up the layout.
     size_t keep = lines.size();
-    if (maxLines > 0 && keep > static_cast<size_t>(maxLines))
-        keep = static_cast<size_t>(maxLines);
+    if (maxLines > 0 && keep > static_cast<size_t>(maxLines)) keep = static_cast<size_t>(maxLines);
     size_t chars = 0;
     size_t fits = 0;
     while (fits < keep) {

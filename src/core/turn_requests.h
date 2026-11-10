@@ -14,18 +14,6 @@ namespace turn_requests {
 
 enum class Kind { None, Skill, Image };
 
-inline const char* name(Kind k) {
-    switch (k) {
-    case Kind::Skill:
-        return "run_skill";
-    case Kind::Image:
-        return "view_image";
-    case Kind::None:
-    default:
-        return "none";
-    }
-}
-
 struct State {
     Kind pending = Kind::None;
 

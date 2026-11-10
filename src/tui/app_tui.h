@@ -51,8 +51,8 @@ class TuiApp {
     const AppConfig& getConfig() const { return config; }
     void saveApiKeyAndConnect(const std::string& apiKey);
     void saveFullConfig(const std::string& apiKey, const std::string& baseUrl, int maxTokens,
-                        double temperature, const std::string& compiler,
-                        const std::string& python, const std::string& model);
+                        double temperature, const std::string& compiler, const std::string& python,
+                        const std::string& model);
     void approveTool(int action) {
         if (agent) agent->approveTool(action);
     }

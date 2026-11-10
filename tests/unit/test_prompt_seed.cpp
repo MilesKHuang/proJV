@@ -120,12 +120,14 @@ TEST_CASE("role seed: the hard rules that must survive any rewrite") {
         "ownership plus mutex/atomic annotations",
         "Skip diagrams for a trivial one-file change",
     };
-    for (const char* rule : must) CHECK_MESSAGE(has(seed, rule), rule);
+    for (const char* rule : must)
+        CHECK_MESSAGE(has(seed, rule), rule);
 }
 
 TEST_CASE("role seed: ASCII only, and a sane size") {
     const std::string seed = defaultPromptSeedText();
-    for (unsigned char c : seed) CHECK_MESSAGE(c < 128, static_cast<int>(c));
+    for (unsigned char c : seed)
+        CHECK_MESSAGE(c < 128, static_cast<int>(c));
     CHECK(seed.size() > 2000);
     CHECK(seed.size() < 8 * 1024); // it goes into every request of every turn
     CHECK(has(seed, "\n"));        // a single-line prompt is a broken raw string

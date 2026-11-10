@@ -59,8 +59,4 @@ std::string describe(const std::string& block);
 // way the capability map can silently lose a capability.
 const char* groupOf(const std::string& toolName);
 
-// The prefix P1 and P2 start with; the TUI and the tests both look for them.
-extern const char* const kEnvironmentPrefix;
-extern const char* const kProjectPrefix;
-
 } // namespace ctx

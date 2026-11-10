@@ -21,10 +21,10 @@
 namespace mcp {
 
 struct SpawnSpec {
-    std::string command;                  // executable, resolved on PATH
-    std::vector<std::string> args;        // argv, never a shell string
+    std::string command;                    // executable, resolved on PATH
+    std::vector<std::string> args;          // argv, never a shell string
     std::map<std::string, std::string> env; // added to the inherited environment
-    std::string workDir;                  // empty = inherit
+    std::string workDir;                    // empty = inherit
 };
 
 // One spawned server. Handles stay open for the whole server lifetime.

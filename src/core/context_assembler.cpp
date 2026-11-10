@@ -11,7 +11,6 @@
 namespace ctx {
 
 const char* const kEnvironmentPrefix = "[ENVIRONMENT]";
-const char* const kProjectPrefix = "[PROJECT]";
 
 namespace {
 

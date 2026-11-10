@@ -77,7 +77,6 @@ class Agent {
     // means one string, so the two buildChatRequest() calls of a turn (normal +
     // HTTP retry) send identical bytes.
     void setCapabilitiesBlock(std::string block) { capabilitiesBlock_ = std::move(block); }
-    const std::string& capabilitiesBlock() const { return capabilitiesBlock_; }
 
     // Refresh the persisted [ENVIRONMENT] block in place (it is P1, so a config
     // save that changes a toolchain path would otherwise stay stale until F3).

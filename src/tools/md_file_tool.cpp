@@ -197,8 +197,8 @@ void registerMdFileTool(ToolRegistry& registry, const ToolPaths& paths) {
                     if (!ofs) return "Error: Cannot write to: " + resolved;
                     ofs << content;
                     ofs.close();
-                    diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before,
-                                         content);
+                    diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()),
+                                         before, content);
                     return "Edited " + resolved + " (match found after LF normalization)";
                 }
                 return "Error: Search text not found in file: " + resolved + "\nSearch text: " +

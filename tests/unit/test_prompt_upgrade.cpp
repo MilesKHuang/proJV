@@ -24,8 +24,7 @@ TEST_CASE("prompt upgrade: old coder tool list gains run_skill exactly once") {
     const std::string once = upgradeSeededPrompt("coder.md", oldText);
 
     CHECK(once != oldText);
-    CHECK(once.find(std::string(kOldCoderLine) + ", run_skill, view_image\n") !=
-          std::string::npos);
+    CHECK(once.find(std::string(kOldCoderLine) + ", run_skill, view_image\n") != std::string::npos);
 
     // Idempotent: the upgraded line starts with the old one, so a naive
     // find() would append a second run_skill. It must not.
@@ -85,7 +84,7 @@ TEST_CASE("prompt upgrade: a hand-written assistant prompt only gets the style f
     const std::string up = upgradeSeededPrompt("assistant.md", custom);
     CHECK(up != custom);
     CHECK(up.find("Put it in plain language") != std::string::npos);
-    CHECK(up.find("- keep me") != std::string::npos);        // not replaced wholesale
+    CHECK(up.find("- keep me") != std::string::npos); // not replaced wholesale
     CHECK(up != defaultPromptSeedText());
     CHECK(upgradeSeededPrompt("assistant.md", up) == up);
 }
