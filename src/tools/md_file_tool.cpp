@@ -30,7 +30,7 @@ static std::string validateMdSuffix(const std::string& path) {
     return "";
 }
 
-void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath) {
+void registerMdFileTool(ToolRegistry& registry, const ToolPaths& paths) {
     ToolDefinition def;
     def.name = "md_file";
     def.description = TOOL_MD_FILE_DESC;
@@ -44,7 +44,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
         {"search", "string", "Text to search for (required for 'edit' action)", false},
         {"replace", "string", "Replacement text (required for 'edit' action)", false}};
 
-    registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+    registry.registerTool(def, [paths](const std::string& args) -> std::string {
         std::string action = extractStringArg(args, "action");
         std::string path = extractStringArg(args, "path");
 
@@ -58,7 +58,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
 
         // Validate path is in workspace (shared guard, see file_tool.h)
         std::string resolved;
-        std::string pathErr = validateToolPath(path, workspacePath, resolved);
+        std::string pathErr = validateToolPath(paths, path, true, resolved);
         if (!pathErr.empty()) return pathErr;
 
         if (action == "write") {
@@ -128,7 +128,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                 ofs << content;
                 ofs.close();
 
-                const std::string shown = diff_capture::displayPath(resolved, workspacePath);
+                const std::string shown = diff_capture::displayPath(resolved, paths.workspace());
                 if (appendMode) {
                     diff_capture::record(shown, before, before + content);
                     return "Appended " + std::to_string(content.size()) + " bytes to " + resolved;
@@ -197,7 +197,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
                     if (!ofs) return "Error: Cannot write to: " + resolved;
                     ofs << content;
                     ofs.close();
-                    diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before,
+                    diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before,
                                          content);
                     return "Edited " + resolved + " (match found after LF normalization)";
                 }
@@ -224,7 +224,7 @@ void registerMdFileTool(ToolRegistry& registry, const std::string& workspacePath
             if (!ofs) return "Error: Cannot write to: " + resolved;
             ofs << content;
             ofs.close();
-            diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before,
+            diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before,
                                  content);
             return "Edited " + resolved;
         } else {

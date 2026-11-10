@@ -72,16 +72,42 @@ TEST_CASE("AGENTS.md: UTF-8 BOM and leading blank lines are dropped") {
     fs::remove_all(ws, ec);
 }
 
-TEST_CASE("AGENTS.md: files over 16 KiB are truncated with a marker") {
+TEST_CASE("AGENTS.md: files over 8 KiB are truncated, and the cut says so") {
     const fs::path ws = makeTempWorkspace("big");
     // 20 KiB of ASCII, so the cut never lands inside a UTF-8 sequence.
     std::string body(20 * 1024, 'x');
     writeFile(ws / "AGENTS.md", body);
 
     const std::string ctx = buildAgentsMdContext(ws.string());
-    CHECK(ctx.find("[... truncated, read AGENTS.md for the rest]") != std::string::npos);
-    // Wrapper + 16 KiB cap + tail marker: comfortably below the raw 20 KiB.
+    // The marker names both byte counts and where the rest is: without it the
+    // model believes it read the whole file and works from a half-document.
+    CHECK(ctx.find("AGENTS.md truncated at 8192 of 20480 bytes") != std::string::npos);
+    CHECK(ctx.find("read_file") != std::string::npos);
+    // Wrapper + 8 KiB cap + tail marker: comfortably below the raw 20 KiB.
     CHECK(ctx.size() < body.size());
+    std::error_code ec;
+    fs::remove_all(ws, ec);
+}
+
+TEST_CASE("project block: one message, and it is never empty") {
+    // V7: an empty workspace must not collapse the fixed prefix. The merged
+    // message always exists, so the prefix is always exactly three system
+    // messages (role, environment, project).
+    const fs::path ws = makeTempWorkspace("block_empty");
+    const std::string empty = buildProjectBlock(ws.string());
+    CHECK(empty.find("[PROJECT]") == 0);
+    CHECK(empty.find("[PROJECT CONTEXT]") != std::string::npos);
+    CHECK(empty.find("[AGENTS.MD]") != std::string::npos);
+    CHECK(empty.find("(none") != std::string::npos); // AGENTS.md placeholder
+
+    writeFile(ws / "AGENTS.md", "# Rules\n");
+    writeFile(ws / "main.cpp", "int main() {}\n");
+    const std::string full = buildProjectBlock(ws.string());
+    CHECK(full.find("# Rules") != std::string::npos);
+    CHECK(full.find("main.cpp") != std::string::npos);
+    // Both halves are in ONE message: the caller writes exactly one system message.
+    CHECK(full.find("[END PROJECT CONTEXT]") != std::string::npos);
+    CHECK(full.find("[END AGENTS.MD]") != std::string::npos);
     std::error_code ec;
     fs::remove_all(ws, ec);
 }

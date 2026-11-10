@@ -19,13 +19,13 @@ static constexpr const char* TOOL_PARAM_TIMEOUT_MS =
     "Optional total timeout in milliseconds (default 1800000 = 30 min, hard cap 1800000 = 30 min). "
     "Pass a smaller value only to fail faster.";
 
-void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
+void registerShellTool(ToolRegistry& registry, const ToolPaths& paths,
                        IProcessRunner* procRunner) {
     ToolDefinition def;
     def.name = "exec_shell";
     def.description = std::string(TOOL_EXEC_SHELL_DESC_BASE);
-    if (!workspacePath.empty())
-        def.description += "Commands run inside the workspace directory: " + workspacePath;
+    if (!paths.workspace().empty())
+        def.description += "Commands run inside the workspace directory: " + paths.workspace();
     else
         def.description += TOOL_EXEC_SHELL_DESC_FALLBACK;
     def.parameters = {{"command", "string", TOOL_PARAM_COMMAND, true},
@@ -33,7 +33,7 @@ void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
                       {"timeout_ms", "number", TOOL_PARAM_TIMEOUT_MS, false}};
 
     registry.registerTool(
-        def, [&registry, workspacePath, procRunner](const std::string& args) -> std::string {
+        def, [&registry, paths, procRunner](const std::string& args) -> std::string {
             std::string cmd = extractStringArg(args, "command");
             std::string stdinContent = extractStringArg(args, "stdin");
             if (cmd.empty()) return "Error: Missing 'command' argument";
@@ -48,7 +48,7 @@ void registerShellTool(ToolRegistry& registry, const std::string& workspacePath,
 
             ProcessConfig cfg;
             cfg.command = cmd;
-            cfg.workDir = workspacePath;
+            cfg.workDir = paths.workspace();
             cfg.stdinContent = stdinContent;
             cfg.timeoutMs = timeoutMs;
 

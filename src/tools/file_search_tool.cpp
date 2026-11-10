@@ -58,22 +58,22 @@ std::string wildcardToRegex(const std::string& pattern) {
 
 } // namespace
 
-void registerFileSearchTool(ToolRegistry& registry, const std::string& workspacePath) {
+void registerFileSearchTool(ToolRegistry& registry, const ToolPaths& paths) {
     ToolDefinition def;
     def.name = "file_search";
     def.description = TOOL_FILE_SEARCH_DESC;
     def.parameters = {{"pattern", "string", TOOL_PARAM_PATTERN, true},
                       {"path", "string", TOOL_PARAM_SEARCH_PATH, false}};
 
-    registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+    registry.registerTool(def, [paths](const std::string& args) -> std::string {
         const std::string pattern = extractStringArg(args, "pattern");
         std::string path = extractStringArg(args, "path");
         if (pattern.empty()) return "Error: Missing 'pattern' argument";
-        if (path.empty()) path = workspacePath.empty() ? std::string(".") : workspacePath;
+        if (path.empty()) path = paths.workspace().empty() ? std::string(".") : paths.workspace();
 
         // Same guard as every other file tool: no escaping the workspace.
         std::string resolved;
-        const std::string err = validateToolPath(path, workspacePath, resolved);
+        const std::string err = validateToolPath(paths, path, false, resolved);
         if (!err.empty()) return err;
 
         std::error_code ec;

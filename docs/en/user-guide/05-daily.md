@@ -29,7 +29,11 @@ things the agent must never touch.
   `CLAUDE.md` fallback.
 - Editing it takes effect in the **next** conversation (`F3`) or after `/clear`,
   because the block is written into the session at its start.
-- The content is capped at 16 KiB; a longer file is truncated and says so.
+- The content is capped at 8 KiB. A longer file is cut, and the cut states both
+  byte counts and tells the model to read the rest with `read_file` -- a silent
+  truncation would read as "that is the whole file".
+- The workspace tree above it is capped at 600 characters for the same reason: it
+  is a hint, and `list_dir` is one call away.
 - Skills do not receive it: their role prompts are already mandatory reading, and
   ten concurrent workers would each pay for another copy.
 

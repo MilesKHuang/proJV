@@ -93,13 +93,30 @@ that is how you can tell dispatch really is concurrent.
 
 ## Author your own
 
+Ask the agent in plain language, or read the guide yourself:
+
 ```
-/skill skill_maker a skill that reviews a PR diff
+> write me a skill that reviews a PR diff
 ```
 
-`skill_maker` is compiled into the binary. It writes `config.json`, the prompts
-and the verb tools, then verifies the skill loads. Alternatively, copy
-`skills/monica/` and edit.
+The authoring guide ships with the binary at
+`projv_files/skills/_authoring/skill-authoring.md` -- a folder without
+`config.json`, so it is documentation the agent can read, not a runnable skill.
+You can also copy `skills/monica/` and edit it.
+
+Skills are ordinary files, and `projv_files/skills/` is **writable** for the agent
+(the same permission as the workspace). Two consequences worth knowing:
+
+- A skill runs with the tools listed in its own `config.json` `tools` array. If a
+  workflow is supposed to modify files, the skill must list `write_file` /
+  `edit_file` -- the engine does not widen it for you.
+- A skill that lists `exec_shell` has the full power of your shell. Read a
+  third-party skill's `config.json` before installing it. Nothing prompts you.
+- Skill writes are not shown in the diff bubble (that view belongs to the main
+  agent), so review the result with `git status` / `git diff`.
+
+There is no built-in skill generator any more; the old `skill_maker` was removed in
+v0.8.0. If you still have `projv_files/skills/skill_maker/`, delete the folder.
 
 Keep in mind:
 

@@ -101,12 +101,18 @@ int main(int argc, char** argv) {
     {
         auto msgs = app.getAgent()->getSession().getContextMessages();
         const std::string sys = systemText(msgs);
+        check(sys.find("[ENVIRONMENT]") != std::string::npos,
+              "startup: environment block injected");
+        check(sys.find("access:") != std::string::npos,
+              "startup: environment block states the permission matrix");
         check(sys.find("[PROJECT CONTEXT]") != std::string::npos,
               "startup: directory tree injected");
         check(sys.find("[AGENTS.MD]") != std::string::npos, "startup: AGENTS.md injected");
         check(sys.find("E2E-MARKER-BUILD-CMD") != std::string::npos,
               "startup: AGENTS.md content reaches the session");
-        check(fixedPrefixIsSystem(msgs, 3), "startup: prompt + tree + AGENTS.md form the prefix");
+        // V7: the fixed prefix is role + environment + project, always three, even
+        // in an otherwise empty workspace.
+        check(fixedPrefixIsSystem(msgs, 3), "startup: prompt + environment + project prefix");
     }
 
     // ---- 2. config parsing: official enum + fallback ---------------------
@@ -163,6 +169,54 @@ int main(int argc, char** argv) {
           "request: image is inline base64");
     check(bodies.find("View the attached image(s)") != std::string::npos,
           "request: synthetic user message text present");
+
+    // ---- 3b. the capability map is in the request, in the right place ----
+    // P3 is generated per turn and never persisted, so the only place it can be
+    // observed is a real request body. It must sit after the fixed prefix and name
+    // the tools this request carries.
+    {
+        bool seen = false;
+        std::ifstream in(captures);
+        std::string line;
+        while (std::getline(in, line) && !seen) {
+            if (line.empty()) continue;
+            try {
+                auto j = nlohmann::json::parse(line);
+                const auto body = nlohmann::json::parse(j.value("body", std::string()));
+                if (!body.contains("messages")) continue;
+                std::string caps;
+                int capsAt = -1, userAt = -1, idx = 0;
+                for (const auto& m : body["messages"]) {
+                    const std::string role = m.value("role", std::string());
+                    const std::string content = m.value("content", std::string());
+                    if (role == "system" && content.rfind("[CAPABILITIES]", 0) == 0) {
+                        caps = content;
+                        capsAt = idx;
+                    }
+                    if (role == "user" && userAt < 0) userAt = idx;
+                    ++idx;
+                }
+                if (caps.empty()) continue;
+                seen = true;
+                check(true, "request: capability map present");
+                check(capsAt > 2, "request: capability map comes after the fixed prefix");
+                check(userAt < 0 || capsAt < userAt,
+                      "request: capability map comes before the conversation");
+                // The sealed seed has no allowlist, so every tool is offered -- and
+                // every one of them must be described.
+                for (const char* name :
+                     {"read_file", "write_file", "exec_shell", "grep_files", "edit_file",
+                      "file_search", "list_dir", "format_file", "md_file", "web_search",
+                      "fetch_url", "update_todo", "run_skill", "view_image"})
+                    check(caps.find(name) != std::string::npos,
+                          std::string("request: capability map names ") + name);
+                check(caps.find("Skill") != std::string::npos,
+                      "request: capability map has a skill section");
+            } catch (...) {
+            }
+        }
+        check(seen, "request: capability map present");
+    }
 
     app.syncChatFromAgent();
     {

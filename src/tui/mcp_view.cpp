@@ -98,6 +98,17 @@ Component makeMcpDialog(TuiApp& app, std::function<void()> onClose) {
         els.push_back(text("MCP Servers") | bold);
         els.push_back(separator());
         els.push_back(menu->Render() | frame | size(HEIGHT, LESS_THAN, 14));
+        // Purpose of the selected server: the same line P3 gives the model, so what
+        // the user sees in F4 and what the model is told cannot diverge.
+        if (m && *selected >= 0 && *selected < static_cast<int>(entries->size())) {
+            const std::string name = selectedServer(app, *selected);
+            if (!name.empty()) {
+                const std::string purpose = m->descriptionOf(name);
+                if (!purpose.empty()) els.push_back(text(purpose) | dim);
+                const std::string err = m->lastError(name);
+                if (!err.empty()) els.push_back(text(err));
+            }
+        }
         els.push_back(separator());
         if (app.isBusy())
             els.push_back(text("busy -- finish the current turn first") | dim);

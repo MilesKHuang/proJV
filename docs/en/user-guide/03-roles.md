@@ -51,8 +51,30 @@ tools available: read_file, grep_files
 - **Tools.** The `tools available:` line is a permission table, not a hint: the
   agent only offers those tools to the model, and a call to anything else is
   rejected. Leave the line out and the role gets **every** tool (fail-open), so a
-  read-only role must list its tools.
+  read-only role must list its tools. The seeded `assistant.md` deliberately leaves
+  it out: one list in the prompt was already out of date, so the inventory now
+  lives in the per-turn capability map instead.
+- **What the role may touch.** Every role runs with the same filesystem rights:
+  read+write in the workspace and in `projv_files` (prompts, skills, theme, pytool,
+  `mcp.json`), read-only in `projv_files/sessions` and `projv_files/logs`, refused
+  everywhere else. A role can therefore create its own successor: "add a skill" or
+  "add this MCP server" are ordinary file writes, not special commands.
 - **Behaviour**: what to read first, the shape of the answer, what not to touch.
+
+A role's prompt is message **P0** of the conversation. The environment block
+(P1) and the project block (P2) follow it, and the capability map (P3) is rebuilt
+before every turn -- which is why adding a skill or an MCP server does not need a
+new role file.
+
+## When an edit takes effect
+
+| You changed | Takes effect |
+|-------------|--------------|
+| `projv_files/prompts/*.md` | Next `F3` (new chat) or `/clear` |
+| `projv_files/skills/<name>/` | Next `run_skill` call, no restart |
+| `projv_files/mcp.json` | Your next message |
+| `projv_files/pytool/<name>/` | After a config save (`F2`) or a restart |
+| `projv_files/theme/*.json` | After a restart (the theme menu is built at start-up) |
 
 ## What the role does *not* control
 

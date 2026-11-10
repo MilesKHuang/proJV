@@ -14,7 +14,6 @@ set(TEST_SOURCES
     unit/test_skill_runner.cpp
     unit/test_skill_swarm.cpp
     unit/test_skill_engine.cpp
-    unit/test_skill_maker.cpp
     unit/test_skill_monica.cpp
     unit/test_skill_sop.cpp
     unit/test_skill_trigger.cpp
@@ -26,6 +25,8 @@ set(TEST_SOURCES
     unit/test_turn_end.cpp
     unit/test_reasoning_content.cpp
     unit/test_file_tools.cpp
+    unit/test_tool_paths.cpp
+    unit/test_capabilities.cpp
     unit/test_diff_capture.cpp
     unit/test_storage_diff.cpp
     unit/test_diff_parse.cpp

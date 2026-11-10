@@ -81,12 +81,28 @@ clang-format 就用真格式化，没装就退化成空白清理）。
 
 ## 自己写一个
 
+用一句话让 agent 写，或者自己看随包文档：
+
 ```
-/skill skill_maker 一个审查 PR diff 的技能
+> 给我写一个审查 PR diff 的技能
 ```
 
-`skill_maker` 编在二进制里。它会写出 `config.json`、提示词和动作工具，然后验证
-技能能加载。也可以直接复制 `skills/monica/` 改。
+写作指南随二进制一起发在 `projv_files/skills/_authoring/skill-authoring.md`。
+那个目录里没有 `config.json`，所以它只是 agent 能读的文档，不会被当成可运行的技能。
+也可以直接复制 `skills/monica/` 改。
+
+技能就是文件，而 `projv_files/skills/` 对 agent 是**可写**的（与 workspace 同级权限）。
+由此有两点需要知道：
+
+- 技能只能用自己 `config.json` 里 `tools` 列出的工具。要改文件就得把
+  `write_file` / `edit_file` 写进那份清单，引擎不会替你放宽。
+- 清单里带 `exec_shell` 的技能等于拥有你 shell 的全部能力。装第三方技能前先读它的
+  `config.json`，中途不会有任何确认框。
+- 技能写文件不进 diff 气泡（那个视图只属于主 agent），改完用 `git status` /
+  `git diff` 复核。
+
+内置的技能生成器已经删掉了（v0.8.0 移除 `skill_maker`）。如果
+`projv_files/skills/skill_maker/` 还在，可以直接删掉。
 
 几个要点：
 

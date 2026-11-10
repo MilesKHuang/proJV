@@ -77,7 +77,7 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | Capability | Detail |
 |-----------|--------|
 | **Tool orchestration** | read / write / edit files, targeted line ranges, directory trees, regex grep, shell, todo, skills — the model decides |
-| **Skills** | `/monica <dir>` (10 concurrent workers tidy up a repo), `/bigbang` (three-role debate -> one execution doc), `skill_maker` authors new ones |
+| **Skills** | `/monica <dir>` (10 concurrent workers tidy up a repo), `/bigbang` (three-role debate -> one execution doc); new ones are plain folders -- ask the agent to write one, guide at `projv_files/skills/_authoring/` |
 | **Vision input** | `@path` attaches screenshots or images; directories expand to their images |
 | **Thinking chain** | reasoning streamed live, collapsible, `F8` for the full trace; `reasoning_effort` sets the depth (none / low / high / max) |
 | **1M context** | the full DeepSeek V4 1M-token window, with automatic compression when pressure builds |

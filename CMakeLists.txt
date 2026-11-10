@@ -91,6 +91,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/agent.cpp
     ${SRC_DIR}/core/session.cpp
     ${SRC_DIR}/tools/registry.cpp
+    ${SRC_DIR}/tools/tool_paths.cpp
     ${SRC_DIR}/tools/file_tool.cpp
     ${SRC_DIR}/tools/format_tool.cpp
     ${SRC_DIR}/tools/md_file_tool.cpp
@@ -104,11 +105,11 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/tool_list_parser.cpp
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/core/project_context.cpp
+    ${SRC_DIR}/core/context_assembler.cpp
     ${SRC_DIR}/core/sub_agent.cpp
     ${SRC_DIR}/core/image_input.cpp
     ${SRC_DIR}/core/skill_trigger.cpp
     ${SRC_DIR}/core/skill_runner.cpp
-    ${SRC_DIR}/core/skills_builtin.cpp
     ${SRC_DIR}/core/terminal_status.cpp
     # MCP client (stdio JSON-RPC): framing, three-pipe child control, config,
     # resident server pool. Platform-agnostic; the #ifdefs live in mcp_process.
@@ -131,13 +132,13 @@ set(HEADERS
     ${SRC_DIR}/core/session.h
     ${SRC_DIR}/core/storage.h
     ${SRC_DIR}/tools/registry.h
+    ${SRC_DIR}/tools/tool_paths.h
     ${SRC_DIR}/core/skill_config.h
     ${SRC_DIR}/core/image_input.h
     ${SRC_DIR}/core/skill_trigger.h
     ${SRC_DIR}/tools/base64.h
     ${SRC_DIR}/core/sub_agent.h
     ${SRC_DIR}/core/skill_runner.h
-    ${SRC_DIR}/core/skills_builtin.h
     ${SRC_DIR}/core/terminal_status.h
     ${SRC_DIR}/core/mcp_protocol.h
     ${SRC_DIR}/core/mcp_config.h
@@ -273,6 +274,7 @@ if(PROJV_BUILD_E2E)
         ${SRC_DIR}/tui/terminal.cpp
         ${SRC_DIR}/tui/app_tui.cpp
         ${SRC_DIR}/tui/chat_view.cpp
+        ${SRC_DIR}/tui/diff_view.cpp
         ${SRC_DIR}/tui/bubble_model.cpp
         ${SRC_DIR}/tui/speaker_colors.cpp
         ${SRC_DIR}/tui/markdown_text.cpp
@@ -347,8 +349,9 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/"
         PATTERN "sessions" EXCLUDE
         PATTERN "prompts" EXCLUDE)
 
-# Example skills (bigbang, monica). The built-in skill_maker is compiled into
-# the exe and self-seeds on first launch, so it is NOT packaged here.
+# Example skills (bigbang, monica) plus skills/_authoring/: the authoring guide
+# that P3 points at. Nothing is compiled in any more -- a skill is a folder, and
+# the guide has no config.json so listSkills() never treats it as runnable.
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/skills/"
         DESTINATION projv_files/skills
         PATTERN "__pycache__" EXCLUDE

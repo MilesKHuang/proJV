@@ -124,7 +124,7 @@ std::string normalizeWhitespace(const std::string& in) {
 
 } // namespace
 
-void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath,
+void registerFormatTool(ToolRegistry& registry, const ToolPaths& paths,
                         IProcessRunner* procRunner, const std::string& clangFormatPath) {
     ToolDefinition def;
     def.name = "format_file";
@@ -143,12 +143,12 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
                        false}};
 
     registry.registerTool(
-        def, [workspacePath, procRunner, clangFormatPath](const std::string& args) -> std::string {
+        def, [paths, procRunner, clangFormatPath](const std::string& args) -> std::string {
             const std::string path = extractStringArg(args, "path");
             if (path.empty()) return "Error: Missing required 'path' argument for format_file.";
 
             std::string resolved;
-            const std::string err = validateToolPath(path, workspacePath, resolved);
+            const std::string err = validateToolPath(paths, path, true, resolved);
             if (!err.empty()) return err;
 
             std::error_code ec;
@@ -167,7 +167,7 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
                 if (!ofs) return "Error: Cannot write: " + resolved;
                 ofs << after;
                 ofs.close();
-                diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before,
+                diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before,
                                      after);
                 const int changed = diffLines(before, after);
                 return "Formatted (whitespace): " + resolved + " - " + std::to_string(changed) +
@@ -186,7 +186,7 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
             const std::string style = extractStringArg(args, "style");
             if (!style.empty()) {
                 styleArg = " -style=" + style;
-            } else if (findClangFormatConfig(fs::path(resolved), fs::path(workspacePath))) {
+            } else if (findClangFormatConfig(fs::path(resolved), fs::path(paths.workspace()))) {
                 styleArg = " -style=file";
             } else {
                 // No .clang-format anywhere above the file. Falling back to LLVM here
@@ -200,7 +200,7 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
 
             ProcessConfig cfg;
             cfg.command = quotePath(exe) + " -i" + styleArg + " " + quotePath(resolved);
-            cfg.workDir = workspacePath;
+            cfg.workDir = paths.workspace();
             cfg.timeoutMs = kFormatTimeoutMs;
             cfg.idleTimeoutMs = 0; // clang-format is silent; no idle cutoff
 
@@ -226,7 +226,7 @@ void registerFormatTool(ToolRegistry& registry, const std::string& workspacePath
             std::string after;
             if (!readWholeFile(resolved, after)) return "Error: Cannot read back: " + resolved;
             if (after == before) return "No changes: " + resolved + " (already formatted)";
-            diff_capture::record(diff_capture::displayPath(resolved, workspacePath), before, after);
+            diff_capture::record(diff_capture::displayPath(resolved, paths.workspace()), before, after);
             const int changed = diffLines(before, after);
             return "Formatted (clang-format): " + resolved + " - " + std::to_string(changed) +
                    " line(s) changed";

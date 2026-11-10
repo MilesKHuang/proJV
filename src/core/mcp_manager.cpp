@@ -5,10 +5,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <set>
 
 namespace mcp {
 namespace {
+
+namespace fs = std::filesystem;
 
 std::string describeError(const nlohmann::json& e) {
     if (!e.is_object()) return e.dump();
@@ -35,6 +38,42 @@ std::string oneLine(const std::string& s, size_t maxLen) {
     }
     while (!out.empty() && out.back() == ' ') out.pop_back();
     return out;
+}
+
+// (mtime ticks, size) of a config file. Both together are the "did the user touch
+// it" test: mtime alone can repeat on filesystems with coarse timestamps.
+bool readFileStamp(const std::string& path, long long& ticks, unsigned long long& size) {
+    std::error_code ec;
+    const auto t = fs::last_write_time(path, ec);
+    if (ec) return false;
+    ticks = static_cast<long long>(t.time_since_epoch().count());
+    const auto s = fs::file_size(path, ec);
+    size = ec ? 0ull : static_cast<unsigned long long>(s);
+    return true;
+}
+
+// Everything that decides how the child process is spawned. `enabled` is handled
+// separately (it is a start/stop toggle, not a redefinition), and `description`
+// is excluded on purpose: changing the purpose text must not restart a process.
+std::string fingerprint(const McpServerConfig& c) {
+    std::string f = c.command;
+    f += '\x1f';
+    for (const auto& a : c.args) {
+        f += a;
+        f += '\x1f';
+    }
+    for (const auto& kv : c.env) {
+        f += kv.first;
+        f += '=';
+        f += kv.second;
+        f += '\x1f';
+    }
+    f += c.protocol;
+    f += '\x1f';
+    f += c.trusted ? '1' : '0';
+    f += '\x1f';
+    f += std::to_string(c.timeoutMs);
+    return f;
 }
 
 } // namespace
@@ -93,6 +132,7 @@ bool Manager::loadFromJson(const std::string& path) {
         h->cfg = std::move(cfg);
         servers_.push_back(std::move(h));
     }
+    rememberStamp(path);
     return true;
 }
 
@@ -109,6 +149,11 @@ std::string Manager::lastError(const std::string& name) const {
 std::string Manager::protocolOf(const std::string& name) const {
     const ServerHandle* h = find(name);
     return h ? h->cfg.protocol : std::string();
+}
+
+std::string Manager::descriptionOf(const std::string& name) const {
+    const ServerHandle* h = find(name);
+    return h ? h->cfg.description : std::string();
 }
 
 bool Manager::trustedOf(const std::string& name) const {
@@ -141,6 +186,134 @@ std::vector<std::string> Manager::serverNames() const {
 std::vector<std::string> Manager::toolNames(const std::string& name) const {
     const ServerHandle* h = find(name);
     return h ? h->toolNames : std::vector<std::string>();
+}
+
+std::vector<Manager::ServerPurpose> Manager::serverPurposes() const {
+    std::vector<ServerPurpose> out;
+    for (const auto& up : servers_) {
+        const ServerHandle& h = *up;
+        if (h.removed || !h.registered || h.registeredNames.empty()) continue;
+        ServerPurpose p;
+        p.name = h.cfg.name;
+        p.description = h.cfg.description;
+        const std::string prefix = prefixFor(h.cfg.name);
+        for (const auto& full : h.registeredNames)
+            p.tools.push_back(full.size() > prefix.size() ? full.substr(prefix.size()) : full);
+        std::sort(p.tools.begin(), p.tools.end());
+        out.push_back(std::move(p));
+    }
+    std::sort(out.begin(), out.end(),
+              [](const ServerPurpose& a, const ServerPurpose& b) { return a.name < b.name; });
+    return out;
+}
+
+void Manager::rememberStamp(const std::string& path) {
+    long long ticks = -1;
+    unsigned long long size = 0;
+    if (readFileStamp(path, ticks, size)) {
+        configStamp_ = ticks;
+        configSize_ = size;
+    }
+}
+
+bool Manager::reloadIfChanged(const std::string& path) {
+    long long ticks = -1;
+    unsigned long long size = 0;
+    if (!readFileStamp(path, ticks, size)) {
+        // Missing or unreadable: keep the resident list. Every server in it still
+        // works, and a save that temporarily removes the file must not kill them.
+        return false;
+    }
+    if (path == configPath_ && ticks == configStamp_ && size == configSize_) return false;
+
+    std::vector<McpServerConfig> loaded;
+    std::string err;
+    if (!loadConfig(path, loaded, err)) {
+        // Half-saved file: never tear down a working set because of it. Record the
+        // stamp so the same broken file is not parsed again on every message.
+        configError_ = err;
+        configStamp_ = ticks;
+        configSize_ = size;
+        debugLogf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(),
+                  err.c_str());
+        return false;
+    }
+    configPath_ = path;
+    configError_.clear();
+    configStamp_ = ticks;
+    configSize_ = size;
+
+    std::set<std::string> wanted;
+    for (const auto& cfg : loaded) wanted.insert(cfg.name);
+
+    for (auto& up : servers_) {
+        ServerHandle& h = *up;
+        if (wanted.count(h.cfg.name)) continue;
+        if (h.removed) continue; // already queued for the reaper
+        h.removed = true;
+        stop(h.cfg.name);
+        // The tools go at the next turn boundary: syncTools is the registry's only
+        // writer. Erasing the handle here would leave mcp__<name>__* registered
+        // forever, so the model would keep calling a capability that is gone.
+        debugLogf("[mcp] '%s' removed from the config; tools drop at the next turn boundary",
+                  h.cfg.name.c_str());
+    }
+
+    int added = 0, changed = 0, toggled = 0;
+    for (const auto& cfg : loaded) {
+        ServerHandle* h = find(cfg.name);
+        if (!h) {
+            auto up = std::make_unique<ServerHandle>();
+            up->cfg = cfg;
+            servers_.push_back(std::move(up));
+            ++added;
+            if (cfg.enabled && cfg.trusted) start(cfg.name);
+            continue;
+        }
+        const bool wasEnabled = h->cfg.enabled;
+        if (fingerprint(h->cfg) != fingerprint(cfg)) {
+            // The process definition moved: restart it, but re-registering the
+            // tools still happens at the turn boundary.
+            stop(cfg.name);
+            h->cfg = cfg;
+            h->tools.clear();
+            h->toolNames.clear();
+            ++changed;
+            if (cfg.enabled && cfg.trusted) start(cfg.name);
+            continue;
+        }
+        // Same process: adopt the new text (description, enabled) without touching
+        // it. A Dead server is NOT retried here -- F4's R is the retry entry point,
+        // otherwise every message would retry a broken server.
+        h->cfg.description = cfg.description;
+        h->cfg.enabled = cfg.enabled;
+        if (cfg.enabled != wasEnabled) {
+            if (cfg.enabled)
+                start(cfg.name);
+            else
+                stop(cfg.name);
+            ++toggled;
+        }
+    }
+    debugLogf("[mcp] reloaded '%s': %d added, %d changed, %d toggled", path.c_str(), added,
+              changed, toggled);
+    // True means "the new list was applied", not "a process moved": a
+    // description-only edit changes no process but must still refresh the map.
+    return true;
+}
+
+size_t Manager::reapRemoved() {
+    size_t n = 0;
+    for (auto it = servers_.begin(); it != servers_.end();) {
+        if ((*it)->removed && !(*it)->registered) {
+            debugLogf("[mcp] '%s' dropped from the resident pool", (*it)->cfg.name.c_str());
+            it = servers_.erase(it);
+            ++n;
+        } else {
+            ++it;
+        }
+    }
+    return n;
 }
 
 void Manager::joinWorker(ServerHandle& h) {
@@ -240,6 +413,8 @@ void Manager::setEnabled(const std::string& name, bool enabled) {
         if (!saveEnabled(configPath_, name, enabled, err))
             debugLogf("[mcp] could not persist enabled=%d for '%s': %s", (int)enabled,
                       name.c_str(), err.c_str());
+        else
+            rememberStamp(configPath_); // our own write is not an external change
     }
     h->cfg.enabled = enabled;
     if (enabled)
@@ -248,20 +423,6 @@ void Manager::setEnabled(const std::string& name, bool enabled) {
         stop(name);
 }
 
-std::string Manager::buildContextSnippet() const {
-    std::string out;
-    for (const auto& up : servers_) {
-        const auto& h = *up;
-        if (h.state.load() != ConnState::Ready || h.tools.empty()) continue;
-        if (out.empty()) out = "[MCP available tools]\n";
-        for (const auto& d : h.tools) {
-            out += "- " + d.name;
-            if (!d.description.empty()) out += ": " + oneLine(d.description, 160);
-            out += "\n";
-        }
-    }
-    return out;
-}
 
 void Manager::logStderr(ServerHandle& h, std::string& errBuf) {
     size_t nl;
@@ -515,10 +676,13 @@ bool Manager::requestResponse(ServerHandle& h, const std::string& method, nlohma
 
 namespace mcp {
 
-void Manager::syncTools(ToolRegistry& registry, Agent& agent) {
-    // Agent thread only, at a turn boundary. This is the single writer of both
-    // ToolRegistry and Agent::autoToolNames_, and it runs on the same thread
-    // that reads them, so neither map needs a lock (see the header).
+Manager::SyncResult Manager::syncTools(ToolRegistry& registry) {
+    // Agent thread only, at a turn boundary. This is the single writer of
+    // ToolRegistry, and it runs on the same thread that reads it, so the registry
+    // needs no lock (see the header). The caller applies `added`/`removed` to the
+    // Agent's auto-tool set: that set is the second visibility channel and it
+    // lives in the Agent, which is why this function reports instead of reaching.
+    SyncResult result;
     for (auto& up : servers_) {
         ServerHandle& h = *up;
         const bool ready = h.state.load() == ConnState::Ready;
@@ -526,7 +690,8 @@ void Manager::syncTools(ToolRegistry& registry, Agent& agent) {
         if (!ready) {
             if (h.registered) {
                 const size_t n = registry.unregisterByNamePrefix(prefixFor(h.cfg.name));
-                agent.removeAutoTools(h.registeredNames);
+                result.removed.insert(result.removed.end(), h.registeredNames.begin(),
+                                      h.registeredNames.end());
                 h.registered = false;
                 h.registeredNames.clear();
                 debugLogf("[mcp:%s] unregistered %zu tool(s)", h.cfg.name.c_str(), n);
@@ -539,7 +704,8 @@ void Manager::syncTools(ToolRegistry& registry, Agent& agent) {
 
         if (h.registered) {
             registry.unregisterByNamePrefix(prefixFor(h.cfg.name));
-            agent.removeAutoTools(h.registeredNames);
+            result.removed.insert(result.removed.end(), h.registeredNames.begin(),
+                                  h.registeredNames.end());
             h.registered = false;
             h.registeredNames.clear();
         }
@@ -563,12 +729,13 @@ void Manager::syncTools(ToolRegistry& registry, Agent& agent) {
                           def.name.c_str());
             }
         }
-        agent.addAutoTools(added);
+        result.added.insert(result.added.end(), added.begin(), added.end());
         h.registered = true;
         h.registeredNames = h.toolNames;
         debugLogf("[mcp:%s] registered %zu tool(s) (auto-visible)", h.cfg.name.c_str(),
                   added.size());
     }
+    return result;
 }
 
 std::string Manager::callTool(const std::string& server, const std::string& tool,

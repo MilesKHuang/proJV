@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 
 // extractStringArg is now in json_utils.h
 
-void registerEditFileTool(ToolRegistry& registry, const std::string& workspacePath) {
+void registerEditFileTool(ToolRegistry& registry, const ToolPaths& paths) {
     ToolDefinition def;
     def.name = "edit_file";
     def.description = TOOL_EDIT_FILE_DESC;
@@ -30,7 +30,7 @@ void registerEditFileTool(ToolRegistry& registry, const std::string& workspacePa
                       {"search", "string", TOOL_PARAM_SEARCH, true},
                       {"replace", "string", TOOL_PARAM_REPLACE, true}};
 
-    registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+    registry.registerTool(def, [paths](const std::string& args) -> std::string {
         std::string rawPath = extractStringArg(args, "path");
         std::string searchText = extractStringArg(args, "search");
         std::string replaceText = extractStringArg(args, "replace");
@@ -42,7 +42,7 @@ void registerEditFileTool(ToolRegistry& registry, const std::string& workspacePa
         // this tool could rewrite any file on disk, which is how it stayed the
         // only unguarded writer in the tool set.
         std::string path;
-        const std::string pathErr = validateToolPath(rawPath, workspacePath, path);
+        const std::string pathErr = validateToolPath(paths, rawPath, true, path);
         if (!pathErr.empty()) return pathErr;
 
         // Read the file
@@ -101,7 +101,7 @@ void registerEditFileTool(ToolRegistry& registry, const std::string& workspacePa
         ofs.write(content.data(), content.size());
         ofs.close();
 
-        diff_capture::record(diff_capture::displayPath(path, workspacePath), before, content);
+        diff_capture::record(diff_capture::displayPath(path, paths.workspace()), before, content);
 
         return "Edited " + path + ": replaced " + std::to_string(actualSearchLen) + " chars with " +
                std::to_string(replaceText.size()) + " chars.";

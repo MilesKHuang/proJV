@@ -41,6 +41,14 @@
 
 namespace {
 
+// What TuiApp::runAgentTurnLoop does at a turn boundary: the Manager reports, the
+// caller applies the delta to the Agent's second visibility channel.
+void syncNow(mcp::Manager& m, ToolRegistry& reg, Agent& agent) {
+    const mcp::Manager::SyncResult res = m.syncTools(reg);
+    agent.addAutoTools(res.added);
+    agent.removeAutoTools(res.removed);
+}
+
 // The fixture is built into the same directory as this test binary, so it is
 // found by path rather than by a baked-in macro: a Windows path inside a string
 // literal would have its backslashes eaten as escape sequences.
@@ -314,7 +322,7 @@ TEST_CASE("mcp: a stateful server stays resident and its tools register") {
     agent.setSystemPrompt("tools available: read_file\n");
 
     CHECK_FALSE(agent.isToolAllowed("mcp__fake__echo"));
-    m.syncTools(reg, agent);
+    syncNow(m, reg, agent);
     CHECK(agent.isToolAllowed("mcp__fake__echo"));
     CHECK(agent.isToolAllowed("mcp__fake__nested"));
     CHECK(m.toolCount("fake") == 2);
@@ -326,15 +334,16 @@ TEST_CASE("mcp: a stateful server stays resident and its tools register") {
     CHECK(m.callTool("fake", "echo", R"({"msg":"again"})", nullptr) == "echo: again");
     CHECK(m.spawnCount("fake") == 1);
 
-    // Second visibility channel: the snippet names the ready server's tools.
-    const std::string snippet = m.buildContextSnippet();
-    CHECK(snippet.find("[MCP available tools]") != std::string::npos);
-    CHECK(snippet.find("mcp__fake__echo") != std::string::npos);
+    // Second visibility channel: the purpose snapshot feeds the capability map.
+    const auto purposes = m.serverPurposes();
+    REQUIRE(purposes.size() == 1);
+    CHECK(purposes[0].name == "fake");
+    CHECK(purposes[0].tools.size() == 2);
 
     m.shutdownAll();
     CHECK(m.connState("fake") == mcp::ConnState::Stopped);
     // A stopped server's tools must disappear at the next sync.
-    m.syncTools(reg, agent);
+    syncNow(m, reg, agent);
     CHECK_FALSE(agent.isToolAllowed("mcp__fake__echo"));
     CHECK(reg.execute("mcp__fake__echo", "{}").find("Unknown tool") != std::string::npos);
 }
@@ -538,5 +547,155 @@ TEST_CASE("mcp: cancelling a call abandons the request but keeps the server") {
     // request is skipped, not mistaken for this one).
     CHECK(m.callTool("fake", "echo", R"({"msg":"again"})", nullptr) == "echo: again");
 
+    m.shutdownAll();
+}
+
+// ============================================================================
+// Hot reload: mcp.json is re-read on the next message, not at startup only.
+// The two-phase removal (mark + stop, then unregister at the turn boundary, then
+// reap) is what keeps a deleted server's tools out of the registry.
+// ============================================================================
+
+namespace {
+
+// A one-server config with a description, built inline: configWith() predates the
+// description field and the reload tests need it.
+std::string configWithDescription(const std::string& mode, const std::string& description) {
+    nlohmann::json srv;
+    srv["name"] = "fake";
+    srv["description"] = description;
+    srv["command"] = fakeServerPath();
+    srv["args"] = nlohmann::json::array({"--mode=" + mode});
+    srv["protocol"] = "stateful";
+    srv["trusted"] = true;
+    srv["enabled"] = true;
+    srv["timeout_ms"] = 20000;
+    nlohmann::json root;
+    root["servers"] = nlohmann::json::array({srv});
+    return root.dump(2);
+}
+
+} // namespace
+
+TEST_CASE("mcp reload: a new server appears on the next turn, spawned once") {
+    mcp::Manager m;
+    const std::string path = tempFile("reload_add");
+    writeText(path, "{\"servers\": []}");
+    m.setWorkDir(".");
+    REQUIRE(m.loadFromJson(path));
+    m.startEnabled();
+
+    ToolRegistry reg;
+    DeepSeekClient client;
+    Agent agent(client, reg);
+    // Narrow allowlist: with an empty one every name is allowed and the auto-tool
+    // channel could not be observed at all.
+    agent.setSystemPrompt("tools available: read_file\\n");
+    syncNow(m, reg, agent);
+    CHECK(m.serverNames().empty());
+
+    // The user saves a new entry, then sends the next message.
+    writeText(path, configWith("fake", "stateful", true, true, 20000));
+    CHECK(m.reloadIfChanged(path));
+    REQUIRE(waitForState(m, "fake", mcp::ConnState::Ready));
+
+    syncNow(m, reg, agent);
+    CHECK(agent.isToolAllowed("mcp__fake__echo"));
+    CHECK(m.spawnCount("fake") == 1);
+
+    // Same file, no edit: no reparse, no respawn.
+    CHECK_FALSE(m.reloadIfChanged(path));
+    CHECK(m.spawnCount("fake") == 1);
+    m.shutdownAll();
+}
+
+TEST_CASE("mcp reload: a deleted server is unregistered, then reaped") {
+    mcp::Manager m;
+    const std::string path = tempFile("reload_del");
+    writeText(path, configWith("fake", "stateful", true, true, 20000));
+    m.setWorkDir(".");
+    REQUIRE(m.loadFromJson(path));
+    m.startEnabled();
+    REQUIRE(waitForState(m, "fake", mcp::ConnState::Ready));
+
+    ToolRegistry reg;
+    DeepSeekClient client;
+    Agent agent(client, reg);
+    agent.setSystemPrompt("tools available: read_file\\n");
+    syncNow(m, reg, agent);
+    REQUIRE(agent.isToolAllowed("mcp__fake__echo"));
+
+    writeText(path, "{\"servers\": []}");
+    CHECK(m.reloadIfChanged(path));
+    CHECK(m.connState("fake") == mcp::ConnState::Stopped);
+    // Two-phase: the handle is still in the pool, because syncTools has not run.
+    CHECK(m.serverNames().size() == 1);
+
+    syncNow(m, reg, agent);
+    // Without this, mcp__fake__echo would stay callable forever.
+    CHECK_FALSE(agent.isToolAllowed("mcp__fake__echo"));
+    CHECK(reg.execute("mcp__fake__echo", "{}").find("Unknown tool") != std::string::npos);
+
+    CHECK(m.reapRemoved() == 1);
+    CHECK(m.serverNames().empty());
+}
+
+TEST_CASE("mcp reload: a description-only edit refreshes the map, no respawn") {
+    mcp::Manager m;
+    const std::string path = tempFile("reload_desc");
+    writeText(path, configWithDescription("stateful", "echo server for tests"));
+    m.setWorkDir(".");
+    REQUIRE(m.loadFromJson(path));
+    m.startEnabled();
+    REQUIRE(waitForState(m, "fake", mcp::ConnState::Ready));
+
+    ToolRegistry reg;
+    DeepSeekClient client;
+    Agent agent(client, reg);
+    syncNow(m, reg, agent);
+
+    const auto before = m.serverPurposes();
+    REQUIRE(before.size() == 1);
+    CHECK(before[0].description == "echo server for tests");
+    const unsigned spawns = m.spawnCount("fake");
+
+    // Only the purpose text moved: the process must not be touched, but the map
+    // (and therefore P3) must pick the new text up.
+    writeText(path, configWithDescription("stateful", "echo server, new purpose"));
+    CHECK(m.reloadIfChanged(path));
+    CHECK(m.connState("fake") == mcp::ConnState::Ready);
+    CHECK(m.spawnCount("fake") == spawns);
+
+    const auto after = m.serverPurposes();
+    REQUIRE(after.size() == 1);
+    CHECK(after[0].description == "echo server, new purpose");
+
+    // A changed timeout is a changed fingerprint: that one does restart.
+    writeText(path, configWith("fake", "stateful", true, true, 30000));
+    CHECK(m.reloadIfChanged(path));
+    // start() spawns on a worker thread, so the new process is counted a moment
+    // later -- wait for the handshake before asserting the respawn.
+    REQUIRE(waitForState(m, "fake", mcp::ConnState::Ready));
+    CHECK(m.spawnCount("fake") == spawns + 1);
+    m.shutdownAll();
+}
+
+TEST_CASE("mcp reload: a half-saved config keeps every running server") {
+    mcp::Manager m;
+    const std::string path = tempFile("reload_broken");
+    writeText(path, configWith("fake", "stateful", true, true, 20000));
+    m.setWorkDir(".");
+    REQUIRE(m.loadFromJson(path));
+    m.startEnabled();
+    REQUIRE(waitForState(m, "fake", mcp::ConnState::Ready));
+
+    // The user hit save mid-edit: invalid JSON.
+    writeText(path, "{\"servers\": [ {\"name\":");
+    CHECK_FALSE(m.reloadIfChanged(path));
+    CHECK_FALSE(m.configError().empty());
+    // Nothing was torn down.
+    CHECK(m.serverNames().size() == 1);
+    CHECK(m.connState("fake") == mcp::ConnState::Ready);
+    CHECK(m.callTool("fake", "echo", R"({"msg":"hi"})", nullptr) == "echo: hi");
     m.shutdownAll();
 }

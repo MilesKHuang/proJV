@@ -1,9 +1,10 @@
 // Tests for the single universal role seed (assistant.md).
 //
 // The seed is the product: if it loses a hard rule, every session degrades and
-// nothing else goes red. So the invariants live here -- the tool line, the
-// two-layer expression rule, the plan/execute workflow, and the absence of the
-// legacy role names this seed replaced.
+// nothing else goes red. So the invariants live here, as an explicit checklist --
+// one CHECK per rule that must survive a rewrite. Adding a rule to the seed
+// without adding it here is not a test failure (that would be noise), but losing
+// one IS.
 #include "doctest.h"
 
 #include "core/prompts.h"
@@ -16,6 +17,13 @@ namespace {
 
 bool has(const std::string& hay, const std::string& needle) {
     return hay.find(needle) != std::string::npos;
+}
+
+// Position of `a` before `b`, used for "the answer follows this order".
+bool ordered(const std::string& hay, const std::string& a, const std::string& b) {
+    const size_t pa = hay.find(a);
+    const size_t pb = hay.find(b);
+    return pa != std::string::npos && pb != std::string::npos && pa < pb;
 }
 
 } // namespace
@@ -34,57 +42,91 @@ TEST_CASE("role seed: the default file name and the startup index") {
     CHECK(defaultPromptIndex({"coder.md"}) == 0);
 }
 
-TEST_CASE("role seed: the tool line names every capability the role may use") {
+TEST_CASE("role seed: no tool inventory and no allowlist trigger") {
     const std::string seed = defaultPromptSeedText();
-    // coder's 13 + list_dir (planning) + format_file (end of an edit).
-    const std::vector<std::string> want = {
-        "read_file",    "write_file", "exec_shell", "grep_files", "edit_file",
-        "file_search",  "web_search", "fetch_url",  "md_file",    "update_todo",
-        "diagram_tool", "run_skill",  "view_image", "list_dir",   "format_file"};
 
-    const std::vector<std::string> got = parseAvailableTools(seed);
-    CHECK_MESSAGE(got.size() == want.size(), got.size());
-    for (const auto& name : want) CHECK_MESSAGE(has(seed, name), name);
+    // The inventory moved to the per-turn capability map. A second copy in the
+    // prompt is a copy that drifts -- it already had (diagram_tool was listed even
+    // when no pytool was installed).
+    CHECK_FALSE(has(seed, "## 5. Available Tools"));
+    CHECK_FALSE(has(seed, "## Available Tools"));
 
-    // A prompt without the line means "all tools allowed" (agent.cpp), so an
-    // accidental deletion must fail loudly here instead of silently widening.
-    CHECK(has(seed, "tools available:"));
+    // The allowlist is parsed by searching for this exact string. If the seed
+    // explains the mechanism and accidentally contains it, parseAvailableTools()
+    // reads the surrounding prose as a tool list and disables every real tool.
+    CHECK_FALSE(has(seed, "tools available:"));
+    CHECK(parseAvailableTools(seed).empty());
+
+    // The old seed claimed a 500-character tool-result cap. The real cap is
+    // 32000; the wrong number made the model detour through exec_shell.
+    CHECK_FALSE(has(seed, "500 chars"));
 }
 
-TEST_CASE("role seed: conclusion first, in the language the reader speaks") {
+TEST_CASE("role seed: the four-part answer shape, in order") {
     const std::string seed = defaultPromptSeedText();
+    CHECK(has(seed, "## Output shape (highest priority)"));
+    CHECK(has(seed, "1. Conclusion"));
+    CHECK(has(seed, "2. What it means for the user"));
+    CHECK(has(seed, "3. Details"));
+    CHECK(has(seed, "4. Next step"));
+    CHECK(ordered(seed, "1. Conclusion", "2. What it means for the user"));
+    CHECK(ordered(seed, "2. What it means for the user", "3. Details"));
+    CHECK(ordered(seed, "3. Details", "4. Next step"));
+    // The whole point: plain language outranks the professional detail dump.
     CHECK(has(seed, "new graduate can follow"));
-    CHECK(has(seed, "Match the language of the session and the project"));
-    CHECK(has(seed, "Be concrete"));
-    CHECK(has(seed, "ONLY English and ASCII"));
-
-    // The two rules this seed replaced must not come back.
-    CHECK(!has(seed, "Keep responses concise"));
-    CHECK(!has(seed, "Chinese for narrative"));
+    CHECK(ordered(seed, "## Output shape", "## Working style"));
 }
 
-TEST_CASE("role seed: the plan lives in the TODO list") {
+TEST_CASE("role seed: the hard rules that must survive any rewrite") {
     const std::string seed = defaultPromptSeedText();
-    CHECK(has(seed, "update_todo(action=\"init\""));
-    CHECK(has(seed, "update_todo(action=\"update\""));
-    CHECK(has(seed, "update_todo(action=\"done\")"));
-    CHECK(has(seed, "Confirm before acting when ambiguous"));
+    const std::vector<const char*> must = {
+        // formatting
+        "Pure Markdown only",
+        "NO HTML, NO Emoji",
+        "NEVER put blank lines inside tables",
+        // language
+        "Match the language of the session and the project",
+        "mirror the user's most recent message",
+        "ONLY English and ASCII",
+        // precision
+        "exact file paths, function signatures",
+        // working style
+        "Never patch item by item",
+        "update_todo(action=\"init\")",
+        "Do not work outside the plan",
+        "Read before writing",
+        "Batch independent tool calls",
+        "thread safety (mutex, atomic)",
+        "lifetimes (new/delete, RAII, ownership)",
+        "render paths, callback chains",
+        "build it, run the tests",
+        "Output that looks cut off is cut off",
+        "Silence is not failure",
+        // what may be changed / when it activates
+        "projv_files is writable",
+        "sessions/ and logs/ are read only",
+        "next F3",
+        "your next message",
+        // documents
+        "md_file only",
+        "1. Background & Goals",
+        "4. Changes List (File | Action | Description | ~Lines)",
+        "5. Risks",
+        "up to 8KB",
+        // diagrams
+        "rankdir=TB",
+        "rankdir=LR",
+        "label the edges with types and structs",
+        "ownership plus mutex/atomic annotations",
+        "Skip diagrams for a trivial one-file change",
+    };
+    for (const char* rule : must) CHECK_MESSAGE(has(seed, rule), rule);
 }
 
-TEST_CASE("role seed: the unique rules of the three old roles survive") {
+TEST_CASE("role seed: ASCII only, and a sane size") {
     const std::string seed = defaultPromptSeedText();
-    CHECK(has(seed, "ONLY English and ASCII")); // coder
-    CHECK(has(seed, "8KB"));                    // coder
-    CHECK(has(seed, "timeout_ms"));             // coder
-    CHECK(has(seed, "Be concrete"));            // designer
-    CHECK(has(seed, "md_file ONLY"));           // designer
-    CHECK(has(seed, "thread safety"));          // designer
-    CHECK(has(seed, "cluster_"));               // analyzer
-    CHECK(has(seed, "rankdir=TB"));             // analyzer
-}
-
-TEST_CASE("role seed: the legacy role names are gone") {
-    const std::string seed = defaultPromptSeedText();
-    for (const char* name : {"coder.md", "designer.md", "analyzer.md"})
-        CHECK_MESSAGE(!has(seed, name), name);
+    for (unsigned char c : seed) CHECK_MESSAGE(c < 128, static_cast<int>(c));
+    CHECK(seed.size() > 2000);
+    CHECK(seed.size() < 8 * 1024); // it goes into every request of every turn
+    CHECK(has(seed, "\n"));        // a single-line prompt is a broken raw string
 }

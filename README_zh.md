@@ -75,7 +75,7 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 | 能力 | 说明 |
 |------|------|
 | **工具调度** | 读写改文件、按行区间读取、目录树、正则搜索、shell、todo、技能 —— 由模型决定 |
-| **技能** | `/monica <目录>`（十个 worker 并发整理项目）、`/bigbang`（三方圆桌辩论 -> 一份执行文档）、`skill_maker` 自动生成新技能 |
+| **技能** | `/monica <目录>`（十个 worker 并发整理项目）、`/bigbang`（三方圆桌辩论 -> 一份执行文档）；新技能就是普通文件夹 —— 一句话让 agent 写，指南见 `projv_files/skills/_authoring/` |
 | **图片输入** | `@路径` 附加截图或图片；给一个目录会自动展开其中的图片 |
 | **思考链** | 实时流式显示、可折叠，`F8` 看完整思考；`reasoning_effort` 控制深度（none / low / high / max） |
 | **1M 上下文** | DeepSeek V4 完整的 1M token 窗口，压力高时自动压缩长会话 |

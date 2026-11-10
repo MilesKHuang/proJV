@@ -14,7 +14,17 @@ namespace fs = std::filesystem;
 namespace mcp {
 namespace {
 
-constexpr const char* kTemplate = "{\n  \"servers\": []\n}\n";
+// Seeded once, on first run. Every field is listed here because this file is the
+// only documentation a user reads before editing it. NOTE: change it and send the
+// next message -- the list is reloaded before the turn starts (no restart).
+constexpr const char* kTemplate =
+    "{\n"
+    "  \"_comment\": \"Add servers below, save, then send your next message: the list is "
+    "reloaded before the turn starts. Fields: name, description (one line, what it is "
+    "for -- required), command, args, env, protocol (stateful|stateless), trusted, "
+    "enabled, timeout_ms.\",\n"
+    "  \"servers\": []\n"
+    "}\n";
 
 std::string trim(const std::string& s) {
     size_t a = s.find_first_not_of(" \t\r\n");
@@ -129,6 +139,13 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
             debugLogf("[mcp] server '%s' skipped: missing 'command'", cfg.name.c_str());
             continue;
         }
+        // Not fatal (an old file must keep working), but loud: the description is
+        // the only thing that tells the model what this server is for.
+        cfg.description = trim(item.value("description", std::string()));
+        if (cfg.description.empty())
+            debugLogf("[mcp] server '%s' has no 'description': the model will not know what it "
+                      "is for",
+                      cfg.name.c_str());
 
         std::string why;
         if (item.contains("args") && !readArgs(item["args"], cfg.args, why)) {

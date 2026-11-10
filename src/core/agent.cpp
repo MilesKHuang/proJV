@@ -13,8 +13,6 @@
 // ============================================================================
 // Templates & error strings
 // ============================================================================
-static constexpr const char* TOOL_PATHS_HAVE = "[TOOL PATHS] Pre-configured tools -- use these:\n";
-static constexpr const char* TOOL_PATHS_NONE = "[TOOL PATHS] No pre-configured tools.\n";
 static constexpr const char* CONTEXT_WARNING_TEMPLATE =
     "Context is getting full (~%zuK/%zuK). Keep responses very concise.";
 static constexpr const char* ERROR_CONSECUTIVE_FAILURES =
@@ -38,14 +36,6 @@ static constexpr const char* QUICK_HELP =
     "| `/skill list` | List installed skills |\n"
     "\nproJV v" PROJV_VERSION " - native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
-
-static std::string buildToolPathsMessage(const std::string& cpp, const std::string& py) {
-    if (cpp.empty() && py.empty()) return TOOL_PATHS_NONE;
-    std::string msg = TOOL_PATHS_HAVE;
-    if (!cpp.empty()) msg += "- C++ compiler: " + cpp + "\n";
-    if (!py.empty()) msg += "- Python: " + py + "\n";
-    return msg;
-}
 
 // ============================================================================
 // Agent
@@ -601,6 +591,21 @@ void Agent::clearSession() {
     }
 }
 
+bool Agent::replaceEnvironmentBlock(const std::string& text) {
+    const std::string marker = "[ENVIRONMENT]";
+    auto msgs = session.getContextMessages();
+    for (auto& msg : msgs) {
+        if (msg.role != "system") continue;
+        if (msg.content.compare(0, marker.size(), marker) != 0) continue;
+        if (msg.content == text) return true; // nothing moved: keep the bytes
+        msg.content = text;
+        session.loadMessages(std::move(msgs));
+        contextTokensDirty_ = true;
+        return true;
+    }
+    return false;
+}
+
 void Agent::replaceSystemPrompt(const std::string& newPrompt) {
     systemPrompt_ = newPrompt;
     reloadAllowedTools();
@@ -930,21 +935,21 @@ ChatRequest Agent::buildChatRequest() const {
     req.reasoningEffort = configReasoningEffort;
     req.tools = getFilteredToolDefinitions();
     if (!req.messages.empty()) {
-        std::string tp = buildToolPathsMessage(cppCompilerPath, pythonPath);
         auto td = copyTodoData();
         std::string ur = buildUserRequestSystemMessage(td), tm = buildTodoSystemMessage(td),
                     ov = buildOverviewSystemMessage(td);
         std::vector<Message> inj;
-        if (!tp.empty()) inj.push_back(Message::System(tp));
+        // P3: the capability map. Opaque text from the TUI, one string per turn.
+        if (!capabilitiesBlock_.empty()) inj.push_back(Message::System(capabilitiesBlock_));
         if (!ur.empty()) inj.push_back(Message::System(ur));
         if (!tm.empty()) inj.push_back(Message::System(tm));
         if (!ov.empty()) inj.push_back(Message::System(ov));
         if (!inj.empty()) {
             // Insert right after the FIXED system block -- the same rule
-            // Session::applyCompaction() uses for the compaction summary. The
-            // system prompt, the directory tree and AGENTS.md then keep indices
-            // [0, sysCount), so a changing todo no longer shifts them and
-            // DeepSeek's KV prefix cache keeps hitting.
+            // Session::applyCompaction() uses for the compaction summary. P0 (role)
+            // + P1 (environment) + P2 (project) then keep indices [0, sysCount), so
+            // a changing todo or tool table never shifts them and DeepSeek's KV
+            // prefix cache keeps hitting.
             size_t sysCount = 0;
             while (sysCount < req.messages.size() && req.messages[sysCount].role == "system")
                 ++sysCount;
@@ -976,6 +981,11 @@ void Agent::removeAutoTools(const std::vector<std::string>& names) {
 
 std::vector<ToolDefinition> Agent::getFilteredToolDefinitions() const {
     auto all = toolRegistry.getToolDefinitions();
+    // ToolRegistry iterates an unordered_map, so this order used to change when MCP
+    // rehashed it -- which breaks the request prefix cache for no benefit. Sort
+    // once here, at the single read point, instead of relying on the map.
+    std::sort(all.begin(), all.end(),
+              [](const ToolDefinition& a, const ToolDefinition& b) { return a.name < b.name; });
     // Fast path: nothing is restricted and nothing was auto-registered, so the
     // whole registry goes out (the pre-MCP behaviour).
     if (allowedTools_.empty() && autoToolNames_.empty()) return all;
@@ -1019,10 +1029,6 @@ size_t Agent::getEstimatedContextTokens() const {
     return cachedContextTokens_;
 }
 
-void Agent::setToolPaths(const std::string& cpp, const std::string& py) {
-    cppCompilerPath = cpp;
-    pythonPath = py;
-}
 void Agent::setRequestParams(int mt, double t) {
     configMaxTokens = mt;
     configTemperature = t;

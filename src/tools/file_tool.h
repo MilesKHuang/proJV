@@ -1,13 +1,17 @@
 #pragma once
+#include "tool_paths.h"
 #include <string>
 
-void registerFileTools(class ToolRegistry& registry, const std::string& workspacePath);
+// All file tools take one ToolPaths: the set of roots plus which are writable.
+// It replaced a bare `const std::string& workspacePath`, which could only express
+// "one directory, fully writable".
+void registerFileTools(class ToolRegistry& registry, const ToolPaths& paths);
 
-// Shared workspace path guard used by every file-touching tool.
-// Resolves `rawPath` against the workspace, rejects escapes, and returns the
-// resolved absolute path via `outResolved`. Returns "" on success, or an error
-// message to hand back to the model on violation.
-std::string validateToolPath(const std::string& rawPath, const std::string& workspace,
+// Shared path guard used by every file-touching tool (and by view_image's
+// lambda). Resolves `rawPath`, rejects escapes, refuses writes under a read-only
+// root, and returns the resolved absolute path via `outResolved`. Returns "" on
+// success, or the error text to hand back to the model.
+std::string validateToolPath(const ToolPaths& paths, const std::string& rawPath, bool forWrite,
                              std::string& outResolved);
 
 // True for VCS / build / dependency directories that every recursive traversal

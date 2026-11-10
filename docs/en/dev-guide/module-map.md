@@ -53,7 +53,19 @@ the code disagree, the code wins.
   tools, persist everything, compact when context is tight.
 - **Entry.** `src/core/agent.cpp` (`submitUserMessage`, tool phase, turn end),
   `session.cpp` (context window + DB), `prompts_loader.cpp` (roles),
-  `project_context.cpp` (workspace snapshot injected into the prompt).
+  `context_assembler.{h,cpp}` (P1 environment, P3 capability map),
+  `project_context.cpp` (P2: directory tree + AGENTS.md in one message).
+- **Message layout.** Fixed prefix `[P0]` role, `[P1]` environment, `[P2]` project --
+  three persisted system messages, always three: P1 and P2 write placeholders instead
+  of disappearing, so the count cannot drift. `[P3]` capabilities is rebuilt every
+  turn by the TUI right after `McpManager::syncTools()` and handed to the Agent as
+  opaque text, so the map names exactly the tools the request carries. The per-turn
+  dynamic block (user request, TODO, overview) goes after the prefix, and
+  `Session::applyCompaction()` inserts its summary at the same index.
+- **Why P3 is not persisted.** MCP servers register at a turn boundary and skills can
+  be written at any moment, so a stored copy is stale by construction. Identical input
+  produces identical bytes (tool names are sorted, servers and skills sorted too),
+  which keeps the KV prefix cache hitting until the tool table really changes.
 - **Data flow.** `AppConfig` + `Session` -> `ChatRequest` -> callbacks ->
   `Storage` (SQLite) + UI.
 - **Read together with.** `client/models.h` (request/response types),
@@ -80,9 +92,18 @@ the code disagree, the code wins.
 - **Entry.** `src/tools/registry.cpp`; `file_tool.cpp` (read/write/list/grep),
   `edit_file_tool.cpp`, `md_file_tool.cpp`, `file_search_tool.cpp`,
   `format_tool.cpp`, `shell_tool.cpp`, `web_tools.cpp`, `todo_tool.cpp`,
-  `python_tool_manager.cpp`.
-- **Rule.** Every path goes through `validateToolPath` (`file_tool.h`); a tool
-  never touches the filesystem outside the workspace.
+  `python_tool_manager.cpp`, `tool_paths.{h,cpp}` (the permission matrix).
+- **Rule.** Every path goes through `validateToolPath` (`file_tool.h`), which asks
+  `ToolPaths::resolve` (`tool_paths.h`). The roots are: the workspace (read+write),
+  `projv_files` (read+write), `projv_files/sessions` and `projv_files/logs` (read
+  only). The deepest matching root decides, so the two read-only sub-roots sit
+  inside the writable one. `forWrite` is a parameter, not a convention: a read-only
+  root refuses `write_file` / `edit_file` / `md_file` / `format_file` with the same
+  `__WORKSPACE_VIOLATION__:` marker `Agent::run()` matches, and the message lists
+  every root so a retry goes somewhere legal.
+- **Wiring.** `TuiApp::setupTools()` builds one `ToolPaths::forSession(workspace,
+  projv_files)` and hands it to all six path-taking register functions. Tests pass
+  `ToolPaths(root)` (implicit single writable root).
 - **Diff capture.** The four writing tools snapshot the file around their own
   write and call `diff_capture::record` (`diff_capture.{h,cpp}`). The slot is
   `thread_local`, not a registry member: skill workers share one registry across
@@ -97,17 +118,18 @@ the code disagree, the code wins.
   rounds, parallel actions, slots/votes, convergence, event emission.
 - **Entry.** `src/core/skill_runner.cpp` (`run`, `executeSteps`, `mergeAction`,
   `handleRequestAgent`), `sub_agent.cpp` (one LLM loop per role, tool
-  dispatch), `skill_config.h` (DSL + validation), `skills_builtin.cpp`
-  (self-seeding `skill_maker`).
+  dispatch), `skill_config.h` (DSL + validation). Nothing is compiled in and
+  seeded: a skill is a folder the user (or the agent) writes.
 - **Concurrency.** One reply may contain several `request_agent` calls: they are
   grouped by target, groups run concurrently (bounded by `max_parallel`), each
   target stays serial, results are written back in call order. Dispatch is one
   layer deep: only agents in `round_steps` / `on_converge` get the tool.
 - **Read together with.** `tools/registry.h`, `client/deepseek.h`,
-  `skills/*/config.json`.
+  `skills/*/config.json`, `skills/_authoring/skill-authoring.md` (the shipped
+  authoring guide; no `config.json`, so `listSkills()` never lists it).
 - **Tests.** `test_skill_runner.cpp`, `test_skill_engine.cpp`,
   `test_skill_swarm.cpp`, `test_skill_parallel.cpp`, `test_skill_thinking.cpp`,
-  `test_skill_monica.cpp`, `test_skill_maker.cpp`.
+  `test_skill_monica.cpp`.
 
 ## 8. Storage and config
 

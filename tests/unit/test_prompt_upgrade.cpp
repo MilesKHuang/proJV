@@ -60,6 +60,36 @@ TEST_CASE("prompt upgrade: a hand-edited tool list is left alone") {
     CHECK(upgradeSeededPrompt("coder.md", extended) == extended);
 }
 
+TEST_CASE("prompt upgrade: the pre-0.8.0 assistant seed is replaced as a whole") {
+    // The old seed carried a wrong tool-result cap (500, real cap 32000) and a
+    // hand-written tool inventory. Both are gone from the new text, so a whole
+    // replacement is the only correct upgrade -- a line-level patch would leave
+    // the inventory behind.
+    std::string oldSeed =
+        "# old assistant\n\n## 1. Hard Rules\n"
+        "- Tool results over ~500 chars get truncated. Use exec_shell for full output.\n"
+        "## 5. Available Tools\n"
+        "tools available: read_file, write_file, exec_shell\n";
+
+    const std::string once = upgradeSeededPrompt("assistant.md", oldSeed);
+    CHECK(once == defaultPromptSeedText());
+    // Idempotent: the upgraded file is the current seed, so a second pass is a no-op.
+    const std::string twice = upgradeSeededPrompt("assistant.md", once);
+    CHECK(twice == once);
+}
+
+TEST_CASE("prompt upgrade: a hand-written assistant prompt only gets the style fix") {
+    const std::string custom =
+        "# my role\n\n## Hard Rules\n- Answer like a human: conclusion first, then what it means; "
+        "then expose the core logic.\n\n- keep me\n";
+    const std::string up = upgradeSeededPrompt("assistant.md", custom);
+    CHECK(up != custom);
+    CHECK(up.find("Put it in plain language") != std::string::npos);
+    CHECK(up.find("- keep me") != std::string::npos);        // not replaced wholesale
+    CHECK(up != defaultPromptSeedText());
+    CHECK(upgradeSeededPrompt("assistant.md", up) == up);
+}
+
 TEST_CASE("prompt upgrade: compactor gains the image marker instruction once") {
     const std::string oldText =
         "# compactor\n\n- Do NOT fabricate information not present in the input.\n"

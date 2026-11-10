@@ -27,6 +27,7 @@ Add one entry:
   "servers": [
     {
       "name": "time",
+      "description": "Clock, timezone conversion and timers",
       "command": "uvx",
       "args": ["mcp-server-time"],
       "protocol": "stateful",
@@ -41,6 +42,7 @@ Add one entry:
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `name` | yes | Unique. Becomes the tool prefix: `mcp__time__get_current_time` |
+| `description` | yes in practice | One line on what the server is for. It is the only source of that sentence in the capability map the model reads every turn; without it the model sees a server name and has to guess |
 | `command` | yes | Executable, resolved on `PATH`. No shell is involved |
 | `args` | no | Argument array. One array element = one argument |
 | `env` | no | Extra environment variables for the child |
@@ -50,25 +52,47 @@ Add one entry:
 | `timeout_ms` | no | Per-request timeout, default `120000` |
 
 A bad entry (missing `name`, unknown `protocol`, duplicate `name`) is skipped with
-a log line; it does not take the rest of the list down.
+a log line; it does not take the rest of the list down. A missing `description` is
+kept but logged -- the model will not know what that server is for.
 
-## 2. Turn it on
+## 2. When an edit takes effect
+
+**Editing `mcp.json` takes effect on your next message. No restart.**
+
+Before each turn, on the UI thread and only while nothing is running, proJV
+compares the file's timestamp and size against the last load. If they moved, it
+re-reads the list and diffs it by name:
+
+| Change | What happens |
+|--------|--------------|
+| New entry | Added; started only when `enabled` and `trusted` |
+| Deleted entry | Process stopped at once, tools dropped at the start of the next turn |
+| Same entry, `enabled` flipped | Started or stopped; the process is not respawned |
+| Same entry, `command`/`args`/`env`/`protocol`/`trusted`/`timeout_ms` changed | Restarted with the new definition |
+| Only `description` changed | Nothing restarted; the capability map picks up the new text |
+| A server that is already `dead` | **Not retried automatically** -- `R` in `F4` is the retry button, otherwise every message would retry a broken server |
+| Invalid JSON (half-saved file) | The running servers are left completely untouched; the parse error is shown in `F4` |
+
+`F4` is still the fastest way to toggle one server, and it writes `enabled` back to
+the file.
+
+## 3. Turn it on
 
 Two ways, both equivalent:
 
-- set `"enabled": true` and restart proJV, or
+- set `"enabled": true` and send a message (or restart proJV), or
 - press `F4`, select the server, press `Enter`.
 
 `F4` also shows the live state (`stopped` / `connecting` / `handshaking` /
-`ready` / `dead`) and the number of tools each server contributed. `R` restarts
-the selected server. Toggling writes `enabled` back to `mcp.json`, so the choice
-survives a restart.
+`ready` / `dead`), the number of tools each server contributed, and the selected
+server's `description`. `R` restarts the selected server. Toggling writes `enabled`
+back to `mcp.json`, so the choice survives a restart.
 
 **The toggle is refused while a turn is running.** Starting or stopping a server
 changes the tool table, and that is only legal between turns. Finish the turn (or
 press `Esc`) first.
 
-## 3. Use the tools
+## 4. Use the tools
 
 Once a server is `ready`, its tools appear as `mcp__<server>__<tool>` and are
 visible to the model **without adding anything to your role prompt** -- the names
@@ -92,7 +116,7 @@ non-zero if an enabled + trusted server failed. `--mcp-call` additionally perfor
 one call. Arguments are `key=value` pairs; a value that parses as JSON is passed
 as that type, otherwise as a string.
 
-## 4. Security
+## 5. Security
 
 `"trusted": false` is the only switch. It is checked before anything is spawned:
 an untrusted server does not run, does not register tools, and costs nothing. There
@@ -102,7 +126,7 @@ may call any tool it exposes.
 Treat `mcp.json` like `config.toml`: it can hold a token in `env`, and it is
 gitignored. A server that writes files acts with your user's permissions.
 
-## 5. Two things that surprise people
+## 6. Two things that surprise people
 
 **The process runs in the directory proJV was started in.** Changing the workspace
 requires restarting proJV. A server that takes a directory argument (`"."`) is
@@ -123,7 +147,7 @@ uvx mcp-server-time < /dev/null  (Linux)
 or raise `timeout_ms`. The symptom of skipping this is a server stuck in
 `handshaking` and then `dead`.
 
-## 6. What this version does not do
+## 7. What this version does not do
 
 - **stdio only.** No HTTP / SSE transport.
 - **No `tools/list` pagination.** A server that paginates is refused as a whole,
@@ -134,7 +158,7 @@ or raise `timeout_ms`. The symptom of skipping this is a server stuck in
 - **Skills never see MCP tools.** Skill subagents run concurrently and would share
   one server's stdin; `mcp__*` names in a skill's `tools` list are skipped at load.
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Cause |
 |---------|-------|

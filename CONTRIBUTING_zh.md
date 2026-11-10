@@ -49,7 +49,11 @@ Linux：先 `sudo apt-get install -y libcurl4-openssl-dev`。
 - 插件注册表、包管理器，或任何被二进制加载的代码。MCP server 不属于这类：
   它是 `projv_files/mcp.json` 里声明的外部进程，通过 stdio 对话。
 - 在主题系统之外写死颜色。
-- 让技能删除它自行判定为死代码的东西。死代码只报告，不删除。
+- 让技能删除它自行判定为死代码的东西。死代码只报告，不删除。（技能可以写工具根内的
+  文件 —— workspace 与 `projv_files` —— 但必须报告改了什么；`projv_files/sessions` 和
+  `projv_files/logs` 对所有人只读。）
+- 在 `prompts/*.md` 里重新手写工具清单，或让提示词里出现 allowlist 触发串的字面量。
+  模型读到的唯一工具清单是每轮生成的能力地图（`src/core/context_assembler.cpp`）。
 - `docs/archive/` 是被忽略的设计稿：不要提交它（不用 `git add -f`，不开 `!` 例外），
   也不要在任何提交内的文件（`README*`、代码注释、发布说明、CMake 注释）里链接它。
   需要公开的理由写到 `docs/en/` 与 `docs/zh/`。

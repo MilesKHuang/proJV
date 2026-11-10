@@ -48,7 +48,16 @@
 - **职责。** 回合循环：构造请求、流式接收、审批并执行工具、持久化、上下文紧张时压缩。
 - **入口。** `src/core/agent.cpp`（`submitUserMessage`、工具阶段、回合结束）、
   `session.cpp`（上下文窗口 + 数据库）、`prompts_loader.cpp`（角色）、
-  `project_context.cpp`（注入工作区快照）。
+  `context_assembler.{h,cpp}`（P1 环境块、P3 能力地图）、
+  `project_context.cpp`（P2：目录树 + AGENTS.md 合成一条消息）。
+- **消息布局。** 固定前缀 `[P0]` 角色、`[P1]` 环境、`[P2]` 项目 —— 三条落库的 system
+  消息，而且永远是三条：P1/P2 空了也写占位，所以条数不会漂。`[P3]` 能力地图每轮由
+  TUI 在 `McpManager::syncTools()` 之后重建，作为不透明文本交给 Agent，因此地图里列的
+  就是这次请求真正带的工具。每轮动态块（用户请求、TODO、overview）插在前缀之后，
+  `Session::applyCompaction()` 的摘要插在同一位置。
+- **P3 为什么不落库。** MCP server 在轮边界才注册，skill 随时可能被写出来，存一份必然
+  过期。同样的输入产生同样的字节（工具名、server 名、skill 名都排序），所以只要工具表
+  不变，KV 前缀缓存就一直命中。
 - **数据流。** `AppConfig` + `Session` -> `ChatRequest` -> 回调 ->
   `Storage`（SQLite）+ UI。
 - **一起看。** `client/models.h`、`tools/registry.h`、`config.*`。
@@ -71,7 +80,16 @@
   `edit_file_tool.cpp`、`md_file_tool.cpp`、`file_search_tool.cpp`、
   `format_tool.cpp`、`shell_tool.cpp`、`web_tools.cpp`、`todo_tool.cpp`、
   `python_tool_manager.cpp`。
-- **规矩。** 所有路径都过 `validateToolPath`（`file_tool.h`）；工具绝不碰工作区外的文件。
+- **规矩。** 所有路径都过 `validateToolPath`（`file_tool.h`），它转调
+  `ToolPaths::resolve`（`tool_paths.h`）。根有三类：workspace（可读可写）、
+  `projv_files`（可读可写）、`projv_files/sessions` 与 `projv_files/logs`（只读）。
+  命中**最深**的根说了算，所以两个只读子根能嵌在可写根里面。`forWrite` 是参数不是约定：
+  只读根会拒掉 `write_file` / `edit_file` / `md_file` / `format_file`，用的是
+  `Agent::run()` 匹配的 `__WORKSPACE_VIOLATION__:` 标记，并且错误文案会列出全部 root，
+  这样模型重试才会换个合法路径。
+- **接法。** `TuiApp::setupTools()` 用一次
+  `ToolPaths::forSession(workspace, projv_files)` 建好，交给六个带路径的注册函数。
+  测试里写 `ToolPaths(root)`（隐式单可写根）。
 - **diff 捕获。** 四个写文件的工具在自己的写入前后各拍一次快照，交给
   `diff_capture::record`（`diff_capture.{h,cpp}`）。这个槽是 `thread_local` 而不是
   注册表成员——技能 worker 会并行共享同一个注册表。`Agent::executeTool` 在调用前
@@ -84,14 +102,17 @@
   收敛、事件输出。
 - **入口。** `src/core/skill_runner.cpp`（`run`、`executeSteps`、`mergeAction`、
   `handleRequestAgent`）、`sub_agent.cpp`（每个角色一个 LLM 循环 + 工具分发）、
-  `skill_config.h`（DSL 与校验）、`skills_builtin.cpp`（自播种的 `skill_maker`）。
+  `skill_config.h`（DSL 与校验）。没有任何技能编在二进制里：技能就是用户（或 agent）
+  写出来的一组文件。
 - **并发。** 一条回复里可以有多个 `request_agent`：按目标分组，组间并发
   （受 `max_parallel` 限制），同一目标串行，结果按调用顺序回填。派活只有一层：
   只有 `round_steps` / `on_converge` 里的角色能拿到这个工具。
-- **一起看。** `tools/registry.h`、`client/deepseek.h`、`skills/*/config.json`。
+- **一起看。** `tools/registry.h`、`client/deepseek.h`、`skills/*/config.json`、
+  `skills/_authoring/skill-authoring.md`（随包写作指南；没有 `config.json`，所以
+  `listSkills()` 永远不会把它当成可运行技能）。
 - **测试。** `test_skill_runner.cpp`、`test_skill_engine.cpp`、
   `test_skill_swarm.cpp`、`test_skill_parallel.cpp`、`test_skill_thinking.cpp`、
-  `test_skill_monica.cpp`、`test_skill_maker.cpp`。
+  `test_skill_monica.cpp`。
 
 ## 8. 存储与配置
 

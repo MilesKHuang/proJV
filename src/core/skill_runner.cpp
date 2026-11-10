@@ -2,7 +2,6 @@
 #include "skill_runner.h"
 #include "core/sub_agent.h"
 #include "core/config.h"
-#include "core/skills_builtin.h"
 #include "json.hpp"
 #include "debug_log.h"
 
@@ -301,9 +300,13 @@ bool SkillRunner::checkCancel() {
 
 // ---- seeding / discovery -------------------------------------------------
 void SkillRunner::ensureDefaultSkills(const std::string& skillsDir) {
+    // Directory only. Skills are user files: nothing is compiled in and seeded
+    // any more (the old built-in skill_maker was never used, and a skill written
+    // by an agent is a file the user can read and edit). The authoring guide is
+    // shipped as projv_files/skills/_authoring/skill-authoring.md -- it has no
+    // config.json, so listSkills() does not treat it as a runnable skill.
     std::error_code ec;
     fs::create_directories(skillsDir, ec);
-    seedBuiltinSkills(skillsDir);
 }
 
 std::vector<std::string> SkillRunner::listSkills(const std::string& skillsDir) {

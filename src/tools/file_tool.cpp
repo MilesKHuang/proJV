@@ -55,93 +55,14 @@ static const std::vector<std::string> kSkipDirs = {
     "x86",      "bin",    "bin64",    "obj",         "out",          "target",  "node_modules",
     "packages", "vendor", "external", "__pycache__", ".pytest_cache"};
 
-// -- Path resolution -----------------------------------------------
-// Resolve a path against the workspace: relative paths become absolute
-// under the workspace; absolute paths are normalized. Never resolves
-// against CWD -- CWD is the exe dir, not the workspace.
-static std::string resolveWorkspacePath(const std::string& path, const std::string& workspace) {
-    try {
-        fs::path inputPath(path);
-        if (inputPath.is_absolute()) {
-            return fs::absolute(inputPath).lexically_normal().string();
-        }
-        if (workspace.empty()) {
-            return fs::absolute(inputPath).lexically_normal().string();
-        }
-        fs::path base = fs::absolute(workspace).lexically_normal();
-        return (base / inputPath).lexically_normal().string();
-    } catch (...) {
-        // If lexically_normal throws (e.g. on malformed paths), return path as-is
-        return path;
-    }
-}
-
-// -- Path validation -----------------------------------------------
-// True when `resolvedPath` is the workspace root or lives under it.
-// Component-wise comparison, not string prefix: that keeps it separator
-// agnostic (Linux has no '\\') and makes D:\ws vs D:\ws2 impossible to confuse.
-static bool isPathInWorkspace(const std::string& resolvedPath, const std::string& workspace) {
-    if (workspace.empty()) return true;
-    try {
-        const fs::path base = fs::absolute(workspace).lexically_normal();
-        const fs::path target = fs::path(resolvedPath).lexically_normal();
-        auto bit = base.begin();
-        auto tit = target.begin();
-        for (; bit != base.end(); ++bit, ++tit) {
-            if (tit == target.end()) return false; // target is above the workspace
-            std::string a = bit->string();
-            std::string b = tit->string();
-#ifdef _WIN32
-            // Windows paths are case-insensitive.
-            auto lower = [](std::string& s) {
-                for (auto& c : s)
-                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            };
-            lower(a);
-            lower(b);
-#endif
-            if (a != b) return false;
-        }
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
-// Validate a file path and return the resolved absolute path via outResolved.
-// Returns empty string on success, or an error message on violation.
-static std::string validateFilePath(const std::string& rawPath, const std::string& workspace,
-                                    std::string& outResolved) {
-    if (rawPath.empty()) return "Error: Empty path";
-    outResolved = resolveWorkspacePath(rawPath, workspace);
-    if (!workspace.empty() && !isPathInWorkspace(outResolved, workspace)) {
-        // Secondary check: try weakly_canonical for paths that might exist
-        // but failed the lexical check (e.g. due to symlinks, junctions,
-        // or filesystem quirks). This reduces false positives while still
-        // catching genuine workspace escapes.
-        try {
-            std::error_code ec;
-            fs::path canonical = fs::weakly_canonical(rawPath, ec);
-            if (!ec && canonical != fs::path(outResolved) &&
-                isPathInWorkspace(canonical.string(), workspace)) {
-                // False alarm -- canonical form is within workspace; update resolved
-                outResolved = canonical.string();
-                return "";
-            }
-        } catch (...) {
-            // weakly_canonical can throw on some older MSVC; ignore
-        }
-
-        return std::string(WS_VIOLATION_PREFIX_INTERNAL) + WS_VIOLATION_VALIDATE_ERROR + rawPath +
-               WS_VIOLATION_VALIDATE_MIDDLE;
-    }
-    return "";
-}
-
-// Public wrapper: other file-touching tools (format_file) share this guard.
-std::string validateToolPath(const std::string& rawPath, const std::string& workspace,
+// -- Path guard -----------------------------------------------------
+// Every file-touching tool funnels through this one function. The roots and
+// the read/write split live in ToolPaths (tools/tool_paths.h); this is only the
+// name the tools call, and it keeps the __WORKSPACE_VIOLATION__ marker that
+// Agent::run() matches to raise its warning.
+std::string validateToolPath(const ToolPaths& paths, const std::string& rawPath, bool forWrite,
                              std::string& outResolved) {
-    return validateFilePath(rawPath, workspace, outResolved);
+    return paths.resolve(rawPath, forWrite, outResolved);
 }
 
 // -- file_requests spec: "path", "path#L120", "path#L120-L480" ----------
@@ -459,7 +380,7 @@ static std::string listDirTree(const fs::path& root, int depth, const std::regex
     return body;
 }
 
-void registerFileTools(ToolRegistry& registry, const std::string& workspacePath) {
+void registerFileTools(ToolRegistry& registry, const ToolPaths& paths) {
     // read_file
     {
         ToolDefinition def;
@@ -473,13 +394,13 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
             {"end_line", "number",
              "Optional, 1-based last line of the slice (inclusive). Omit to read to the end.",
              false}};
-        registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+        registry.registerTool(def, [paths](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
             if (path.empty())
                 return "Error: Missing required 'path' argument for read_file. Provide the file "
                        "path as a JSON string.";
             std::string resolved;
-            std::string err = validateFilePath(path, workspacePath, resolved);
+            std::string err = validateToolPath(paths, path, false, resolved);
             if (!err.empty()) return err;
             const int startLine = intArgOrZero(args, "start_line");
             const int endLine = intArgOrZero(args, "end_line");
@@ -488,7 +409,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                                       : readFileRange(resolved, startLine, endLine);
             // -- Friendly error: if file not found, suggest correct paths --
             if (content.find("Error: Cannot open file:") == 0) {
-                std::string suggestions = findSimilarFiles(resolved, workspacePath);
+                std::string suggestions = findSimilarFiles(resolved, paths.workspace());
                 if (!suggestions.empty()) {
                     content += "\n\nDid you mean one of these?\n" + suggestions +
                                "\nPlease use the correct path above to read the file.";
@@ -507,11 +428,12 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
             {"path", "string", "Directory to list (optional; default = workspace root)", false},
             {"depth", "number", "Levels to expand, 1..6 (default 2)", false},
             {"exclude", "string", "Optional regex; entries whose name matches are hidden", false}};
-        registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+        registry.registerTool(def, [paths](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
-            if (path.empty()) path = workspacePath.empty() ? std::string(".") : workspacePath;
+            if (path.empty())
+                path = paths.workspace().empty() ? std::string(".") : paths.workspace();
             std::string resolved;
-            std::string err = validateFilePath(path, workspacePath, resolved);
+            std::string err = validateToolPath(paths, path, false, resolved);
             if (!err.empty()) return err;
 
             std::error_code ec;
@@ -554,7 +476,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                           {"mode", "string",
                            "Write mode: 'write' (overwrite, default) or 'append' (add to existing)",
                            false}};
-        registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+        registry.registerTool(def, [paths](const std::string& args) -> std::string {
             std::string path = extractStringArg(args, "path");
             std::string content = extractStringArg(args, "content");
 
@@ -619,7 +541,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
             }
 
             std::string resolved;
-            std::string err = validateFilePath(path, workspacePath, resolved);
+            std::string err = validateToolPath(paths, path, true, resolved);
             if (!err.empty()) return err;
 
             try {
@@ -647,7 +569,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
                 // This stream is text mode, so the bytes on disk are CRLF while
                 // `content` is LF. makeUnifiedDiff strips the CR from both sides,
                 // so the in-memory pair is enough and no read-back is needed.
-                const std::string shown = diff_capture::displayPath(resolved, workspacePath);
+                const std::string shown = diff_capture::displayPath(resolved, paths.workspace());
                 if (appendMode) {
                     diff_capture::record(shown, before, before + content);
                     return "Appended " + std::to_string(content.size()) + " bytes to " + resolved;
@@ -669,16 +591,17 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
             {"pattern", "string", "Regular expression pattern to search for", true},
             {"path", "string", "Directory to search (optional)", false},
             {"max_results", "number", "Stop after this many hits: default 100, max 500", false}};
-        registry.registerTool(def, [workspacePath](const std::string& args) -> std::string {
+        registry.registerTool(def, [paths](const std::string& args) -> std::string {
             std::string pattern = extractStringArg(args, "pattern");
             std::string path = extractStringArg(args, "path");
             if (pattern.empty()) return "Error: Missing 'pattern' argument";
-            if (path.empty()) path = workspacePath.empty() ? "." : workspacePath;
+            if (path.empty())
+                path = paths.workspace().empty() ? std::string(".") : paths.workspace();
             int maxResults = intArgOrZero(args, "max_results");
             if (maxResults <= 0) maxResults = 100;
             if (maxResults > 500) maxResults = 500;
             std::string resolved;
-            std::string err = validateFilePath(path, workspacePath, resolved);
+            std::string err = validateToolPath(paths, path, false, resolved);
             if (!err.empty()) return err;
             try {
                 std::regex re(pattern, std::regex::ECMAScript | std::regex::icase);
@@ -752,7 +675,7 @@ void registerFileTools(ToolRegistry& registry, const std::string& workspacePath)
 
                     std::string fpath = entry.path().string();
                     std::string ignored;
-                    std::string ferr = validateFilePath(fpath, workspacePath, ignored);
+                    std::string ferr = validateToolPath(paths, fpath, false, ignored);
                     if (!ferr.empty()) {
                         ++it;
                         continue;

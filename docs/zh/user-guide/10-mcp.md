@@ -26,6 +26,7 @@ proJV 可以接 [MCP](https://modelcontextprotocol.io) server。一个 MCP serve
   "servers": [
     {
       "name": "time",
+      "description": "时钟、时区换算与计时器",
       "command": "uvx",
       "args": ["mcp-server-time"],
       "protocol": "stateful",
@@ -40,6 +41,7 @@ proJV 可以接 [MCP](https://modelcontextprotocol.io) server。一个 MCP serve
 | 字段 | 必填 | 含义 |
 |------|------|------|
 | `name` | 是 | 唯一。会成为工具前缀：`mcp__time__get_current_time` |
+| `description` | 实际上是必填 | 一句话说明这个 server 干什么。模型每轮读到的能力地图里，这句话是 server 用途的**唯一**来源；缺了它模型只看到一个名字，只能瞎猜 |
 | `command` | 是 | 可执行文件，按 `PATH` 查找。中间**不经过 shell** |
 | `args` | 否 | 参数数组，一个元素 = 一个参数 |
 | `env` | 否 | 传给子进程的额外环境变量 |
@@ -49,23 +51,42 @@ proJV 可以接 [MCP](https://modelcontextprotocol.io) server。一个 MCP serve
 | `timeout_ms` | 否 | 单个请求超时，默认 `120000` |
 
 写坏的条目（缺 `name`、`protocol` 非法、`name` 重复）只会被跳过并记一行日志，不会
-拖垮整张清单。
+拖垮整张清单。缺 `description` 的条目会保留但记一条日志 —— 模型不会知道它是干什么的。
 
-## 2. 打开它
+## 2. 改完什么时候生效
+
+**改 `mcp.json` 在你下一次发消息时生效，不用重启。**
+
+每个回合开始前，在 UI 线程、且没有任何回合在跑的时候，proJV 比较文件的时间戳和大小。
+变化了就重新读一遍，按名字逐项比对：
+
+| 变化 | 行为 |
+|------|------|
+| 新增条目 | 加入；只有 `enabled` 且 `trusted` 才启动 |
+| 删除条目 | 立即停进程，工具在下一回合开始时下掉 |
+| 同一条目，`enabled` 翻转 | 启或停；进程不重启 |
+| 同一条目，`command`/`args`/`env`/`protocol`/`trusted`/`timeout_ms` 变了 | 用新定义重启 |
+| 只改了 `description` | 不重启任何进程，能力地图换成新文案 |
+| 本来就是 `dead` 的 server | **不会自动重试** —— `F4` 里的 `R` 才是重试入口，否则每发一条消息都会重试一个坏 server |
+| JSON 写坏（存了半截） | 现有 server 完全不动，解析错误显示在 `F4` |
+
+`F4` 仍然是切换单个 server 最快的方式，它会把 `enabled` 写回文件。
+
+## 3. 打开它
 
 两种方式，等价：
 
-- 写 `"enabled": true` 然后重启 proJV；或
+- 写 `"enabled": true` 然后发一条消息（或重启 proJV）；或
 - 按 `F4`，选中该 server，按 `Enter`。
 
 `F4` 面板还会显示实时状态（`stopped` / `connecting` / `handshaking` / `ready` /
-`dead`）和每个 server 贡献了几个工具。`R` 重启选中的 server。开关会写回
-`mcp.json` 的 `enabled`，重启后仍然生效。
+`dead`）、每个 server 贡献了几个工具，以及选中条目的 `description`。`R` 重启选中的
+server。开关会写回 `mcp.json` 的 `enabled`，重启后仍然生效。
 
 **回合运行中拒绝开关。** 启停 server 会改工具表，而工具表只允许在回合之间修改。
 先把这一回合跑完（或按 `Esc`）。
 
-## 3. 用它的工具
+## 4. 用它的工具
 
 server 一旦 `ready`，它的工具就以 `mcp__<server>__<tool>` 出现，并且**不需要往角色
 提示词里加任何东西**模型就能看见——这些名字只在运行期才存在，本来也没法预先写。
@@ -87,7 +108,7 @@ proJV_tui --mcp-call time get_current_time timezone=Asia/Tokyo
 没起来就返回非零。`--mcp-call` 额外执行一次调用。参数是 `key=value`；值能被 JSON
 解析就按该类型传，否则按字符串传。
 
-## 4. 安全
+## 5. 安全
 
 `"trusted": false` 是唯一的开关，在**启动进程之前**检查：不受信任的 server 不运行、
 不注册工具、也没有任何开销。**没有逐工具审批**——一旦信任并启用，模型可以调用它暴露
@@ -96,7 +117,7 @@ proJV_tui --mcp-call time get_current_time timezone=Asia/Tokyo
 把 `mcp.json` 当成 `config.toml` 对待：它的 `env` 里可能放着 token，它已在
 `.gitignore` 里。MCP server 写文件用的是你的用户权限。
 
-## 5. 三个容易踩的点
+## 6. 三个容易踩的点
 
 **进程的工作目录是启动 proJV 的那个目录。** 换工作区必须重启 proJV。如果某个 server
 的参数里有 `"."`，它指的就是启动目录。
@@ -114,7 +135,7 @@ uvx mcp-server-time < /dev/null  （Linux）
 
 或者把 `timeout_ms` 调大。跳过这一步的表现是：server 卡在 `handshaking`，然后 `dead`。
 
-## 6. 这个版本不做什么
+## 7. 这个版本不做什么
 
 - **只支持 stdio。** 没有 HTTP / SSE 传输。
 - **不支持 `tools/list` 分页。** 会分页的 server 会被**整台拒绝**——这是刻意的：
@@ -124,7 +145,7 @@ uvx mcp-server-time < /dev/null  （Linux）
 - **技能用不到 MCP 工具。** 技能的子 agent 是并发的，会共用同一个 server 的 stdin；
   技能 `tools` 里写 `mcp__*` 会在装载时被跳过。
 
-## 7. 排错
+## 8. 排错
 
 | 现象 | 原因 |
 |------|------|

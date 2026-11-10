@@ -10,6 +10,7 @@
 #include "core/skill_runner.h"
 #include "core/turn_requests.h"
 #include "tools/registry.h"
+#include "tools/tool_paths.h"
 #include "tools/python_tool_manager.h"
 #include "tui/bubble_model.h"
 #include "tui/status_bar.h"
@@ -145,14 +146,18 @@ class TuiApp {
     // selected file vanished (never an out-of-range read).
     std::string activePromptContent() const;
     void buildBubblesFromMessages();
-    // Inject the fixed workspace context as system messages at the start of a
-    // conversation: the directory tree, then the repository's AGENTS.md. Empty
-    // pieces are skipped. Called on startup, on F3 and on "/clear".
-    void injectWorkspaceContext();
-    // Second visibility channel: a short "[MCP available tools]" block naming the
-    // ready servers. Injected at the conversation start like the workspace
-    // context; retried at the next turn boundary while nothing is ready yet.
-    void injectMcpContext();
+    // Write the fixed system messages of a conversation: P1 [ENVIRONMENT] and P2
+    // [PROJECT] (tree + AGENTS.md in one message). Both are always written, even
+    // when their content is empty, so the prefix stays exactly three messages
+    // (P0 is written by the caller). Called on startup, F3 and "/clear".
+    void injectFixedBlocks();
+    // Rewrite P1 in place after a config save changed a toolchain path. P1 is
+    // persisted, so without this the paths would stay stale until the next F3.
+    void refreshEnvironmentBlock();
+    // Build P3 (the capability map) and hand it to the Agent. Runs at a turn
+    // boundary on the agent thread: the MCP tool table is only settled after
+    // McpManager::syncTools(), which happens there.
+    void refreshCapabilitiesBlock();
     // Push the saved config into the Agent (paths, model, params). Separate from
     // saveFullConfig so it can be deferred to a turn boundary when a turn is
     // running -- those setters touch Agent state the agent thread reads.
@@ -188,6 +193,9 @@ class TuiApp {
     AppConfig config;
     DeepSeekClient client;
     ToolRegistry tools;
+    // Every filesystem root this session may touch, and which are writable.
+    // Built once per setupTools() from (workspace, projv_files).
+    ToolPaths paths_;
     std::optional<PythonToolManager> pytoolMgr_;
     // Resident MCP server pool. Declared after `tools` on purpose: it is
     // destroyed first, so the executors it registered can never outlive it.
@@ -197,8 +205,6 @@ class TuiApp {
     // bare unordered_map and the Agent thread iterates them while building a
     // request, so re-registering mid-turn is a data race (the pre-MCP bug).
     std::atomic<bool> toolsReloadRequested_{false};
-    // False until a non-empty MCP block has been injected into this conversation.
-    bool mcpContextInjected_ = false;
     Storage storage;
     Agent* agent = nullptr;
     IProcessRunner* procRunner_ = nullptr;

@@ -4,6 +4,7 @@
 #include "core/prompts.h"
 #include "core/config.h"
 #include "core/project_context.h"
+#include "core/context_assembler.h"
 #include "core/image_input.h"
 #include "core/skill_trigger.h"
 #include "core/terminal_status.h"
@@ -32,16 +33,20 @@ TuiApp::~TuiApp() {
 }
 
 void TuiApp::setupTools() {
-    // The workspace is the launch directory (getWorkspaceDir): every file tool,
-    // the shell CWD and the pytool sandbox root there.
+    // Two roots, not one: the workspace is the launch directory (every file tool,
+    // the shell CWD and the pytool sandbox root there), and projv_files sits next
+    // to the exe. projv_files is writable -- that is what "add a skill" means --
+    // except sessions/ and logs/, which are history and stay read-only.
+    paths_ = ToolPaths::forSession(getWorkspaceDir(), getProjvDir());
     std::string ws = getWorkspaceDir();
+    if (agent) agent->setWorkspacePath(paths_.describe());
 
-    registerShellTool(tools, ws, procRunner_);
-    registerFileTools(tools, ws);
-    registerFormatTool(tools, ws, procRunner_, config.clangFormatPath);
-    registerMdFileTool(tools, ws);
-    registerEditFileTool(tools, ws);
-    registerFileSearchTool(tools, ws);
+    registerShellTool(tools, paths_, procRunner_);
+    registerFileTools(tools, paths_);
+    registerFormatTool(tools, paths_, procRunner_, config.clangFormatPath);
+    registerMdFileTool(tools, paths_);
+    registerEditFileTool(tools, paths_);
+    registerFileSearchTool(tools, paths_);
     registerSearchTool(tools, client);
     registerFetchTool(tools, client);
 
@@ -162,7 +167,7 @@ void TuiApp::setupTools() {
             resolved.reserve(rawPaths.size());
             for (const auto& p : rawPaths) {
                 std::string full;
-                std::string pathErr = validateToolPath(p, ws, full);
+                std::string pathErr = validateToolPath(paths_, p, false, full);
                 if (!pathErr.empty()) return pathErr;
                 resolved.push_back(full);
             }
@@ -238,10 +243,9 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
         }
         if (onStreamingTick) onStreamingTick(); // wake the UI thread
     });
-    agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setReasoningEffort(config.reasoningEffort);
-    agent->setWorkspacePath(getWorkspaceDir());
+    agent->setWorkspacePath(paths_.describe());
     agent->setModel(config.model);
     agent->setContextWindow(config.contextWindow);
 
@@ -290,23 +294,22 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     // Inject system prompt as first session message.
     agent->addPersistedMessage(Message::System(activePromptContent()));
 
-    // Fixed workspace context: directory tree + AGENTS.md. Same call the F3 and
-    // "/clear" paths use, so a conversation always starts with the same prefix.
-    injectWorkspaceContext();
+    // Fixed prefix: P1 [ENVIRONMENT] + P2 [PROJECT] right after the role prompt.
+    // Same call the F3 and "/clear" paths use, so a conversation always starts
+    // with the same three system messages.
+    injectFixedBlocks();
 
     // MCP: read projv_files/mcp.json and spawn every enabled + trusted server.
     // The config file is created empty on first run, like ensureDefaultPrompts().
     // Spawning happens on per-server worker threads, so nothing here blocks the
     // UI; tools are registered at the first turn boundary (see runAgentTurnLoop),
-    // which is also why the context block below may come back empty on a cold
-    // start and is retried there.
+    // which is also where the capability map that names them is built.
     mcpManager_ = std::make_unique<mcp::Manager>();
     mcpManager_->setWorkDir(getWorkspaceDir());
     mcp::ensureConfigFile(mcp::configPath());
     if (!mcpManager_->loadFromJson(mcp::configPath()))
         debugLogf("[TuiApp] mcp.json: %s", mcpManager_->configError().c_str());
     mcpManager_->startEnabled();
-    injectMcpContext();
 
     // Theme: load from projv_files/theme/, prefer config.themeName.
     ThemeManager::instance().init(getThemeDir(), config.themeName);
@@ -376,6 +379,17 @@ void TuiApp::sendMessage(const std::string& text) {
     if (agentThreadRunning_.load()) {
         pendingQueue_.push_back(text);
         return;
+    }
+
+    // Main thread, idle -- the only safe window to add to or erase from the MCP
+    // server vector (the render loop walks it every frame, mcp_view.cpp). This is
+    // what makes "edit mcp.json, then send a message" work without a restart.
+    if (mcpManager_) {
+        if (mcpManager_->reloadIfChanged(mcp::configPath()))
+            debugLogf("[TuiApp] mcp.json reloaded before this turn");
+        // Handles removed by the reload are unregistered by syncTools at the turn
+        // boundary; only then is it safe to drop them from the pool.
+        mcpManager_->reapRemoved();
     }
 
     // Ensure the session DB exists so quick commands (/help etc.) persist.
@@ -548,10 +562,15 @@ void TuiApp::runAgentTurnLoop() {
             setupTools();
             applyConfigToAgent();
         }
-        if (mcpManager_) mcpManager_->syncTools(tools, *agent);
-        // A cold start races the servers' handshakes, so the MCP block may have
-        // come back empty in initialize(); retry until it lands once.
-        if (!mcpContextInjected_) injectMcpContext();
+        if (mcpManager_) {
+            const mcp::Manager::SyncResult res = mcpManager_->syncTools(tools);
+            if (!res.added.empty()) agent->addAutoTools(res.added);
+            if (!res.removed.empty()) agent->removeAutoTools(res.removed);
+        }
+        // P3 after the registry is settled: the capability map must name exactly
+        // the tools the request will carry. Building it earlier (before syncTools)
+        // would miss a server that became Ready during the last turn.
+        refreshCapabilitiesBlock();
 
         agent->newTurn();
         agent->run();
@@ -900,45 +919,57 @@ void TuiApp::newChat() {
     reinitConversation(false);
 }
 
-void TuiApp::injectWorkspaceContext() {
+void TuiApp::injectFixedBlocks() {
     if (!agent) return;
-    // Directory tree: the LLM knows where files actually live instead of
-    // guessing wrong paths.
-    {
-        std::string ctx = buildProjectContext(getWorkspaceDir());
-        if (!ctx.empty()) {
-            agent->addPersistedMessage(Message::System(ctx));
-            debugLogf("[TuiApp] Injected project context (%zu chars)", ctx.size());
-        }
-    }
-    // AGENTS.md: the repository owner's instructions for agents. Editing the file
-    // takes effect in the next conversation (F3) or after "/clear".
-    {
-        std::string md = buildAgentsMdContext(getWorkspaceDir());
-        if (!md.empty()) {
-            agent->addPersistedMessage(Message::System(md));
-            debugLogf("[TuiApp] Injected AGENTS.md (%zu chars)", md.size());
-        }
-    }
+    const std::string ws = getWorkspaceDir();
+    const std::string projv = getProjvDir();
+    // P1: fixed for the session. Written even when every field is empty (the
+    // builder always emits every line), because the fixed prefix must keep a
+    // constant message count -- a varying count moves the compaction summary and
+    // the per-turn block, and breaks the request prefix cache.
+    const std::string env =
+        ctx::buildEnvironment(ws, projv, ws, config.cppCompilerPath, config.pythonPath,
+                              config.clangFormatPath);
+    agent->addPersistedMessage(Message::System(env));
+    // P2: directory tree + AGENTS.md, one message, same reason.
+    const std::string project = buildProjectBlock(ws);
+    agent->addPersistedMessage(Message::System(project));
+    debugLogf("[TuiApp] fixed blocks: environment %s, project %s", ctx::describe(env).c_str(),
+              ctx::describe(project).c_str());
 }
 
-void TuiApp::injectMcpContext() {
-    if (!agent || !mcpManager_) return;
-    // Only Ready servers are listed: naming a tool the model cannot call is
-    // worse than saying nothing. Empty at a cold start, retried at the turn
-    // boundary once the servers have finished their handshake.
-    std::string ctx = mcpManager_->buildContextSnippet();
-    if (ctx.empty()) return;
-    // Same shape as the workspace context above: one system message, injected
-    // once at a conversation start, never re-appended per turn.
-    agent->addPersistedMessage(Message::System(ctx));
-    mcpContextInjected_ = true;
-    debugLogf("[TuiApp] Injected MCP context (%zu chars)", ctx.size());
+void TuiApp::refreshEnvironmentBlock() {
+    if (!agent) return;
+    const std::string ws = getWorkspaceDir();
+    const std::string env =
+        ctx::buildEnvironment(ws, getProjvDir(), ws, config.cppCompilerPath, config.pythonPath,
+                              config.clangFormatPath);
+    if (agent->replaceEnvironmentBlock(env))
+        debugLogf("[TuiApp] environment block refreshed (%s)", ctx::describe(env).c_str());
+}
+
+void TuiApp::refreshCapabilitiesBlock() {
+    if (!agent) return;
+    ctx::CapabilityInputs in;
+    in.tools = tools.getToolDefinitions();
+    in.allowed = agent->getAllowedTools();
+    in.skills = SkillRunner::listSkills(skillsDir_);
+    in.skillsDir = skillsDir_;
+    if (mcpManager_) {
+        for (const auto& purpose : mcpManager_->serverPurposes())
+            in.mcp.push_back(ctx::McpServerInfo{purpose.name, purpose.description, purpose.tools});
+    }
+    std::string block = ctx::buildCapabilities(in);
+    // P3 is never persisted, so this log line is its only observable output.
+    debugLogf("[TuiApp] capabilities block: %s", ctx::describe(block).c_str());
+    agent->setCapabilitiesBlock(std::move(block));
 }
 
 void TuiApp::applyConfigToAgent() {
     if (!agent) return;
-    agent->setToolPaths(config.cppCompilerPath, config.pythonPath);
+    // The toolchain paths are part of P1 now, so refresh that message: it is
+    // persisted, and a saved config must not leave a stale path until the next F3.
+    refreshEnvironmentBlock();
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setReasoningEffort(config.reasoningEffort);
     agent->setModel(config.model);
@@ -954,10 +985,8 @@ void TuiApp::setMcpEnabled(const std::string& name, bool enabled) {
         return;
     }
     mcpManager_->setEnabled(name, enabled);
-    // Refresh the "which MCP tools exist" block for the next turn. Tools
-    // themselves are registered/unregistered by syncTools at the turn boundary.
-    mcpContextInjected_ = false;
-    injectMcpContext();
+    // The capability map is rebuilt at the next turn boundary (it names the tools
+    // that are actually registered), so nothing to inject here.
 }
 
 void TuiApp::reinitConversation(bool keepStorage) {
@@ -977,9 +1006,7 @@ void TuiApp::reinitConversation(bool keepStorage) {
         agent->setSystemPrompt(sp);
         agent->addPersistedMessage(Message::System(sp));
     }
-    injectWorkspaceContext();
-    mcpContextInjected_ = false;
-    injectMcpContext();
+    injectFixedBlocks();
     if (keepStorage) {
         // "/clear" keeps the session file and the on-screen history; the model
         // simply starts from an empty context again.

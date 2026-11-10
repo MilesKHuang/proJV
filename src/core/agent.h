@@ -56,7 +56,6 @@ class Agent {
     bool compactSession(bool force = false);
 
     void setModel(const std::string& model);
-    void setToolPaths(const std::string& cpp, const std::string& python);
     void setRequestParams(int maxTokens, double temperature);
     // Reasoning effort (official enum: none/low/high/max). Anything unusable
     // falls back to the official default "high".
@@ -71,6 +70,19 @@ class Agent {
     // Replace the first system message in session with a new prompt.
     // Keeps all other messages intact -- used for role switching without clearing context.
     void replaceSystemPrompt(const std::string& newPrompt);
+
+    // P3, the capability map. Built by the TUI (it owns skill and MCP metadata),
+    // stored here as opaque text: the Agent never parses it, rewrites it or
+    // regenerates it, it only inserts it before the per-turn block. One turn
+    // means one string, so the two buildChatRequest() calls of a turn (normal +
+    // HTTP retry) send identical bytes.
+    void setCapabilitiesBlock(std::string block) { capabilitiesBlock_ = std::move(block); }
+    const std::string& capabilitiesBlock() const { return capabilitiesBlock_; }
+
+    // Refresh the persisted [ENVIRONMENT] block in place (it is P1, so a config
+    // save that changes a toolchain path would otherwise stay stale until F3).
+    // Returns false when no environment message exists yet.
+    bool replaceEnvironmentBlock(const std::string& text);
 
     // --- Tool visibility (two orthogonal channels) ----------------------
     //   allowedTools_  -- parsed from the "tools available:" line of the role
@@ -87,6 +99,10 @@ class Agent {
     void addAutoTools(const std::vector<std::string>& names);
     void removeAutoTools(const std::vector<std::string>& names);
     size_t autoToolCount() const { return autoToolNames_.size(); }
+    // Read-only view of the role allowlist, for the capability map (P3). It must
+    // be the same list getFilteredToolDefinitions() applies, or the map would
+    // describe a different tool set than the request carries.
+    const std::vector<std::string>& getAllowedTools() const { return allowedTools_; }
     void setWorkspacePath(const std::string& ws) { workspacePath_ = ws; }
     void setContextWindow(size_t window) {
         configContextWindow = window;
@@ -178,10 +194,9 @@ class Agent {
 
     std::string turnNudge_;
     std::string model_ = "deepseek-v4-flash";
-    std::string cppCompilerPath;
-    std::string pythonPath;
     std::string workspacePath_;
     std::string systemPrompt_;
+    std::string capabilitiesBlock_;
     std::vector<std::string> allowedTools_;
     // Tool names that are visible because they were registered at runtime (MCP).
     // Written only at a turn boundary, on the agent thread, by McpManager.

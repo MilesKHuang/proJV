@@ -50,8 +50,26 @@ tools available: read_file, grep_files
 
 - **工具**。`tools available:` 那一行是权限表，不是提示：agent 只把名单里的工具
   给模型，调用名单外的工具会被直接拒绝。不写这一行等于**放行全部工具**，所以只读
-  角色必须写。
+  角色必须写。默认的 `assistant.md` 故意不写：提示词里再抄一份工具名单已经过期过
+  一次，现在这份清单由每轮重建的能力地图负责。
+- **能碰哪些文件**。所有角色权限相同：workspace 和 `projv_files`（prompts、skills、
+  theme、pytool、`mcp.json`）可读可写，`projv_files/sessions`、`projv_files/logs`
+  只读，其余一律拒绝。所以角色可以给自己加能力：「加一个 skill」「加这个 MCP
+  server」都是普通写文件，不是特殊命令。
 - **行为**：先读什么、答案长什么样、不许动什么。
+
+角色提示词是这次会话的第 **P0** 条消息。后面依次是环境块（P1）和项目块（P2），而
+能力地图（P3）每轮都会重建 —— 所以加 skill、加 MCP server 都不需要新建角色文件。
+
+## 改完什么时候生效
+
+| 你改的东西 | 生效时机 |
+|------------|----------|
+| `projv_files/prompts/*.md` | 下次 `F3`（新会话）或 `/clear` |
+| `projv_files/skills/<name>/` | 下次调用 `run_skill`，不用重启 |
+| `projv_files/mcp.json` | 你下一条消息 |
+| `projv_files/pytool/<name>/` | 保存配置（`F2`）后，或重启 |
+| `projv_files/theme/*.json` | 重启后（主题菜单在启动时构建一次） |
 
 ## 角色管不到的东西
 

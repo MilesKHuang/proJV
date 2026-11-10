@@ -58,7 +58,12 @@ Checklist in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md
   `projv_files/mcp.json` and spoken to over stdio.
 - Hardcoding colours outside the theme system.
 - A skill that deletes code it decided was dead. Dead code is reported, never
-  removed.
+  removed. (Skills may write files inside the tool roots -- workspace and
+  `projv_files` -- but must report what they changed; `projv_files/sessions` and
+  `projv_files/logs` stay read-only for everyone.)
+- Re-adding a tool inventory to `prompts/*.md`, or any prompt text that spells the
+  allowlist trigger literally. The per-turn capability map is the only list of
+  tools the model reads (`src/core/context_assembler.cpp`).
 - `docs/archive/` is gitignored design notes: never commit it (no `git add -f`,
   no `!` exception) and never link it from a committed file (`README*`, code
   comments, release notes, CMake comments). Rationale that must be public goes

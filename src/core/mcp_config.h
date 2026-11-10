@@ -16,6 +16,10 @@ namespace mcp {
 
 struct McpServerConfig {
     std::string name;
+    // What this server is for, in one line. REQUIRED in practice: it is the only
+    // source of the server's purpose in the capability map (P3), so a missing one
+    // leaves the model guessing what the server can do.
+    std::string description;
     std::string command;
     std::vector<std::string> args;
     std::map<std::string, std::string> env;

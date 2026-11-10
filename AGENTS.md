@@ -39,7 +39,15 @@ Linux (needs `libcurl4-openssl-dev`):
   installed through a package manager. Do not add a plugin registry, a package manager, or
   anything the binary loads as code.
 - Do not introduce colors outside the theme system (`src/tui/theme_*`).
-- Do not let a skill write or delete repository files. Skills report; the agent edits.
+- Do not let a skill write outside the tool roots. Skills may write the workspace and
+  `projv_files` (prompts, skills, theme, pytool, `mcp.json`) -- the same roots as the main
+  agent, enforced by `ToolPaths` -- but must report which files they changed, and never touch
+  `projv_files/sessions/` or `projv_files/logs/` (read-only). A skill's own `config.json`
+  decides which tools it gets; a skill with `exec_shell` has the full power of the shell.
+- Prompt text is not a documentation site. The per-turn capability map
+  (`src/core/context_assembler.cpp`) is the only list of tools the model reads: do not
+  re-add a tool inventory to `prompts/*.md`, and never let the seed contain the allowlist
+  trigger literally (`parseAvailableTools` would read the prose as a tool list).
 - Do not change the version anywhere except `project(proJV VERSION ...)` in `CMakeLists.txt`.
 - Do not modify `external/` (vendored third-party code).
 

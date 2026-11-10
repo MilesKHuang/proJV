@@ -1,4 +1,5 @@
 #pragma once
+#include "tool_paths.h"
 #include <string>
 
 // format_file: run clang-format on a single file, or fall back to a built-in
@@ -13,6 +14,6 @@
 // `procRunner` may be null: the clang mode then reports a clear error instead
 // of failing silently. `clangFormatPath` comes from config.toml
 // (clang_format_path); empty means "clang-format from PATH".
-void registerFormatTool(class ToolRegistry& registry, const std::string& workspacePath,
+void registerFormatTool(class ToolRegistry& registry, const ToolPaths& paths = ToolPaths(),
                         class IProcessRunner* procRunner = nullptr,
                         const std::string& clangFormatPath = "");
