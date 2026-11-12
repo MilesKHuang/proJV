@@ -9,6 +9,11 @@ set(TEST_SOURCES
     unit/test_deepseek_sse.cpp
     unit/test_status_line.cpp
     unit/test_approval_logic.cpp
+    unit/test_curl_error_text.cpp
+    unit/test_cli_args.cpp
+    unit/test_delete_guard.cpp
+    unit/test_log_files.cpp
+    unit/test_snapshot.cpp
     unit/test_theme_map.cpp
     unit/test_theme_colors.cpp
     unit/test_skill_runner.cpp

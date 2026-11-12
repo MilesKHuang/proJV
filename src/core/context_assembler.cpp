@@ -238,7 +238,7 @@ std::string buildCapabilities(const CapabilityInputs& in) {
     for (const auto& m : missing)
         byGroup["Other"].push_back(m + " (not installed)");
     if (!missing.empty())
-        debugLogf("[ctx] allowlist names %zu tool(s) that are not registered", missing.size());
+        debugLogWarnf("[ctx] allowlist names %zu tool(s) that are not registered", missing.size());
 
     // -- 2. Render ----------------------------------------------------------
     std::ostringstream out;

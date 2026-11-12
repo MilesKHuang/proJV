@@ -87,8 +87,11 @@ endif()
 set(COMMON_SOURCES
     ${SRC_DIR}/client/models.cpp
     ${SRC_DIR}/client/deepseek.cpp
+    ${SRC_DIR}/client/curl_error.cpp
     ${SRC_DIR}/core/config.cpp
     ${SRC_DIR}/core/agent.cpp
+    ${SRC_DIR}/core/delete_guard.cpp
+    ${SRC_DIR}/core/snapshot.cpp
     ${SRC_DIR}/core/session.cpp
     ${SRC_DIR}/tools/registry.cpp
     ${SRC_DIR}/tools/tool_paths.cpp
@@ -121,6 +124,8 @@ set(COMMON_SOURCES
     # --purge). Cross-platform: std::filesystem plus a few #ifdef blocks, so the
     # unit tests link it from here.
     ${SRC_DIR}/platform/install_shim.cpp
+    ${SRC_DIR}/platform/cli_args.cpp
+    ${SRC_DIR}/platform/log_files.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -129,6 +134,9 @@ set(HEADERS
     ${SRC_DIR}/client/deepseek.h
     ${SRC_DIR}/core/config.h
     ${SRC_DIR}/core/agent.h
+    ${SRC_DIR}/core/delete_guard.h
+    ${SRC_DIR}/core/snapshot.h
+    ${SRC_DIR}/tools/sha256.h
     ${SRC_DIR}/core/session.h
     ${SRC_DIR}/core/storage.h
     ${SRC_DIR}/tools/registry.h
@@ -145,6 +153,9 @@ set(HEADERS
     ${SRC_DIR}/core/mcp_process.h
     ${SRC_DIR}/core/mcp_manager.h
     ${SRC_DIR}/platform/install_shim.h
+    ${SRC_DIR}/platform/cli_args.h
+    ${SRC_DIR}/platform/log_files.h
+    ${SRC_DIR}/client/curl_error.h
     ${SRC_DIR}/tools/file_tool.h
     ${SRC_DIR}/tools/diff_capture.h
     ${SRC_DIR}/tools/python_tool_manager.h

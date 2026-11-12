@@ -67,6 +67,8 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 | **把 `projv` 装进 PATH** | `proJV_tui --install` 只写一个四行转发器，不需要管理员权限；之后在 cmd、PowerShell 或任意 shell、任意目录敲 `projv` 就能起来。`--uninstall` 只删转发器，`--purge` 删安装目录；你的配置和会话永远不动。 |
 | **OSC 7501 状态** | proJV 把 `working` / `blocked` / `done` 报给宿主终端，Windows Terminal、Ghostty、cmux 可以直接画在标签上。输出被重定向时一个字节都不多写；`osc_status = false` 或 `PROJV_NO_OSC=1` 可关闭 |
 | **配套 Ostlr** | 多窗口 agent 管理器，读的就是这份状态：proJV 会话在 Ostlr 里是原生可见的 agent，两边都不需要胶水代码 |
+| **`--version` / `--help`** | 打印版本号，或打印两组命令（安装 / MCP）后直接退出，不启动 TUI、不碰会话库。 |
+| **`--mcp-check` / `--mcp-call`** | 无头 MCP 冒烟测试：拉起所有已配置的服务器，或调用一个工具并打印结果。给脚本和 CI 用。 |
 
 ---
 
@@ -108,6 +110,13 @@ Linux 自行编译时需要 `libcurl4-openssl-dev`。
 刻意收窄：proJV 只把一个模型 provider 做好，把扩展面放在普通文件里，而不是插件注册表。
 
 ---
+
+## 安全边界
+
+- 文件工具只能在 工作区 与 `projv_files/` 内活动；`sessions/`、`logs/` 对模型只读。
+- 会删除或覆盖的 shell 命令先问一次；格式化与分区类命令直接拒绝。
+- **没有 OS 沙箱**：`exec_shell`、技能、MCP 服务器都以你的身份运行。细节与 Docker 方案见
+  [安全边界](docs/zh/dev-guide/security-model.md)。
 
 ## 接下来去哪儿
 

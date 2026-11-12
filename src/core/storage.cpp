@@ -6,6 +6,7 @@
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
 #include <SQLiteCpp/Exception.h>
+#include <filesystem>
 
 // -- Constructor / Destructor --------------------------------------
 
@@ -32,7 +33,7 @@ bool Storage::createDatabase(const std::string& path) {
         writeDb_->exec("PRAGMA foreign_keys = ON;");
 
         if (!ensureTables()) {
-            debugLog("[Storage] createDatabase: ensureTables failed");
+            debugLogErr("[Storage] createDatabase: ensureTables failed");
             writeDb_.reset();
             currentPath_.clear();
             return false;
@@ -40,7 +41,7 @@ bool Storage::createDatabase(const std::string& path) {
 
         // Step 2: Open read-only connection (WAL allows concurrent reads)
         if (!openReadDb()) {
-            debugLog("[Storage] createDatabase: openReadDb failed");
+            debugLogErr("[Storage] createDatabase: openReadDb failed");
             writeDb_.reset();
             currentPath_.clear();
             return false;
@@ -71,7 +72,7 @@ bool Storage::openDatabase(const std::string& path) {
         // Ensure the schema is complete (tolerate older versions missing columns such as
         // reasoning_content).
         if (!ensureTables()) {
-            debugLog("[Storage] openDatabase: ensureTables failed");
+            debugLogErr("[Storage] openDatabase: ensureTables failed");
             writeDb_.reset();
             currentPath_.clear();
             return false;
@@ -79,7 +80,7 @@ bool Storage::openDatabase(const std::string& path) {
 
         // Open read-only connection
         if (!openReadDb()) {
-            debugLog("[Storage] openDatabase: openReadDb failed");
+            debugLogErr("[Storage] openDatabase: openReadDb failed");
             writeDb_.reset();
             currentPath_.clear();
             return false;
@@ -126,7 +127,11 @@ void Storage::closeDatabase() {
 }
 
 // -- Schema ---------------------------------------------------------
-
+std::string Storage::sessionId() const {
+    if (currentPath_.empty()) return std::string();
+    const std::filesystem::path p(currentPath_);
+    return p.stem().string();
+}
 bool Storage::ensureTables() {
     try {
         writeDb_->exec(R"(
@@ -248,7 +253,7 @@ int64_t Storage::insertMessage(const Message& msg) {
         // Insert tool_calls for assistant messages
         if (!msg.toolCalls.empty()) {
             if (!insertToolCalls(messageId, msg.toolCalls)) {
-                debugLog("[Storage] insertMessage: insertToolCalls failed");
+                debugLogErr("[Storage] insertMessage: insertToolCalls failed");
             }
         }
 

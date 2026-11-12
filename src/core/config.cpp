@@ -63,7 +63,7 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
     try {
         fs::create_directories(fs::path(configPath).parent_path());
     } catch (const std::exception& e) {
-        debugLogf("[Config] Failed to create config dir: %s", e.what());
+        debugLogErrf("[Config] Failed to create config dir: %s", e.what());
     }
 
     try {
@@ -90,6 +90,9 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         // OSC 7501 status reporting: on by default, off via osc_status = false
         // or the PROJV_NO_OSC=1 environment variable (checked in terminal_status).
         cfg.oscStatus = tbl["osc_status"].value_or<bool>(true);
+        // Snapshots (/undo): 7 days retention, 2 GB workspace gate.
+        cfg.snapshotsMaxWorkspaceGb = tbl["snapshots_max_workspace_gb"].value_or<int>(2);
+        cfg.snapshotsKeepDays = tbl["snapshots_keep_days"].value_or<int>(7);
         // Reasoning effort: official values none/low/high/max (aliases are
         // normalized). Anything else falls back to the official default "high"
         // instead of being sent to the API.
@@ -126,12 +129,12 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
                   cfg.cppCompilerPath.empty() ? "(not set)" : cfg.cppCompilerPath.c_str(),
                   cfg.pythonPath.empty() ? "(not set)" : cfg.pythonPath.c_str());
     } catch (const toml::parse_error& e) {
-        debugLogf("[Config] parse_error: %s", e.what());
+        debugLogErrf("[Config] parse_error: %s", e.what());
         cfg.loadError =
             "No config file found at " + configPath + ". Set API key in the Settings dialog.";
         return false;
     } catch (const std::exception& e) {
-        debugLogf("[Config] Unexpected exception loading config: %s", e.what());
+        debugLogErrf("[Config] Unexpected exception loading config: %s", e.what());
         cfg.loadError = std::string("Error loading config: ") + e.what();
         return false;
     }
@@ -165,7 +168,7 @@ bool saveApiKey(const std::string& key) {
     try {
         fs::create_directories(fs::path(configPath).parent_path());
     } catch (const std::exception& e) {
-        debugLogf("[Config] Failed to create config dir: %s", e.what());
+        debugLogErrf("[Config] Failed to create config dir: %s", e.what());
         return false;
     }
 
@@ -180,7 +183,7 @@ bool saveApiKey(const std::string& key) {
     } catch (const toml::parse_error&) {
         debugLog("[Config] No existing config, creating new");
     } catch (const std::exception& e) {
-        debugLogf("[Config] Error reading existing config: %s", e.what());
+        debugLogErrf("[Config] Error reading existing config: %s", e.what());
     }
 
     // Update values -- default to blanks so existing keys aren't wiped on pure API-key saves
@@ -197,15 +200,18 @@ bool saveApiKey(const std::string& key) {
         if (!tbl.contains("reasoning_effort"))
             tbl.insert_or_assign("reasoning_effort", kReasoningEffortDefault());
         if (!tbl.contains("osc_status")) tbl.insert_or_assign("osc_status", true);
+        if (!tbl.contains("snapshots_max_workspace_gb"))
+            tbl.insert_or_assign("snapshots_max_workspace_gb", 2);
+        if (!tbl.contains("snapshots_keep_days")) tbl.insert_or_assign("snapshots_keep_days", 7);
     } catch (const std::exception& e) {
-        debugLogf("[Config] Error updating config table: %s", e.what());
+        debugLogErrf("[Config] Error updating config table: %s", e.what());
         return false;
     }
 
     // Write back
     std::ofstream ofs(configPath);
     if (!ofs) {
-        debugLogf("[Config] Failed to open file for writing: %s", configPath.c_str());
+        debugLogErrf("[Config] Failed to open file for writing: %s", configPath.c_str());
         return false;
     }
 
@@ -213,7 +219,7 @@ bool saveApiKey(const std::string& key) {
         ofs << "# proJV configuration\n\n";
         ofs << tbl << "\n";
     } catch (const std::exception& e) {
-        debugLogf("[Config] Error writing config: %s", e.what());
+        debugLogErrf("[Config] Error writing config: %s", e.what());
         return false;
     }
 
@@ -246,6 +252,8 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("context_window", static_cast<int64_t>(cfg.contextWindow));
     tbl.insert_or_assign("reasoning_effort", cfg.reasoningEffort);
     tbl.insert_or_assign("osc_status", cfg.oscStatus);
+    tbl.insert_or_assign("snapshots_max_workspace_gb", cfg.snapshotsMaxWorkspaceGb);
+    tbl.insert_or_assign("snapshots_keep_days", cfg.snapshotsKeepDays);
     if (!cfg.themeName.empty()) tbl.insert_or_assign("theme", cfg.themeName);
 
     std::ofstream ofs(configPath);

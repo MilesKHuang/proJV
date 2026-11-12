@@ -124,7 +124,7 @@ bool Manager::loadFromJson(const std::string& path) {
     configError_.clear();
     std::vector<McpServerConfig> loaded;
     if (!loadConfig(path, loaded, configError_)) {
-        debugLogf("[mcp] config error: %s", configError_.c_str());
+        debugLogWarnf("[mcp] config error: %s", configError_.c_str());
         return false;
     }
     servers_.clear();
@@ -236,7 +236,7 @@ bool Manager::reloadIfChanged(const std::string& path) {
         configError_ = err;
         configStamp_ = ticks;
         configSize_ = size;
-        debugLogf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(), err.c_str());
+        debugLogWarnf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(), err.c_str());
         return false;
     }
     configPath_ = path;
@@ -338,7 +338,7 @@ void Manager::start(const std::string& name) {
     if (!h) return;
     if (!h->cfg.trusted) {
         // fail closed: the only security switch this version has.
-        debugLogf("[mcp] skip '%s' (trusted=false)", name.c_str());
+        debugLogWarnf("[mcp] skip '%s' (trusted=false)", name.c_str());
         h->lastError = "not trusted (set \"trusted\": true in mcp.json to allow it)";
         h->state.store(ConnState::Stopped);
         return;
@@ -448,7 +448,7 @@ void Manager::workerMain(ServerHandle* h) {
 
     if (!spawn(spec, h->proc, err)) {
         h->lastError = err;
-        debugLogf("[mcp:%s] spawn failed: %s", h->cfg.name.c_str(), err.c_str());
+        debugLogWarnf("[mcp:%s] spawn failed: %s", h->cfg.name.c_str(), err.c_str());
         h->state.store(ConnState::Dead);
         return;
     }
@@ -463,7 +463,7 @@ void Manager::workerMain(ServerHandle* h) {
             h->lastError = "stopped during setup";
         else
             h->lastError = err;
-        debugLogf("[mcp:%s] setup failed: %s", h->cfg.name.c_str(), h->lastError.c_str());
+        debugLogWarnf("[mcp:%s] setup failed: %s", h->cfg.name.c_str(), h->lastError.c_str());
         killProcess(*h);
         h->state.store(ConnState::Dead);
         return;
@@ -548,14 +548,14 @@ bool Manager::listTools(ServerHandle& h, std::string& err) {
             // silently degrading it (models.cpp has a catch that returns
             // {"type":"object"} and drops properties/required).
             if (!t["inputSchema"].is_object()) {
-                debugLogf("[mcp:%s] tool '%s' skipped: inputSchema is not an object",
+                debugLogWarnf("[mcp:%s] tool '%s' skipped: inputSchema is not an object",
                           h.cfg.name.c_str(), name.c_str());
                 continue;
             }
             try {
                 def.inputSchemaJson = t["inputSchema"].dump();
             } catch (const std::exception& e) {
-                debugLogf("[mcp:%s] tool '%s' skipped: inputSchema dump failed: %s",
+                debugLogWarnf("[mcp:%s] tool '%s' skipped: inputSchema dump failed: %s",
                           h.cfg.name.c_str(), name.c_str(), e.what());
                 continue;
             }
@@ -723,7 +723,7 @@ Manager::SyncResult Manager::syncTools(ToolRegistry& registry) {
             if (registry.registerToolIfAbsent(def, ex)) {
                 added.push_back(def.name);
             } else {
-                debugLogf("[mcp:%s] tool '%s' already registered; skipped", server.c_str(),
+                debugLogWarnf("[mcp:%s] tool '%s' already registered; skipped", server.c_str(),
                           def.name.c_str());
             }
         }

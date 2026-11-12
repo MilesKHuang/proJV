@@ -2,6 +2,7 @@
 #include "config_view.h"
 
 #include "approval_logic.h"
+#include "core/snapshot.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
@@ -9,6 +10,8 @@
 
 #include <memory>
 #include <string>
+#include <algorithm>
+#include <optional>
 
 using namespace ftxui;
 
@@ -145,7 +148,7 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
         app.approveTool(1);
         onClose();
     });
-    Component always = Button("ALWAYS -- Allow This Session", [&app, onClose] {
+    Component always = Button("ALWAYS -- Allow This Command", [&app, onClose] {
         app.approveTool(2);
         onClose();
     });
@@ -157,33 +160,37 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
 
     return Renderer(buttons, [&app, yes, always, no] {
         Elements els;
-        els.push_back(text("DELETE CONFIRMATION") | bold);
-        els.push_back(separator());
-        els.push_back(text("The AI wants to DELETE files. Review the operation below:"));
 
-        if (auto* agent = app.getAgent()) {
-            auto msgs = agent->getSession().getContextMessages();
-            if (!msgs.empty()) {
-                const auto& toolCalls = msgs.back().toolCalls;
-                for (const auto& call : toolCalls) {
-                    std::string cmd = approval_logic::extractCommand(call.arguments);
-                    auto files = approval_logic::extractDeleteFiles(cmd);
-                    els.push_back(separator());
-                    els.push_back(text("Command: " + cmd) | color(Color::RGB(224, 200, 96)));
-                    if (files.empty()) {
-                        els.push_back(text("  " + call.arguments));
-                    } else {
-                        els.push_back(text("Files to delete:"));
-                        for (const auto& f : files) {
-                            els.push_back(text("  - " + f));
-                        }
-                    }
-                }
-            }
+        // The agent owns the truth: one call at a time. Reading the session's
+        // last message here used to work only because the whole batch happened
+        // to be in it.
+        std::optional<ToolCall> call;
+        if (auto* agent = app.getAgent()) call = agent->pendingApproval();
+        const std::string cmd = call ? approval_logic::extractCommand(call->arguments) : "";
+        const auto files = approval_logic::extractDeleteFiles(cmd);
+
+        els.push_back(text("COMMAND APPROVAL") | bold);
+        els.push_back(separator());
+        els.push_back(text("This command deletes or overwrites files:"));
+        els.push_back(
+            text("  " + (cmd.empty() ? std::string("(arguments unreadable)") : cmd)) |
+            color(Color::RGB(224, 200, 96)));
+
+        if (!files.empty()) {
+            els.push_back(text("Targets:"));
+            const size_t shown = std::min<size_t>(files.size(), 10);
+            for (size_t i = 0; i < shown; ++i) els.push_back(text("  - " + files[i]));
+            if (files.size() > shown)
+                els.push_back(text("  ... and " + std::to_string(files.size() - shown) + " more"));
         }
 
         els.push_back(separator());
-        els.push_back(text("Approve this delete operation?"));
+        els.push_back(text("ALWAYS is bound to this exact command text; NO drops the whole batch.") |
+                      dim);
+        els.push_back(text(snapshot::isAvailable()
+                               ? "[Undo available] the files this turn changes can be restored with /undo"
+                               : "[Undo unavailable] a deletion here cannot be reverted")
+                      | dim);
         els.push_back(
             hbox({yes->Render(), text("  "), always->Render(), text("  "), no->Render()}));
         return vbox(std::move(els)) | border;

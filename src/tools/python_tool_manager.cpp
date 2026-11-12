@@ -113,7 +113,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
         // (a) Check tool.json
         auto jsonPath = toolDir / "tool.json";
         if (!fs::is_regular_file(jsonPath)) {
-            debugLogf("[PyTool] skipping '%s': no tool.json", toolName.c_str());
+            debugLogWarnf("[PyTool] skipping '%s': no tool.json", toolName.c_str());
             skipped++;
             continue;
         }
@@ -123,7 +123,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
             std::ifstream ifs(jsonPath);
             ifs >> j;
         } catch (const std::exception& e) {
-            debugLogf("[PyTool] skipping '%s': tool.json parse error: %s", toolName.c_str(),
+            debugLogWarnf("[PyTool] skipping '%s': tool.json parse error: %s", toolName.c_str(),
                       e.what());
             skipped++;
             continue;
@@ -131,7 +131,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
 
         if (!j.contains("name") || !j["name"].is_string() || !j.contains("description") ||
             !j["description"].is_string()) {
-            debugLogf("[PyTool] skipping '%s': tool.json missing name/description",
+            debugLogWarnf("[PyTool] skipping '%s': tool.json missing name/description",
                       toolName.c_str());
             skipped++;
             continue;
@@ -139,13 +139,13 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
 
         std::string jsonName = j["name"].get<std::string>();
         if (jsonName != toolName) {
-            debugLogf("[PyTool] warning: json name '%s' != dir '%s', using dir name",
+            debugLogWarnf("[PyTool] warning: json name '%s' != dir '%s', using dir name",
                       jsonName.c_str(), toolName.c_str());
         }
 
         // (b) Check main.py
         if (!fs::is_regular_file(toolDir / "main.py")) {
-            debugLogf("[PyTool] skipping '%s': no main.py", toolName.c_str());
+            debugLogWarnf("[PyTool] skipping '%s': no main.py", toolName.c_str());
             skipped++;
             continue;
         }

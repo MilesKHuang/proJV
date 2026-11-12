@@ -92,3 +92,5 @@ external/       内置依赖：FTXUI、SQLiteCpp、curl、json、toml++、loguru
 接着读 -> [模块地图](module-map.md) | 改动配方 -> [recipes](recipes.md)
 
 编写 skill -> [skill 编写指南](../user-guide/09-skills-authoring.md)：不看源码也能搭出 sub-agent 编排（配置全表、模板陷阱、两种模式、两个可复制例子、起飞前清单）
+
+安全边界 -> [安全边界](security-model.md)：哪些路径有检查、哪些没有、为什么不做沙箱

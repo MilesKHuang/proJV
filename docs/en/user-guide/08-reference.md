@@ -30,6 +30,8 @@
 | `/help` | In-chat help |
 | `/clear` | Clear the current session |
 | `/compress` | Summarise early messages |
+| `/undo` | Undo the file changes of the last turn. `/undo!` also discards edits made by hand after that turn |
+| `/restore N` | Roll the workspace back to before turn N; needs `/restore N confirm` |
 | `/workspace` | Print the current workspace |
 | `/skill list` | List installed skills |
 | `/<skill> <topic>` | Run an installed skill, e.g. `/monica D:\proj` |
@@ -74,6 +76,8 @@
 | `python_path` | interpreter for pytool; empty = `python` |
 | `clang_format_path` | binary used by `format_file`; empty = PATH |
 | `[model_prices]` | prefix -> input/output price per 1M tokens, for the cost estimate |
+| `snapshots_max_workspace_gb` | default 2. A workspace bigger than this disables `/undo` (the gate exists so a huge tree is not copied every turn); `0` turns the gate off |
+| `snapshots_keep_days` | default 7. Snapshots older than this are pruned at startup |
 
 ## Exit codes / limits
 
@@ -94,6 +98,10 @@
 | `cannot dispatch to a driver agent` | dispatch is one layer deep by design |
 | `[skill] config: unknown key 'x'` | typo in `config.json`; the value was ignored |
 | `format_file` says not found | install `clang-format` or set `clang_format_path`. Visual Studio ships one: `...\VC\Tools\Llvm\x64\bin\clang-format.exe` |
+| `TLS certificate verification failed` | proJV verifies the server certificate and has **no switch to turn that off**. Behind a proxy or gateway that re-signs TLS, install that proxy's root CA in the OS trust store (Windows: Trusted Root Certification Authorities; Linux: `/usr/local/share/ca-certificates` + `update-ca-certificates`). Also check the system clock: a wrong date fails the same way. |
+| A dialog appeared before a shell command | That command deletes or overwrites something (`rm`/`del`, `mv`/`cp` onto an existing file, a `>` redirect, `git clean`/`reset --hard`, `python -c`). "Execute once" runs it now; "Always" allows that exact command text for the rest of the session; "No" drops the whole batch and tells the model. |
+| `blocked by policy: ... cannot be undone` | Disk formatting or partitioning (`format`, `diskpart`, `mkfs`, `fdisk`, `parted`, `dd of=/dev/...`). There is no dialog and no override: run it yourself if you really mean it. |
+| Where are the logs? | `projv_files/logs/proJV-YYYY-MM-DD.log`, one file per day, 7 days kept. Crashes add `crash-<timestamp>.log` and `.dmp` in the same folder. A release build writes WARNING and ERROR only; a debug build writes everything. |
 
 ---
 

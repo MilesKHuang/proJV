@@ -2,9 +2,12 @@
 #include "prompts.h"
 #include "json.hpp"
 #include "debug_log.h"
+#include "snapshot.h"
 #include "tools/diff_capture.h"
 #include <cstdio>
 #include <algorithm>
+#include <ctime>
+#include <filesystem>
 #include <iterator>
 #include <sstream>
 #include <set>
@@ -32,6 +35,8 @@ static constexpr const char* QUICK_HELP =
     "### Quick Commands\n\n| Command | Description |\n|---------|-------------|\n"
     "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
     "| `/compress` | Summarize early messages |\n"
+    "| `/undo` | Undo the file changes of the last turn (`/undo!` drops later manual edits too) |\n"
+    "| `/restore N` | Roll the workspace back to before turn N (`/restore N confirm`) |\n"
     "| `/<skill> <topic>` | Run an installed multi-agent skill (e.g. `/monica D:\\dir`) |\n"
     "| `/skill list` | List installed skills |\n"
     "\nproJV v" PROJV_VERSION " - native C++ DeepSeek AI agent (FTXUI).\n";
@@ -138,15 +143,68 @@ std::string oneLine(const std::string& in, size_t maxLen = 120) {
         out.pop_back();
     return out;
 }
+// One message for both readers: the user sees what happened, and the model is
+// told in plain words that the files it edited are gone. Without that sentence
+// the next reply still talks about the reverted edits.
+static std::string snapshotReportText(const char* cmd, const snapshot::Report& r) {
+    if (r.needsForce) {
+        return std::string("[Snapshot] Not executed: ") + std::to_string(r.skipped.size()) +
+               " file(s) changed after that turn. Re-run " + cmd +
+               (std::string(cmd) == "/undo" ? "!" : " <turn> confirm") +
+               " to discard those changes as well.";
+    }
+    if (!r.error.empty()) return std::string("[Snapshot] Not executed: ") + r.error;
+
+    std::string s = std::string("[Snapshot] Undid turn ") + std::to_string(r.turnSeq) + ": " +
+                    std::to_string(r.restored.size()) + " restored, " +
+                    std::to_string(r.removed.size()) + " removed";
+    if (!r.skipped.empty()) s += ", " + std::to_string(r.skipped.size()) + " skipped";
+    s += ".";
+    if (!r.restored.empty() || !r.removed.empty()) {
+        s += " Those edits no longer exist -- do not assume the files still contain them.\n";
+        for (const std::string& p : r.restored) s += "  M " + p + "\n";
+        for (const std::string& p : r.removed) s += "  D " + p + "\n";
+    }
+    return s;
+}
+
 } // namespace
 
+std::string Agent::sessionId() const {
+    if (storage) {
+        const std::string id = storage->sessionId();
+        if (!id.empty()) return id;
+    }
+    // No database yet (lazy creation): one stable id per process, so /undo
+    // still works inside this run.
+    static const std::string fallback = [] {
+        const std::time_t t = std::time(nullptr);
+        std::tm tm{};
+#ifdef _WIN32
+        localtime_s(&tm, &t);
+#else
+        localtime_r(&t, &tm);
+#endif
+        char buf[40];
+        std::strftime(buf, sizeof(buf), "session_%Y%m%d_%H%M%S", &tm);
+        return std::string(buf);
+    }();
+    return fallback;
+}
+
 std::string Agent::approvalSummary() const {
-    if (pendingApprovalCalls_.empty()) return "approval needed";
-    const ToolCall& c = pendingApprovalCalls_.front();
+    std::lock_guard<std::mutex> lk(approvalMutex_);
+    if (!pendingApproval_) return "approval needed";
+    const ToolCall& c = *pendingApproval_;
     std::string detail = oneLine(firstJsonValue(c.arguments), 80);
     std::string s = "approve " + c.name;
     if (!detail.empty()) s += ": " + detail;
     return oneLine(s, 120);
+}
+
+std::optional<ToolCall> Agent::pendingApproval() const {
+    std::lock_guard<std::mutex> lk(approvalMutex_);
+    return pendingApproval_;
 }
 
 void Agent::setPhase(AgentPhase p, const std::string& msgIn) {
@@ -184,6 +242,14 @@ void Agent::setPhase(AgentPhase p, const std::string& msgIn) {
 
 void Agent::run() {
     debugLog("[Agent] run: BEGIN");
+
+    // Snapshot turn: the baseline for /undo. Non-fatal by design -- a
+    // read-only store or an oversized workspace switches undo off, it never
+    // blocks the turn.
+    std::string snapErr;
+    const int snapSeq = snapshot::beginTurn(sessionId(), snapErr);
+    if (snapSeq < 0 && !snapErr.empty())
+        debugLogInfof("[Agent] snapshots off: %s", snapErr.c_str());
 
     // One-shot nudge for this turn (e.g. "the skill finished, report it").
     // Persisted as a System message: invisible in the chat bubble list, present
@@ -318,28 +384,6 @@ void Agent::run() {
                 toolIndex_ = 0;
                 toolResults_.clear();
 
-                bool hasD = false;
-                for (auto& c : pendingToolCalls_)
-                    if (hasDestructiveCommand(c)) {
-                        hasD = true;
-                        break;
-                    }
-
-                if (hasD && !destructiveApproved_.load()) {
-                    pendingApprovalCalls_ = pendingToolCalls_;
-                    setPhase(AgentPhase::AwaitApproval);
-                    updateSnapshot();
-                    std::unique_lock<std::mutex> lk(approvalMutex_);
-                    approvalCv_.wait(lk,
-                                     [this]() { return approvalDone_ || cancelRequested_.load(); });
-                    if (cancelRequested_.load()) break;
-                    if (!approvalGranted_) {
-                        session.clearLastToolCalls(USER_REJECTED_PREFIX);
-                        setPhase(AgentPhase::Streaming);
-                        updateSnapshot();
-                        break;
-                    }
-                }
                 setPhase(AgentPhase::ExecutingTools);
                 updateSnapshot();
             } else if (!currentContent_.empty()) {
@@ -386,6 +430,7 @@ void Agent::run() {
         case AgentPhase::ExecutingTools: {
             updateSnapshot();
             bool wasCancelled = false;
+            bool wasRejected = false;
             while (toolIndex_ < (int)pendingToolCalls_.size()) {
                 if (cancelRequested_.load()) {
                     wasCancelled = true;
@@ -399,6 +444,41 @@ void Agent::run() {
                     status_.currentToolName = call.name;
                     status_.state = AgentState::ExecutingTool;
                 }
+                // Policy runs per call, not per batch: "allow this command" is
+                // granted for one exact command text, so each call has to be
+                // looked at on its own. A red line is refused without asking.
+                const delete_guard::Verdict verdict = evaluateCommandPolicy(call);
+                if (verdict.decision == delete_guard::Decision::Deny) {
+                    debugLogWarnf("[Agent] policy denied %s: %s", call.name.c_str(),
+                                  verdict.reason.c_str());
+                    ToolResult blocked;
+                    blocked.toolCallId = call.id;
+                    blocked.name = call.name;
+                    blocked.content = "Error: blocked by policy: " + verdict.reason;
+                    blocked.isError = true;
+                    toolResults_.push_back(blocked);
+                    ++toolIndex_;
+                    continue;
+                }
+                if (verdict.decision == delete_guard::Decision::Ask &&
+                    !hasGrant(commandOf(call))) {
+                    const bool granted = awaitApproval(call);
+                    if (cancelRequested_.load()) {
+                        wasCancelled = true;
+                        break;
+                    }
+                    if (!granted) {
+                        // Same semantics as before: the whole batch is dropped
+                        // and the model is told, then the turn continues.
+                        toolResults_.clear();
+                        pendingToolCalls_.clear();
+                        session.clearLastToolCalls(USER_REJECTED_PREFIX);
+                        setPhase(AgentPhase::Streaming);
+                        updateSnapshot();
+                        wasRejected = true;
+                        break;
+                    }
+                }
                 // Per-tool report ("tool: read_file") -- the host can show which
                 // tool is running instead of a generic "working".
                 setPhase(AgentPhase::ExecutingTools, "tool: " + call.name);
@@ -410,6 +490,7 @@ void Agent::run() {
                     break;
                 }
             }
+            if (wasRejected) break;
             if (cancelRequested_.load() || wasCancelled) {
                 session.stripOrphanedToolCalls();
                 break;
@@ -518,6 +599,11 @@ void Agent::run() {
         status_.toolProgressCurrent = status_.toolProgressTotal = 0;
         status_.currentToolName.clear();
     }
+    if (snapSeq >= 0) {
+        std::string endErr;
+        if (!snapshot::endTurn(snapSeq, endErr))
+            debugLogWarnf("[Agent] snapshot end failed: %s", endErr.c_str());
+    }
     debugLog("[Agent] run: END");
 }
 
@@ -526,9 +612,17 @@ void Agent::run() {
 void Agent::approveTool(int action) {
     {
         std::lock_guard<std::mutex> lk(approvalMutex_);
+        // "Always" binds to the exact command text of the call on screen. It
+        // used to set one flag for the whole session, which meant one click
+        // allowed every destructive command until /clear.
+        if (action == 2 && pendingApproval_) {
+            const std::string cmd = commandOf(*pendingApproval_);
+            if (!cmd.empty() && std::find(grants_.begin(), grants_.end(), cmd) == grants_.end())
+                grants_.push_back(cmd);
+        }
+        approvalAction_ = action;
         approvalDone_ = true;
         approvalGranted_ = (action != 0);
-        if (action == 2) destructiveApproved_.store(true, std::memory_order_release);
     }
     approvalCv_.notify_one();
 }
@@ -551,7 +645,11 @@ void Agent::newTurn() {
     // Defensive: a turn-end request raised by a tool must never leak into the
     // next turn (e.g. the turn was cancelled before it could be honoured).
     (void)toolRegistry.consumeTurnEndRequest();
-    approvalDone_ = false;
+    {
+        std::lock_guard<std::mutex> lk(approvalMutex_);
+        approvalDone_ = false;
+        approvalGranted_ = false;
+    }
     currentToolCalls_.clear();
     pendingToolCalls_.clear();
     toolResults_.clear();
@@ -569,7 +667,11 @@ void Agent::clearSession() {
     session.clear();
     contextTokensDirty_ = true;
     toolCallDepth_ = 0;
-    destructiveApproved_.store(false);
+    {
+        std::lock_guard<std::mutex> lk(approvalMutex_);
+        grants_.clear();
+        pendingApproval_.reset();
+    }
     setPhase(AgentPhase::Idle);
     {
         // R2: new session must not carry over overview/TODO/user-request context.
@@ -754,11 +856,11 @@ void Agent::checkContextWarning() {
 
 bool Agent::compactSession(bool force) {
     if (cancelRequested_.load()) {
-        debugLogf("[Compact] skipped: cancelled");
+        debugLogWarnf("[Compact] skipped: cancelled");
         return false;
     }
     if (!force && session.messageCount() < 8) {
-        debugLogf("[Compact] skipped: <8 messages (%zu)", session.messageCount());
+        debugLogWarnf("[Compact] skipped: <8 messages (%zu)", session.messageCount());
         return false;
     }
     auto msgs = session.getContextMessages();
@@ -767,12 +869,12 @@ bool Agent::compactSession(bool force) {
         est += Session::estimateTokens(m.content) + Session::estimateTokens(m.reasoningContent);
     size_t w = effectiveContextWindow();
     if (!force && est < w * 4 / 5) {
-        debugLogf("[Compact] skipped: below threshold (%zu < %zu)", est, w * 4 / 5);
+        debugLogWarnf("[Compact] skipped: below threshold (%zu < %zu)", est, w * 4 / 5);
         return false;
     }
     auto plan = session.planCompaction(4);
     if (plan.summarizeIndices.empty()) {
-        debugLogf("[Compact] skipped: plan has 0 messages to summarize (all pinned)");
+        debugLogWarnf("[Compact] skipped: plan has 0 messages to summarize (all pinned)");
         return false;
     }
     std::string input;
@@ -785,7 +887,7 @@ bool Agent::compactSession(bool force) {
     }
     input += session.buildCompactionInput(plan);
     if (input.size() < 200) {
-        debugLogf("[Compact] skipped: compaction input too small (%zu bytes)", input.size());
+        debugLogWarnf("[Compact] skipped: compaction input too small (%zu bytes)", input.size());
         return false;
     }
     ChatRequest req;
@@ -798,12 +900,12 @@ bool Agent::compactSession(bool force) {
     std::string err;
     ChatResponse resp = client.sendMessage(req, &err);
     if (!err.empty() || resp.messages.empty()) {
-        debugLogf("[Compact] LLM call failed: %s", err.empty() ? "empty response" : err.c_str());
+        debugLogWarnf("[Compact] LLM call failed: %s", err.empty() ? "empty response" : err.c_str());
         return false;
     }
     std::string s = resp.messages.back().content;
     if (s.size() < 50) {
-        debugLogf("[Compact] summary too short (%zu bytes)", s.size());
+        debugLogWarnf("[Compact] summary too short (%zu bytes)", s.size());
         return false;
     }
     session.applyCompaction(plan, s);
@@ -837,92 +939,55 @@ ToolResult Agent::executeTool(const ToolCall& call) {
     return r;
 }
 
-bool Agent::hasDestructiveCommand(const ToolCall& call) const {
-    if (call.name != "exec_shell") return false;
-    std::string cmd;
+std::string Agent::commandOf(const ToolCall& call) {
     try {
-        cmd = nlohmann::json::parse(call.arguments).value("command", "");
+        return nlohmann::json::parse(call.arguments).value("command", "");
     } catch (...) {
-        return false;
+        return std::string();
     }
-    std::string lo = cmd;
-    for (auto& c : lo)
-        c = (char)tolower((unsigned char)c);
-    struct K {
-        const char* w;
-        bool tb;
-    };
-    const K kw[] = {// "del" variants (CMD: del, PowerShell alias for Remove-Item)
-                    {"del ", 1},
-                    {"del\t", 1},
-                    {"del\"", 1},
-                    {"del/", 1},
-                    {"del;", 1},
-                    {"del|", 1},
-                    {"del>", 1},
-                    {"del)", 1},
-                    {"del&", 1},
-                    // "erase" (CMD synonym for del)
-                    {"erase ", 1},
-                    {"erase\t", 1},
-                    // "rm" variants (Unix / PowerShell Remove-Item alias)
-                    {"rm ", 1},
-                    {"rm\t", 1},
-                    {"rm\"", 1},
-                    {"rm/", 1},
-                    {"rm;", 1},
-                    {"rm|", 1},
-                    {"rm>", 1},
-                    {"rm)", 1},
-                    {"rm&", 1},
-                    // "rmdir" (CMD / PowerShell)
-                    {"rmdir ", 1},
-                    {"rmdir\t", 1},
-                    // "rd" variants (CMD remove directory)
-                    {"rd ", 1},
-                    {"rd\t", 1},
-                    {"rd\"", 1},
-                    {"rd/", 1},
-                    {"rd;", 1},
-                    {"rd|", 1},
-                    {"rd>", 1},
-                    {"rd)", 1},
-                    // "remove-item" variants (PowerShell)
-                    {"remove-item ", 1},
-                    {"remove-item;", 1},
-                    {"remove-item|", 1},
-                    {"remove-item>", 1},
-                    {"remove-item)", 1},
-                    {"remove-item&", 1},
-                    // "ri" (PowerShell shorthand for Remove-Item -- requires token boundary)
-                    {"ri ", 1},
-                    {"ri;", 1},
-                    {"ri|", 1},
-                    {"ri>", 1},
-                    // destructive commands (no boundary check)
-                    {"format ", 1},
-                    {"diskpart", 0},
-                    {"taskkill", 0},
-                    {"shutdown", 0}};
-    for (auto& k : kw) {
-        size_t p = lo.find(k.w);
-        while (p != std::string::npos) {
-            bool ok = true;
-            if (k.tb && p > 0) {
-                char prev = lo[p - 1];
-                // Previous char must be a token boundary:
-                // whitespace, quotes, shell operators (; | > ) &), or '='.
-                ok = (prev == ' ' || prev == '\t' || prev == '\r' || prev == '\n' || prev == '"' ||
-                      prev == '\'' || prev == ';' || prev == '|' || prev == '>' || prev == ')' ||
-                      prev == '&' || prev == '=');
-            }
-            if (ok) return true;
-            p = lo.find(k.w, p + 1);
-        }
-    }
-    return false;
 }
 
+bool Agent::hasGrant(const std::string& command) const {
+    if (command.empty()) return false;
+    std::lock_guard<std::mutex> lk(approvalMutex_);
+    return std::find(grants_.begin(), grants_.end(), command) != grants_.end();
+}
+
+delete_guard::Verdict Agent::evaluateCommandPolicy(const ToolCall& call) const {
+    delete_guard::Verdict v;
+    if (call.name != "exec_shell") return v; // every other tool is allow-by-default
+    const std::string cmd = commandOf(call);
+    if (cmd.empty()) return v;
+    v = delete_guard::evaluate(cmd);
+    if (v.decision == delete_guard::Decision::Ask && v.needsExistenceCheck) {
+        // `cp a b` only overwrites when b is already there. The classifier is
+        // pure, so the stat happens here; a relative path resolves against the
+        // shell's working directory, which is the process CWD (the workspace).
+        std::error_code ec;
+        std::filesystem::path target(v.checkTarget);
+        if (target.is_relative()) target = std::filesystem::current_path(ec) / target;
+        if (!ec && !std::filesystem::exists(target, ec))
+            v.decision = delete_guard::Decision::Allow;
+    }
+    return v;
+}
+
+bool Agent::awaitApproval(const ToolCall& call) {
+    {
+        std::lock_guard<std::mutex> lk(approvalMutex_);
+        pendingApproval_ = call;
+        approvalDone_ = false;
+        approvalGranted_ = false;
+        approvalAction_ = 0;
+    }
+    setPhase(AgentPhase::AwaitApproval);
+    updateSnapshot();
+    std::unique_lock<std::mutex> lk(approvalMutex_);
+    approvalCv_.wait(lk, [this]() { return approvalDone_ || cancelRequested_.load(); });
+    const bool granted = approvalGranted_;
+    pendingApproval_.reset();
+    return granted;
+}
 // ========== Build request ==========
 
 ChatRequest Agent::buildChatRequest() const {
@@ -1048,6 +1113,29 @@ bool Agent::handleQuickCommand(const std::string& input) {
     }
     if (c == "/help") {
         addPersistedMessage(Message::Assistant(QUICK_HELP));
+        return true;
+    }
+    if (c == "/undo" || c == "/undo!") {
+        const bool force = (c == "/undo!");
+        const snapshot::Report r = snapshot::undoLast(sessionId(), force);
+        addPersistedMessage(Message::System(snapshotReportText("/undo", r)));
+        return true;
+    }
+    if (c.rfind("/restore", 0) == 0) {
+        std::istringstream iss(c.substr(std::string("/restore").size()));
+        int turn = -1;
+        iss >> turn;
+        bool confirm = false;
+        std::string word;
+        while (iss >> word)
+            if (word == "confirm") confirm = true;
+        if (turn < 0) {
+            addPersistedMessage(
+                Message::System("[Snapshot] Usage: /restore <turn> confirm -- see /help."));
+            return true;
+        }
+        const snapshot::Report r = snapshot::restoreTo(sessionId(), turn, confirm);
+        addPersistedMessage(Message::System(snapshotReportText("/restore", r)));
         return true;
     }
     return false;

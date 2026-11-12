@@ -120,23 +120,23 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
     for (const auto& item : root["servers"]) {
         ++index;
         if (!item.is_object()) {
-            debugLogf("[mcp] server #%d skipped: not an object", index);
+            debugLogWarnf("[mcp] server #%d skipped: not an object", index);
             continue;
         }
         McpServerConfig cfg;
         cfg.name = trim(item.value("name", std::string()));
         if (cfg.name.empty()) {
-            debugLogf("[mcp] server #%d skipped: missing 'name'", index);
+            debugLogWarnf("[mcp] server #%d skipped: missing 'name'", index);
             continue;
         }
         if (!seen.insert(cfg.name).second) {
-            debugLogf("[mcp] server '%s' skipped: duplicate name (first one wins)",
+            debugLogWarnf("[mcp] server '%s' skipped: duplicate name (first one wins)",
                       cfg.name.c_str());
             continue;
         }
         cfg.command = trim(item.value("command", std::string()));
         if (cfg.command.empty()) {
-            debugLogf("[mcp] server '%s' skipped: missing 'command'", cfg.name.c_str());
+            debugLogWarnf("[mcp] server '%s' skipped: missing 'command'", cfg.name.c_str());
             continue;
         }
         // Not fatal (an old file must keep working), but loud: the description is
@@ -149,17 +149,17 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
 
         std::string why;
         if (item.contains("args") && !readArgs(item["args"], cfg.args, why)) {
-            debugLogf("[mcp] server '%s' skipped: %s", cfg.name.c_str(), why.c_str());
+            debugLogWarnf("[mcp] server '%s' skipped: %s", cfg.name.c_str(), why.c_str());
             continue;
         }
         if (item.contains("env") && !readEnv(item["env"], cfg.env, why)) {
-            debugLogf("[mcp] server '%s' skipped: %s", cfg.name.c_str(), why.c_str());
+            debugLogWarnf("[mcp] server '%s' skipped: %s", cfg.name.c_str(), why.c_str());
             continue;
         }
 
         cfg.protocol = item.value("protocol", std::string("stateful"));
         if (cfg.protocol != "stateful" && cfg.protocol != "stateless") {
-            debugLogf("[mcp] server '%s' skipped: protocol must be \"stateful\" or "
+            debugLogWarnf("[mcp] server '%s' skipped: protocol must be \"stateful\" or "
                       "\"stateless\" (got \"%s\")",
                       cfg.name.c_str(), cfg.protocol.c_str());
             continue;

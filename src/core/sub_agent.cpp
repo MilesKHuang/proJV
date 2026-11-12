@@ -130,7 +130,7 @@ std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force,
 
     client_.streamBlocking(req, cb);
     if (!lastError_.empty()) {
-        debugLogf("[Skill][%s] '%s' failed: %s", name_.c_str(), verb.c_str(), lastError_.c_str());
+        debugLogWarnf("[Skill][%s] '%s' failed: %s", name_.c_str(), verb.c_str(), lastError_.c_str());
     }
 
     // Return ALL calls in this response (parallel tool calling), not just one.
@@ -146,7 +146,7 @@ std::vector<ToolCall> SubAgent::requestTool(const std::string& verb, bool force,
     outText.clear();
     std::vector<ToolCall> calls = doRequest(verb, force, outText); // honor force
     if (calls.empty() && force && lastError_.find("tool_choice") != std::string::npos) {
-        debugLogf("[Skill][%s] forced tool_choice rejected, retrying with auto", name_.c_str());
+        debugLogWarnf("[Skill][%s] forced tool_choice rejected, retrying with auto", name_.c_str());
         calls = doRequest(verb, false, outText);
     }
     return calls;

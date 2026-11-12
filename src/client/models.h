@@ -242,6 +242,12 @@ struct AppConfig {
     // silently, so this can be on by default; PROJV_NO_OSC=1 forces it off.
     bool oscStatus = true;
 
+    // Snapshots (/undo). snapshotsMaxWorkspaceGb <= 0 disables the capacity
+    // gate -- the gate exists because a 5 GB tree would be copied on every
+    // turn; keepDays follows the log retention rule.
+    int snapshotsMaxWorkspaceGb = 2;
+    int snapshotsKeepDays = 7;
+
     bool loaded = false;
     std::string loadError;
 

@@ -7,11 +7,12 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <dbghelp.h>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <ctime>
 #include <functional>
-#include <mutex>
+#include <string>
+#include <system_error>
 #include <utility>
 
 namespace fs = std::filesystem;
@@ -27,7 +28,13 @@ class SystemUtilWin : public ISystemUtil {
     std::string GetUserConfigDir() override { return GetExeDir() + "\\projv_files"; }
 
     void InstallCrashHandler() override {
-        GetModuleFileNameA(nullptr, crashExePath_, MAX_PATH);
+        // The crash callback must not create directories: it can run with a
+        // corrupted heap or an exhausted stack. Prepare the target here, while
+        // the process is still healthy.
+        const std::string dir = GetUserConfigDir() + "\\logs";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        std::snprintf(crashDir_, sizeof(crashDir_), "%s", dir.c_str());
         SetUnhandledExceptionFilter(UnhandledHandler);
         prevHandler_ = this;
     }
@@ -46,8 +53,8 @@ class SystemUtilWin : public ISystemUtil {
 
   private:
     static SystemUtilWin* prevHandler_;
-    static char crashExePath_[MAX_PATH];
-    static std::mutex crashMutex_;
+    static char crashDir_[MAX_PATH];
+    static volatile LONG crashBusy_;
     std::function<void()> exitCallback_;
 
     static BOOL WINAPI ConsoleCtrlHandler(DWORD ctrl) {
@@ -61,32 +68,46 @@ class SystemUtilWin : public ISystemUtil {
         return FALSE;
     }
 
+    // Runs on the crashing thread. Nothing here may allocate, take a lock the
+    // crashed thread already holds, or throw: no std::string, no ofstream, no
+    // std::mutex, no filesystem. Win32 calls and stack buffers only.
     static LONG WINAPI UnhandledHandler(EXCEPTION_POINTERS* pExp) {
-        std::lock_guard<std::mutex> lock(crashMutex_);
+        if (InterlockedCompareExchange(&crashBusy_, 1, 0) != 0) return EXCEPTION_EXECUTE_HANDLER;
 
-        fs::path exeDir = fs::path(crashExePath_).parent_path();
-        auto logPath = exeDir / "proJV_crash.log";
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        char stamp[32];
+        wsprintfA(stamp, "%04d%02d%02d-%02d%02d%02d", st.wYear, st.wMonth, st.wDay, st.wHour,
+                  st.wMinute, st.wSecond);
 
-        std::ofstream log(logPath, std::ios::app);
-        if (log.is_open()) {
-            auto t = std::time(nullptr);
-            char tb[64];
-            struct tm local;
-            localtime_s(&local, &t);
-            strftime(tb, sizeof(tb), "%Y-%m-%d %H:%M:%S", &local);
+        char base[MAX_PATH];
+        wsprintfA(base, "%s\\crash-%s", crashDir_, stamp);
 
-            DWORD code = pExp->ExceptionRecord->ExceptionCode;
-            PVOID addr = pExp->ExceptionRecord->ExceptionAddress;
-            log << "=== proJV CRASH " << tb << " ===" << std::endl;
-            log << "Code: 0x" << std::hex << code << std::dec << "  Addr: 0x" << std::hex
-                << (uintptr_t)addr << std::dec << std::endl;
-            log.close();
+        // 1) A one-line report a human can act on.
+        char textPath[MAX_PATH];
+        wsprintfA(textPath, "%s.log", base);
+        HANDLE hText = CreateFileA(textPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hText != INVALID_HANDLE_VALUE) {
+            const unsigned long long addr =
+                (unsigned long long)(uintptr_t)pExp->ExceptionRecord->ExceptionAddress;
+            char body[512];
+            wsprintfA(body,
+                      "=== proJV CRASH %04d-%02d-%02d %02d:%02d:%02d ===\r\n"
+                      "code=0x%08lX address=0x%08lX%08lX\r\n",
+                      st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+                      (unsigned long)pExp->ExceptionRecord->ExceptionCode,
+                      (unsigned long)(addr >> 32), (unsigned long)(addr & 0xFFFFFFFF));
+            DWORD written = 0;
+            WriteFile(hText, body, (DWORD)lstrlenA(body), &written, nullptr);
+            CloseHandle(hText);
         }
 
-        // Minidump
-        auto dumpPath = exeDir / "proJV_crash.dmp";
-        HANDLE hDump = CreateFileW(dumpPath.wstring().c_str(), GENERIC_WRITE, 0, nullptr,
-                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        // 2) The minidump: the only artefact that carries a call stack.
+        char dumpPath[MAX_PATH];
+        wsprintfA(dumpPath, "%s.dmp", base);
+        HANDLE hDump = CreateFileA(dumpPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr);
         if (hDump != INVALID_HANDLE_VALUE) {
             MINIDUMP_EXCEPTION_INFORMATION mei;
             mei.ThreadId = GetCurrentThreadId();
@@ -102,8 +123,8 @@ class SystemUtilWin : public ISystemUtil {
 };
 
 SystemUtilWin* SystemUtilWin::prevHandler_ = nullptr;
-char SystemUtilWin::crashExePath_[MAX_PATH] = {};
-std::mutex SystemUtilWin::crashMutex_;
+char SystemUtilWin::crashDir_[MAX_PATH] = {};
+volatile LONG SystemUtilWin::crashBusy_ = 0;
 
 ISystemUtil* CreateSystemUtil() {
     return new SystemUtilWin();

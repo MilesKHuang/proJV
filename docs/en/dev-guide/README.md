@@ -95,3 +95,5 @@ No vcpkg / conan / npm / pip.
 ---
 
 Read next -> [module map](module-map.md) | Recipes -> [recipes](recipes.md) | Authoring a skill -> [skills authoring](../user-guide/09-skills-authoring.md)
+
+Security boundary -> [security model](security-model.md): what is checked, what is not, and why there is no sandbox.

@@ -2,6 +2,7 @@
 #include "models.h"
 #include "session.h"
 #include "storage.h"
+#include "delete_guard.h"
 #include "client/deepseek.h"
 #include "tools/registry.h"
 #include "tools/todo_tool.h"
@@ -13,6 +14,7 @@
 #include <condition_variable>
 #include <set>
 #include <vector>
+#include <optional>
 
 enum class AgentPhase { Idle, Streaming, ExecutingTools, AwaitApproval, Error };
 
@@ -40,6 +42,12 @@ class Agent {
     void setTurnNudge(const std::string& nudge) { turnNudge_ = nudge; }
 
     void approveTool(int action);
+
+    // The single exec_shell call currently waiting for the user, or nullopt.
+    // The approval dialog must read this and nothing else: the session copy
+    // happens to hold the same batch, but it is not the source of truth and
+    // reading it couples the UI to whatever the agent thread last wrote.
+    std::optional<ToolCall> pendingApproval() const;
     void cancel();
     AgentStatus getStatus() const;
     AgentPhase getPhase() const { return phase_.load(); }
@@ -135,8 +143,17 @@ class Agent {
     ChatRequest buildChatRequest() const;
     void doCompaction(bool force = false);
     void checkContextWarning();
-    bool hasDestructiveCommand(const ToolCall& call) const;
     ToolResult executeTool(const ToolCall& call);
+
+    // Shell-command policy. Red lines are refused outright; destructive
+    // commands are asked one exact command at a time (see delete_guard.h).
+    delete_guard::Verdict evaluateCommandPolicy(const ToolCall& call) const;
+    bool awaitApproval(const ToolCall& call);
+    bool hasGrant(const std::string& command) const;
+    static std::string commandOf(const ToolCall& call);
+    // Session identity for the snapshot index (database file name, or a
+    // per-process fallback before the database exists).
+    std::string sessionId() const;
     void repairSession();
     void updateSnapshot();
     // Single writer for phase_: keeps the loop and the OSC 7501 report in sync.
@@ -174,13 +191,15 @@ class Agent {
     int toolCallDepth_ = 0;
     int maxToolCallsPerRound_ = 30;
 
-    std::vector<ToolCall> pendingApprovalCalls_;
+    // Approval state. One call at a time: the grant it produces is bound to the
+    // exact command text, so the dialog and the wait can never cover a batch.
+    std::optional<ToolCall> pendingApproval_;
+    std::vector<std::string> grants_; // exact exec_shell command texts allowed for the session
     bool approvalDone_ = false;
     bool approvalGranted_ = false;
     int approvalAction_ = 0;
-    std::mutex approvalMutex_;
+    mutable std::mutex approvalMutex_;
     std::condition_variable approvalCv_;
-    std::atomic<bool> destructiveApproved_{false};
 
     mutable size_t cachedContextTokens_ = 0;
     mutable bool contextTokensDirty_ = true;

@@ -358,7 +358,7 @@ void Session::repairOrphanedToolCalls() {
             }
 
             if (!neededIds.empty()) {
-                debugLogf("[Session] repair Pass1: stripping %zu orphaned tool_calls from msg[%zu] "
+                debugLogWarnf("[Session] repair Pass1: stripping %zu orphaned tool_calls from msg[%zu] "
                           "(missing %zu tool results)",
                           messages[i].toolCalls.size(), i, neededIds.size());
                 if (messages[i].content.empty()) {

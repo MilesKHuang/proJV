@@ -69,6 +69,8 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | **`projv` on PATH** | `proJV_tui --install` writes a four-line forwarder - no admin rights - so `projv` runs from any directory in cmd, PowerShell or a shell. `--uninstall` removes only the forwarder, `--purge` the install directory; your config and sessions are never touched. |
 | **OSC 7501 status** | proJV reports `working` / `blocked` / `done` to the host terminal, so Windows Terminal, Ghostty or cmux can paint it on the tab. A redirected stdout gets no extra bytes; `osc_status = false` or `PROJV_NO_OSC=1` switches it off |
 | **Ostlr** | the companion multi-window agent manager reads that same status, so a proJV session shows up there as a first-class agent - no glue code on either side |
+| **`--version` / `--help`** | Print the version, or the two command groups (install / MCP), and exit without starting the TUI or touching the session store. |
+| **`--mcp-check` / `--mcp-call`** | Headless MCP smoke test: spawn every configured server, or call one tool and print its result. Built for scripts and CI. |
 
 ---
 
@@ -112,6 +114,12 @@ Deliberately narrow: proJV does one model provider well and puts the extension
 surface in plain files instead of a plugin registry.
 
 ---
+
+## Safety
+
+- File tools are confined to the workspace and `projv_files/`; `sessions/` and `logs/` are read-only to the model.
+- Shell commands that delete or overwrite ask first; disk formatting and partitioning are refused outright.
+- There is **no OS sandbox**: `exec_shell`, skills and MCP servers run as your user. Full detail and a Docker recipe: [security model](docs/en/dev-guide/security-model.md).
 
 ## Where to go next
 

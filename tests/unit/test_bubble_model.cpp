@@ -174,3 +174,16 @@ TEST_CASE("deriveBubbles: a tool message without a diff stays a single bubble") 
     REQUIRE(b.size() == 1);
     CHECK(b[0].role == "tool_result");
 }
+
+TEST_CASE("deriveBubbles: [Snapshot] messages are visible") {
+    // /undo reports through a system message; the bubble layer drops every
+    // system message it does not recognise, so this branch is the difference
+    // between "undo worked" and "nothing happened".
+    auto b = deriveBubbles(Message::System("[Snapshot] Undid turn 3: 2 restored, 0 removed."));
+    REQUIRE(b.size() == 1);
+    CHECK(b[0].role == "system");
+    CHECK(b[0].content.find("[Snapshot]") != std::string::npos);
+
+    // Still invisible: unrelated system plumbing.
+    CHECK(deriveBubbles(Message::System("[TODO] internal")).empty());
+}

@@ -30,25 +30,27 @@ inline const char* _dbg_str(const char* s) {
     return s;
 }
 
-#ifdef PROJV_RELEASE
-// Disable all loguru macros in Release builds -- no log output of any kind
-#undef LOG_F
-#define LOG_F(level, ...) ((void)0)
-#undef DLOG_F
-#define DLOG_F(level, ...) ((void)0)
-#undef VLOG_F
-#define VLOG_F(verbosity, ...) ((void)0)
+// --- Severity levels -----------------------------------------------
+// Business code declares the level; the file sink's verbosity decides whether
+// an INFO line is written at all. Release opens the sink at WARNING, and
+// loguru's VLOG_F checks current_verbosity_cutoff() before formatting anything
+// (external/loguru.hpp), so an INFO call there costs one integer compare --
+// there is no reason to compile the calls out.
+#define debugLogInfo(msg) LOG_F(INFO, "%s", _dbg_str(msg))
+#define debugLogInfof(fmt, ...) LOG_F(INFO, fmt, ##__VA_ARGS__)
+#define debugLogWarn(msg) LOG_F(WARNING, "%s", _dbg_str(msg))
+#define debugLogWarnf(fmt, ...) LOG_F(WARNING, fmt, ##__VA_ARGS__)
+#define debugLogErr(msg) LOG_F(ERROR, "%s", _dbg_str(msg))
+#define debugLogErrf(fmt, ...) LOG_F(ERROR, fmt, ##__VA_ARGS__)
 
-#define debugLog(msg)
-#define debugLogf(fmt, ...)
-#else
+// Old names keep INFO semantics. The failure paths were reclassified by hand
+// (43 WARNING + 16 ERROR); everything else is a normal-flow INFO line.
 #ifndef debugLog
-#define debugLog(msg) LOG_F(INFO, "%s", _dbg_str(msg))
+#define debugLog(msg) debugLogInfo(msg)
 #endif
 
 #ifndef debugLogf
-#define debugLogf(fmt, ...) LOG_F(INFO, fmt, ##__VA_ARGS__)
-#endif
+#define debugLogf(fmt, ...) debugLogInfof(fmt, ##__VA_ARGS__)
 #endif
 
 // --- Utility: truncate a string for logging ------------------------

@@ -40,6 +40,11 @@ class Storage {
     bool isOpen() const { return readDb_ != nullptr && writeDb_ != nullptr; }
     const std::string& currentPath() const { return currentPath_; }
 
+    // Session identity for the snapshot index: the database file name without
+    // its extension ("session_2026-11-12_22-15-03"). Empty before the database
+    // exists -- the caller substitutes a per-process fallback.
+    std::string sessionId() const;
+
     // -- Message operations (core data) --------------------------
     // Insert a message and return its row id, or -1 on failure.
     // If the message has toolCalls, they are automatically written

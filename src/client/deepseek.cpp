@@ -1,5 +1,6 @@
 #include <curl/curl.h>
 #include "deepseek.h"
+#include "curl_error.h"
 #include "json.hpp"
 #include "debug_log.h"
 
@@ -143,8 +144,12 @@ void* DeepSeekClient::createEasyHandle() {
     if (!curl) return nullptr;
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)kConnectTimeoutSec);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)kSendTimeoutSec);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    // Certificate verification stays at the libcurl default (VERIFYPEER=1,
+    // VERIFYHOST=2). Never set it back to 0, and do not add a config switch:
+    // "off" means "accept anyone impersonating api.deepseek.com", which hands
+    // the bearer token and the user's code to whoever answers the DNS. A proxy
+    // that re-signs traffic is fixed by installing its root CA in the OS trust
+    // store (Schannel on Windows already reads it), not here.
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "proJV/1.0");
     return curl;
 }
@@ -221,7 +226,7 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
             if (*outHttpStatus == 200 || *outHttpStatus == 0) return (int)res;
             if (isRetryableHttpStatus(*outHttpStatus) && retries < retryConfig_.maxRetries) {
                 ++retries;
-                debugLogf("[DeepSeek] HTTP %ld retryable, attempt %d/%d", *outHttpStatus, retries,
+                debugLogWarnf("[DeepSeek] HTTP %ld retryable, attempt %d/%d", *outHttpStatus, retries,
                           retryConfig_.maxRetries);
                 std::this_thread::sleep_for(
                     std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
@@ -233,7 +238,7 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
         // Network-level error -> retry if we haven't exceeded limit
         if (retries < retryConfig_.maxRetries) {
             ++retries;
-            debugLogf("[DeepSeek] curl_easy_perform error %d, retry %d/%d", (int)res, retries,
+            debugLogWarnf("[DeepSeek] curl_easy_perform error %d, retry %d/%d", (int)res, retries,
                       retryConfig_.maxRetries);
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
@@ -341,7 +346,8 @@ bool DeepSeekClient::streamBlocking(const ChatRequest& request, StreamCallbacks 
                     retryConfig_.delayForAttempt(transparentRetries - 1)));
                 continue;
             }
-            if (callbacks.onError) callbacks.onError(std::string("Stream error: ") + es);
+            debugLogf("[DeepSeek] stream curl error %d: %s", (int)res, es);
+            if (callbacks.onError) callbacks.onError(curl_error::describe((int)res, es));
             break;
         }
         if (httpStatus != 200) {
@@ -422,7 +428,7 @@ ChatResponse DeepSeekClient::sendMessage(const ChatRequest& request, std::string
     curl_slist_free_all(headers);
 
     if (rc != CURLE_OK) {
-        if (errorOut) *errorOut = std::string("curl error: ") + curl_easy_strerror((CURLcode)rc);
+        if (errorOut) *errorOut = curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
         return resp;
     }
     if (httpStatus != 200) {
@@ -488,7 +494,7 @@ std::vector<ModelInfo> DeepSeekClient::fetchModels(std::string* errorOut) {
     CURLcode res = curl_easy_perform(curl);
     curl_slist_free_all(headers);
     if (res != CURLE_OK) {
-        if (errorOut) *errorOut = curl_easy_strerror(res);
+        if (errorOut) *errorOut = curl_error::describe((int)res, curl_easy_strerror(res));
         return models;
     }
 
@@ -743,7 +749,7 @@ std::string DeepSeekClient::searchWeb(const std::string& query, int count, bool 
     long status = 0;
     int rc = postJson("v1/tools/search", body.dump(), respBody, &status);
     if (rc != CURLE_OK) {
-        const std::string err = std::string("Error: ") + curl_easy_strerror((CURLcode)rc);
+        const std::string err = "Error: " + curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
         if (errorOut) *errorOut = err;
         return err;
     }
@@ -781,7 +787,7 @@ std::string DeepSeekClient::fetchWeb(const std::string& url, std::string* errorO
     long status = 0;
     int rc = postJson("v1/tools/fetch", body.dump(), respBody, &status);
     if (rc != CURLE_OK) {
-        const std::string err = std::string("Error: ") + curl_easy_strerror((CURLcode)rc);
+        const std::string err = "Error: " + curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
         if (errorOut) *errorOut = err;
         return err;
     }
@@ -1053,7 +1059,7 @@ size_t DeepSeekClient::parseSSEChunk(const std::string& buffer, size_t startOffs
             return consumed;
         }
     } catch (const nlohmann::json::parse_error& e) {
-        debugLogf("[DeepSeek] SSE: JSON parse error: %s", e.what());
+        debugLogWarnf("[DeepSeek] SSE: JSON parse error: %s", e.what());
     } catch (const std::exception& e) {
         debugLogf("[DeepSeek] SSE: unexpected exception: %s", e.what());
     }

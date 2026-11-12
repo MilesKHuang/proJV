@@ -16,6 +16,9 @@
 #include "platform/isystem_util.h"
 #include "platform/iprocess_runner.h"
 #include "platform/install_shim.h"
+#include "platform/cli_args.h"
+#include "platform/log_files.h"
+#include "core/config.h"
 #include "core/terminal_status.h"
 
 #include <ftxui/component/component.hpp>
@@ -378,6 +381,20 @@ static int runMcpCheck(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
+    // Meta commands first. --help / --version must not be swallowed by the
+    // install branch below (it only looks for its own flags), and they must not
+    // require the platform layer or the TUI to be up.
+    {
+        std::vector<std::string> args;
+        for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+        std::string metaText;
+        if (const auto metaExit = cli_args::parseMetaArgs(args, metaText)) {
+            std::fputs(metaText.c_str(), stdout);
+            std::fflush(stdout);
+            return *metaExit;
+        }
+    }
+
     const int installExit = runInstallCommand(argc, argv);
     if (installExit >= 0) return installExit;
 
@@ -389,6 +406,11 @@ int main(int argc, char** argv) {
     // and not one line of output.
     ISystemUtil* sys = CreateSystemUtil();
     SystemUtil::Init(sys);
+    // Crash handling is the only way to get a stack out of a release build: the
+    // handler writes projv_files/logs/crash-*.* and must be installed before the
+    // TUI takes the terminal. --version/--help returned above, so they never
+    // reach this line (they touch neither the session store nor the screen).
+    sys->InstallCrashHandler();
 
     const int mcpExit = runMcpCheck(argc, argv);
     if (mcpExit >= 0) return mcpExit;
@@ -396,17 +418,27 @@ int main(int argc, char** argv) {
     tui::initTerminal();
     IProcessRunner* procRunner = CreateProcessRunner();
 
-#ifndef PROJV_RELEASE
-    // Debug builds only: route loguru output to a file and silence stderr
-    // (FTXUI owns the terminal; stray stderr writes corrupt the alternate
-    // screen). Release builds compile in no logging AND must not create a
-    // log file at all -- so skip loguru init entirely under PROJV_RELEASE.
-    loguru::g_stderr_verbosity = loguru::Verbosity_OFF;
+    // Logging: one file per day under projv_files/logs, 7 days kept.
+    //   release -> WARNING and above; debug -> everything.
+    // The only difference between the two is a verbosity value: no call site is
+    // compiled out, and loguru skips an INFO line with a single integer compare.
+    loguru::g_stderr_verbosity = loguru::Verbosity_OFF; // FTXUI owns the terminal
     loguru::g_colorlogtostderr = false;
-    std::string logPath = (std::filesystem::path(getExeDir()) / "proJV.log").string();
-    loguru::add_file(logPath.c_str(), loguru::Append, loguru::Verbosity_MAX);
-    debugLogf("[main] log file: %s", logPath.c_str());
+    {
+        const std::string logDir = getProjvDir() + "/logs";
+        std::error_code logEc;
+        std::filesystem::create_directories(logDir, logEc);
+        if (!logEc) log_files::pruneOldLogs(logDir, 7);
+        const std::string logPath = log_files::todayLogPath(logDir);
+        const loguru::Verbosity fileLevel =
+#ifdef PROJV_RELEASE
+            loguru::Verbosity_WARNING;
+#else
+            loguru::Verbosity_MAX;
 #endif
+        loguru::add_file(logPath.c_str(), loguru::Append, fileLevel);
+        debugLogInfof("[main] log file: %s (level %d)", logPath.c_str(), (int)fileLevel);
+    }
 
     TuiApp app;
     app.initialize(procRunner);

@@ -8,6 +8,7 @@
 #include "core/image_input.h"
 #include "core/skill_trigger.h"
 #include "core/terminal_status.h"
+#include "core/snapshot.h"
 #include "tui/theme_manager.h"
 #include "tools/shell_tool.h"
 #include "tools/file_tool.h"
@@ -40,6 +41,16 @@ void TuiApp::setupTools() {
     paths_ = ToolPaths::forSession(getWorkspaceDir(), getProjvDir());
     std::string ws = getWorkspaceDir();
     if (agent) agent->setWorkspacePath(paths_.describe());
+
+    // Snapshots (/undo). Best effort: an oversized workspace or a read-only
+    // store turns undo off with a reason, and the rest of the app keeps going.
+    {
+        std::string snapErr;
+        if (!snapshot::open(ws, config.snapshotsKeepDays, config.snapshotsMaxWorkspaceGb,
+                            snapErr)) {
+            debugLogWarnf("[TuiApp] undo disabled: %s", snapErr.c_str());
+        }
+    }
 
     registerShellTool(tools, paths_, procRunner_);
     registerFileTools(tools, paths_);
@@ -264,7 +275,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     std::error_code ec;
     fs::create_directories(sessionsDir_, ec);
     if (ec) {
-        debugLogf("[TuiApp] Failed to create sessions dir '%s': %s", sessionsDir_.c_str(),
+        debugLogWarnf("[TuiApp] Failed to create sessions dir '%s': %s", sessionsDir_.c_str(),
                   ec.message().c_str());
     }
 
@@ -287,7 +298,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
                 if (msg.role == "system") storage.insertMessage(msg);
             }
         } else {
-            debugLogf("[TuiApp] Failed to lazy-create database: %s", dbPath.c_str());
+            debugLogErrf("[TuiApp] Failed to lazy-create database: %s", dbPath.c_str());
         }
     };
 
@@ -308,7 +319,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     mcpManager_->setWorkDir(getWorkspaceDir());
     mcp::ensureConfigFile(mcp::configPath());
     if (!mcpManager_->loadFromJson(mcp::configPath()))
-        debugLogf("[TuiApp] mcp.json: %s", mcpManager_->configError().c_str());
+        debugLogWarnf("[TuiApp] mcp.json: %s", mcpManager_->configError().c_str());
     mcpManager_->startEnabled();
 
     // Theme: load from projv_files/theme/, prefer config.themeName.
@@ -488,7 +499,10 @@ void TuiApp::sendMessage(const std::string& text) {
 
     // Other quick commands handled by the backend (/help).
     if (agent->handleQuickCommand(trimmed)) {
-        // Already persisted; the event that sent it triggers a redraw.
+        // /undo and /restore persist a [Snapshot] message; without this sync it
+        // would stay invisible until the next turn ends, so the user would see
+        // no feedback at all.
+        syncChatFromAgent();
         return;
     }
 
@@ -979,7 +993,7 @@ void TuiApp::setMcpEnabled(const std::string& name, bool enabled) {
     if (isBusy()) {
         // Idle-only by design: start/stop touches the process tree and the tool
         // table, and neither may interleave with a running turn.
-        debugLogf("[TuiApp] setMcpEnabled('%s') refused: a turn is running", name.c_str());
+        debugLogWarnf("[TuiApp] setMcpEnabled('%s') refused: a turn is running", name.c_str());
         return;
     }
     mcpManager_->setEnabled(name, enabled);
@@ -1026,7 +1040,7 @@ void TuiApp::switchToDialog(const std::string& dbPath) {
 
     storage.closeDatabase();
     if (!storage.openDatabase(dbPath)) {
-        debugLog("[TuiApp] Failed to open, reverting to previous database");
+        debugLogWarn("[TuiApp] Failed to open, reverting to previous database");
         if (!storage.openDatabase(oldPath)) {
             storage.createDatabase(sessionsDir_ + "/recovery.db");
         }

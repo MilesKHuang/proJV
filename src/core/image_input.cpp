@@ -258,7 +258,7 @@ ParseResult parseMarkers(const std::string& text, const std::string& workspacePa
         const std::string rawPath = text.substr(pathStart, pathEnd - pathStart);
 
         if (!expandMarker(rawPath, workspacePath, out.images, out.error)) {
-            debugLogf("[Image] marker rejected: %s", out.error.c_str());
+            debugLogWarnf("[Image] marker rejected: %s", out.error.c_str());
             return out; // stop at the first problem, send nothing
         }
 

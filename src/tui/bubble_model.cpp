@@ -83,6 +83,16 @@ std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string
             cb.content = msg.content;
             out.push_back(cb);
         }
+        // /undo and /restore repersist their result as a system message. It is
+        // written on purpose for two readers: the model must stop assuming the
+        // reverted edits still exist, and the user must see that it happened.
+        // Without this branch the whole feature is silent.
+        else if (msg.content.find("[Snapshot]") != std::string::npos) {
+            Bubble cb;
+            cb.role = "system";
+            cb.content = msg.content;
+            out.push_back(cb);
+        }
         return out;
     }
 

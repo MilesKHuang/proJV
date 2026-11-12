@@ -32,6 +32,8 @@
 | `/help` | 聊天内帮助 |
 | `/clear` | 清空当前会话 |
 | `/compress` | 摘要早期消息 |
+| `/undo` | 撤销上一轮的文件改动；`/undo!` 连你手动改过的也一起丢弃 |
+| `/restore N` | 把工作区回滚到第 N 轮开始前；需要 `/restore N confirm` |
 | `/workspace` | 打印当前工作区 |
 | `/skill list` | 列出已安装技能 |
 | `/<技能> <主题>` | 运行技能，例如 `/monica D:\proj` |
@@ -76,6 +78,8 @@
 | `python_path` | pytool 解释器；留空 = `python` |
 | `clang_format_path` | `format_file` 用的二进制；留空 = 走 PATH |
 | `[model_prices]` | 模型前缀 -> 每百万 token 的输入/输出价，用于费用估算 |
+| `snapshots_max_workspace_gb` | 默认 2。工作区超过这个大小就关闭 `/undo`（门槛的意义是别把一棵巨树每轮复制一遍）；`0` 表示关掉门槛 |
+| `snapshots_keep_days` | 默认 7。超过这个天数的快照在启动时清理 |
 
 ## 限制
 
@@ -96,6 +100,10 @@
 | `cannot dispatch to a driver agent` | 派活只有一层，这是设计如此 |
 | `[skill] config: unknown key 'x'` | `config.json` 里写错了键名，值被忽略 |
 | `format_file` 说没找到 | 装 `clang-format`，或配 `clang_format_path`。Visual Studio 自带一个：`...\VC\Tools\Llvm\x64\bin\clang-format.exe` |
+| 「TLS certificate verification failed」 | proJV 会校验证书，且**没有关闭校验的开关**。若公司代理或网关重签 TLS，把该代理的根证书装进系统信任存储（Windows：受信任的根证书颁发机构；Linux：`/usr/local/share/ca-certificates` + `update-ca-certificates`）。另外检查系统时间：日期不对也是同样的报错。 |
+| 执行 shell 命令前弹了对话框 | 这条命令会删除或覆盖东西（`rm`/`del`、`mv`/`cp` 覆盖已存在的文件、`>` 重定向、`git clean`/`reset --hard`、`python -c`）。「执行一次」立刻跑；「本会话允许」只放行这一条完整命令；「取消」作废整批并告诉模型。 |
+| `blocked by policy: ... cannot be undone` | 格式化或分区类命令（`format`、`diskpart`、`mkfs`、`fdisk`、`parted`、`dd of=/dev/...`）。不弹窗、不可放行：真要做请自己在终端里执行。 |
+| 日志在哪？ | `projv_files/logs/proJV-YYYY-MM-DD.log`，一天一个文件，保留 7 天。崩溃会额外在同目录写 `crash-<时间戳>.log` 与 `.dmp`。Release 版只写 WARNING 及以上，Debug 版全量。 |
 
 ---
 
