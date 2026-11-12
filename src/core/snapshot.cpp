@@ -7,6 +7,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -41,8 +42,11 @@ bool isSkippedDir(const std::string& name) {
 }
 
 struct Meta {
-    long long mtime = 0;
-    long long size = -1;
+    // int64_t, not long long: SQLiteCpp's bind() has int32/uint32/int64/double
+    // overloads, and on Linux int64_t is `long`, so a `long long` argument is
+    // ambiguous there (it compiles on MSVC, where the two are the same type).
+    std::int64_t mtime = 0;
+    std::int64_t size = -1;
     bool operator==(const Meta& o) const { return mtime == o.mtime && size == o.size; }
 };
 
@@ -62,8 +66,8 @@ struct State {
 State g;
 std::mutex g_mutex;
 
-long long stamp(const fs::file_time_type& t) {
-    return (long long)t.time_since_epoch().count();
+std::int64_t stamp(const fs::file_time_type& t) {
+    return (std::int64_t)t.time_since_epoch().count();
 }
 
 std::string nowIso() {
@@ -139,7 +143,7 @@ void scan(std::map<std::string, Meta>& out) {
         Meta m;
         m.mtime = stamp(e.last_write_time(ec));
         if (ec) continue;
-        m.size = (long long)e.file_size(ec);
+        m.size = (std::int64_t)e.file_size(ec);
         if (ec) continue;
         out[rel] = m;
     }
@@ -582,7 +586,7 @@ void applyTurn(int seq, bool force, Report& r) {
             r.restored.push_back(c.path);
             std::error_code ec;
             Meta m;
-            m.size = (long long)content.size();
+            m.size = (std::int64_t)content.size();
             m.mtime = stamp(fs::last_write_time(g.workspace / c.path, ec));
             if (!ec) upsertFile(c.path, m, c.oldHash);
         } else {
