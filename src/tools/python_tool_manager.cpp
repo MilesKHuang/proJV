@@ -1,5 +1,6 @@
 #include "python_tool_manager.h"
 #include "registry.h"
+#include "shell_output.h"
 #include "core/config.h"
 #include "debug_log.h"
 #include "platform/iprocess_runner.h"
@@ -124,7 +125,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
             ifs >> j;
         } catch (const std::exception& e) {
             debugLogWarnf("[PyTool] skipping '%s': tool.json parse error: %s", toolName.c_str(),
-                      e.what());
+                          e.what());
             skipped++;
             continue;
         }
@@ -132,7 +133,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
         if (!j.contains("name") || !j["name"].is_string() || !j.contains("description") ||
             !j["description"].is_string()) {
             debugLogWarnf("[PyTool] skipping '%s': tool.json missing name/description",
-                      toolName.c_str());
+                          toolName.c_str());
             skipped++;
             continue;
         }
@@ -140,7 +141,7 @@ void PythonToolManager::scanAndRegister(ToolRegistry& registry, IProcessRunner* 
         std::string jsonName = j["name"].get<std::string>();
         if (jsonName != toolName) {
             debugLogWarnf("[PyTool] warning: json name '%s' != dir '%s', using dir name",
-                      jsonName.c_str(), toolName.c_str());
+                          jsonName.c_str(), toolName.c_str());
         }
 
         // (b) Check main.py
@@ -222,9 +223,8 @@ std::string PythonToolManager::executePyTool(const std::string& toolDir,
                               : "[PyTool Error] " + errOut;
     }
 
-    if (out.size() > 32000) {
-        out = out.substr(0, 32000) + "\n... (truncated)";
-    }
-
-    return out;
+    // Same rule as exec_shell: keep the TAIL. This cut used to keep the head, so a
+    // pytool that printed a long report lost its conclusion -- exactly the bug M2-A
+    // fixed for exec_shell, missed here because pytool has its own return path.
+    return shell_output::apply(out, shell_output::kDefaultTailLines, false).text;
 }

@@ -1,1 +1,1 @@
-# No pip deps needed — dot.exe auto-downloaded on first use
+# No pip deps needed -- dot.exe auto-downloaded on first use

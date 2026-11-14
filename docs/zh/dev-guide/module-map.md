@@ -19,6 +19,8 @@
   消息由 `Agent::buildChatRequest()` 插在固定 system 块之后，前缀缓存才稳定。
 - **一起看。** `chat_view.*`、`status_bar.*`、`status_line.*`、`approval_logic.*`、
   `config_view.*`、`skill_trigger.*`、`core/turn_requests.h`。
+- **斜杠补全。** `src/tui/slash_menu.{h,cpp}` 是 `/` 命令清单：一张纯表（内置命令 + 已装技能，描述读 `config.json`）加一个「前缀优先、子串其次」的过滤函数。`main_tui.cpp` 用 `InputOption::on_change` 驱动，并在现有 `CatchEvent` 里劫持 Up/Down/Enter/Escape。它只往输入框填字符串，执行路径一行不动。
+- **后台任务 dock。** 右侧 dock 同时显示技能 agent 和正在跑的 `bg#N` 任务（`TaskRegistry::snapshots()`），每行是**最后**一条非空输出，不是第一条：narration 是一整段，第一行是最旧的那句话。
 - **测试。** `tests/golden/*`、`test_approval_logic.cpp`、`test_skill_trigger.cpp`、
   `test_agents_md.cpp`、`test_turn_end.cpp`。
 
@@ -64,6 +66,8 @@
 - **测试。** `test_agent_request.cpp`、`test_turn_end.cpp`、
   `test_reasoning_content.cpp`、`test_prompt_*`。
 
+- **许愿模式。** `src/core/wish.h` 就是全部状态（目标、pass 数、空转轮数、已记录决定、是否被 block）。`wish_decide` / `wish_block`（`src/tools/wish_tool.cpp`）始终注册，由 `Agent::getFilteredToolDefinitions()` 在没开 wish 时从请求里过滤掉——运行时注册/注销会在第二个线程写 `ToolRegistry` 的裸 map。`TuiApp::runAgentTurnLoop` 在 wish 激活且 TODO 未清空时继续循环，停止条件：TODO 清空（前提是曾经见过清单）、连续两轮空转、模型调 `wish_block`、50 个 pass、或 `/wish cancel`。
+
 ## 5. API 客户端
 
 - **职责。** 序列化请求、SSE 流式、重试、取消，以及官方 Search / Fetch 结果的格式化。
@@ -95,6 +99,9 @@
   注册表成员——技能 worker 会并行共享同一个注册表。`Agent::executeTool` 在调用前
   `reset`、调用后 `take`，再挂到 tool 消息上。只用于显示：随消息行进库，永不序列化。
 - **测试。** `test_file_tools.cpp`、`test_diff_capture.cpp`、`test_web_api.cpp`。
+
+- **输出整形。** `src/tools/shell_output.{h,cpp}` 是唯一截断命令输出的地方，而且保留**尾部**：编译器和测试框架把结论放在最后。两层都用它——平台 runner 保留 4 MB（内存护栏，丢掉中段），`exec_shell` 保留最后 400 行，`full_output` 时最多 200 KB；切点总是回退到合法 UTF-8 边界。
+- **后台任务。** `src/core/task_registry.{h,cpp}` 起独立子进程，输出直接写进每个任务自己的临时文件——管道没人读会在 OS 缓冲区满时把子进程卡死。每个 registry 一个监视线程（不是每个任务一个），在 `shutdown()` 里 join；Windows 额外用带 `KILL_ON_JOB_CLOSE` 的 Job Object，proJV 崩溃也会带走子进程。`exec_shell(background:true)` 起任务，`task_output` 读输出，`/end_task` 杀任务，回合循环通过 `turn_requests`（`Kind::Process`）报告已完成的 id。
 
 ## 7. 技能引擎
 

@@ -220,7 +220,10 @@ TEST_CASE("capabilities: MCP servers are listed with purpose and tool names") {
     CHECK(has(empty, "mcp.json"));
 }
 
-TEST_CASE("capabilities: the block stays bounded") {
+TEST_CASE("capabilities: no global truncation, every group survives") {
+    // The old rule cut the block at 4000 chars from the tail, which is where
+    // Skills and MCP sit -- so a well-configured project lost exactly the parts it
+    // had configured. Every section is bounded on its own now.
     ToolRegistry reg;
     for (int i = 0; i < 400; ++i) {
         const std::string name = "pytool_" + std::to_string(i);
@@ -229,7 +232,63 @@ TEST_CASE("capabilities: the block stays bounded") {
     }
     ctx::CapabilityInputs in;
     in.tools = reg.getToolDefinitions();
+    in.skills = {"alpha", "beta", "gamma"};
+    in.mcp = {{"big",
+               "a server with many tools",
+               {"t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "t10", "t11", "t12"}}};
     const std::string block = ctx::buildCapabilities(in);
-    CHECK(block.size() <= 4200);
-    CHECK(has(block, "capability map truncated"));
+    CHECK_FALSE(has(block, "capability map truncated"));
+    CHECK(has(block, "MCP     1 server(s)"));
+    CHECK(has(block, "pytool_399")); // the last-registered tool still shows up
+    CHECK(ctx::groupOf("pytool_250") != nullptr);
+}
+
+TEST_CASE("capabilities: MCP tool names are capped at ten per server") {
+    ToolRegistry reg;
+    registerFileTools(reg, ToolPaths());
+    ctx::CapabilityInputs in;
+    in.tools = reg.getToolDefinitions();
+    std::vector<std::string> names;
+    for (int i = 1; i <= 12; ++i)
+        names.push_back("tool" + std::to_string(i));
+    in.mcp = {{"big", "many tools", names}};
+    const std::string block = ctx::buildCapabilities(in);
+
+    CHECK(has(block, ": 12 tools -- tool1 tool2"));
+    CHECK(has(block, "tool10 (+2 more)"));
+    CHECK_FALSE(has(block, "tool11")); // beyond the cap
+    CHECK_FALSE(has(block, "tool12"));
+
+    // A server at or under the cap keeps the plain listing, with no "(+0 more)".
+    in.mcp = {{"small", "", {"a", "b"}}};
+    const std::string small = ctx::buildCapabilities(in);
+    CHECK(has(small, ": 2 tools -- a b"));
+    CHECK_FALSE(has(small, "more)"));
+}
+
+TEST_CASE("capabilities: an extreme but plausible setup stays under 8 KB") {
+    // Soft ceiling: not enforced in code, asserted here so a future unbounded
+    // section is caught before it eats the conversation. Scenario: every builtin,
+    // 8 skills, 10 MCP servers with 20 tools each -- the shape the old 4000-char
+    // cut was silently mangling.
+    ToolRegistry reg;
+    registerBuiltins(reg);
+    ctx::CapabilityInputs in;
+    in.tools = reg.getToolDefinitions();
+    in.skillsDir = "."; // descriptions read as empty; the count still renders
+    for (int s = 0; s < 8; ++s)
+        in.skills.push_back("skill" + std::to_string(s));
+    for (int s = 0; s < 10; ++s) {
+        ctx::McpServerInfo st;
+        st.name = "server" + std::to_string(s);
+        st.description = "an MCP server that does something useful";
+        for (int t = 0; t < 20; ++t)
+            st.tools.push_back("tool_name_" + std::to_string(t));
+        in.mcp.push_back(st);
+    }
+    const std::string block = ctx::buildCapabilities(in);
+    CHECK(block.size() <= 8000);
+    CHECK(has(block, "(+10 more)"));
+    CHECK(has(block, "MCP     10 server(s)"));
+    CHECK(has(block, "Skills  8 installed"));
 }

@@ -6,6 +6,8 @@
 #include <sstream>
 #include <filesystem>
 #include <cstdlib>
+#include <algorithm>
+#include <cstdio>
 
 namespace fs = std::filesystem;
 
@@ -75,11 +77,21 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         cfg.apiKey = tbl["api_key"].value_or<std::string>("");
         cfg.model = tbl["model"].value_or<std::string>("deepseek-v4-flash");
         cfg.baseUrl = tbl["base_url"].value_or<std::string>("https://api.deepseek.com");
-        cfg.maxTokens = tbl["max_tokens"].value_or<int>(65536);
+        cfg.maxTokens = tbl["max_tokens"].value_or<int>(static_cast<int>(kMaxOutputTokens));
         if (cfg.maxTokens == 16384) {
             // Legacy default was too small for long reasoning streams.
-            cfg.maxTokens = 65536;
+            cfg.maxTokens = kMaxOutputTokens;
             debugLog("[Config] Migrated legacy max_tokens 16384 -> 65536");
+        }
+        // Clamp here, not in the UI: config.toml is the only input, and a value the
+        // API rejects is never what the user meant. The UI spinner keeps its range.
+        if (cfg.maxTokens < kMinOutputTokens || cfg.maxTokens > kMaxOutputTokens) {
+            const int wanted = cfg.maxTokens;
+            cfg.maxTokens = std::clamp(cfg.maxTokens, kMinOutputTokens, kMaxOutputTokens);
+            debugLogWarnf("[Config] max_tokens %d is outside [%d, %d]; using %d", wanted,
+                          kMinOutputTokens, kMaxOutputTokens, cfg.maxTokens);
+            fprintf(stderr, "[config] max_tokens %d is outside [%d, %d]; using %d\n", wanted,
+                    kMinOutputTokens, kMaxOutputTokens, cfg.maxTokens);
         }
         cfg.temperature = tbl["temperature"].value_or<double>(0.0);
         cfg.cppCompilerPath = tbl["cpp_compiler_path"].value_or<std::string>("");
@@ -93,6 +105,23 @@ bool loadTomlConfig(AppConfig& cfg, const std::string& path) {
         // Snapshots (/undo): 7 days retention, 2 GB workspace gate.
         cfg.snapshotsMaxWorkspaceGb = tbl["snapshots_max_workspace_gb"].value_or<int>(2);
         cfg.snapshotsKeepDays = tbl["snapshots_keep_days"].value_or<int>(7);
+        // approval_mode: strict / balanced (default) / loose. The retired
+        // boolean auto_approve is still read as a fallback so an existing file
+        // keeps its meaning: true -> balanced, false -> strict.
+        if (tbl.contains("approval_mode")) {
+            cfg.approvalMode = parseApprovalMode(tbl["approval_mode"].value_or<std::string>(""));
+        } else if (tbl.contains("auto_approve")) {
+            cfg.approvalMode = tbl["auto_approve"].value_or<bool>(true) ? ApprovalMode::Balanced
+                                                                        : ApprovalMode::Strict;
+            debugLog("[Config] auto_approve is retired; mapped to approval_mode");
+        }
+        // Grants: exact command texts the user allowed forever. An array of strings
+        // in the file, one per line -- readable and hand-editable on purpose.
+        if (auto grants = tbl["approval_grants"].as_array()) {
+            cfg.approvalGrants.clear();
+            for (const auto& g : *grants)
+                if (auto s = g.value<std::string>()) cfg.approvalGrants.push_back(*s);
+        }
         // Reasoning effort: official values none/low/high/max (aliases are
         // normalized). Anything else falls back to the official default "high"
         // instead of being sent to the API.
@@ -203,6 +232,8 @@ bool saveApiKey(const std::string& key) {
         if (!tbl.contains("snapshots_max_workspace_gb"))
             tbl.insert_or_assign("snapshots_max_workspace_gb", 2);
         if (!tbl.contains("snapshots_keep_days")) tbl.insert_or_assign("snapshots_keep_days", 7);
+        if (!tbl.contains("approval_mode"))
+            tbl.insert_or_assign("approval_mode", approvalModeName(ApprovalMode::Balanced));
     } catch (const std::exception& e) {
         debugLogErrf("[Config] Error updating config table: %s", e.what());
         return false;
@@ -254,6 +285,19 @@ bool saveConfig(const AppConfig& cfg) {
     tbl.insert_or_assign("osc_status", cfg.oscStatus);
     tbl.insert_or_assign("snapshots_max_workspace_gb", cfg.snapshotsMaxWorkspaceGb);
     tbl.insert_or_assign("snapshots_keep_days", cfg.snapshotsKeepDays);
+    tbl.insert_or_assign("approval_mode", approvalModeName(cfg.approvalMode));
+    // Write the grants as a TOML array; an empty list removes the key so a file
+    // that never granted anything stays clean.
+    if (cfg.approvalGrants.empty()) {
+        tbl.erase("approval_grants");
+    } else {
+        toml::array arr;
+        for (const auto& g : cfg.approvalGrants)
+            arr.push_back(g);
+        tbl.insert_or_assign("approval_grants", std::move(arr));
+    }
+    // Retired key: leaving it would look like it still does something.
+    tbl.erase("auto_approve");
     if (!cfg.themeName.empty()) tbl.insert_or_assign("theme", cfg.themeName);
 
     std::ofstream ofs(configPath);

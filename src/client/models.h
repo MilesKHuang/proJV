@@ -211,11 +211,41 @@ inline bool modelSupportsVision(const std::string& modelId) {
     return false;
 }
 
+// Output budget bounds. The ceiling is one source of truth for the config clamp
+// and the reasoning-length retry: below the ceiling a retry doubles the budget,
+// at the ceiling it stays put. It used to be a literal 65536 inside the retry,
+// which is why "double and retry" never doubled the default and halved anything
+// larger.
+constexpr int kMinOutputTokens = 1024;
+constexpr int kMaxOutputTokens = 65536;
+
+// How much the agent asks before running a shell command. See AppConfig.
+enum class ApprovalMode { Strict, Balanced, Loose };
+
+// config.toml spelling <-> enum. Unknown text falls back to Balanced.
+inline std::string approvalModeName(ApprovalMode m) {
+    switch (m) {
+    case ApprovalMode::Strict:
+        return "strict";
+    case ApprovalMode::Loose:
+        return "loose";
+    case ApprovalMode::Balanced:
+    default:
+        return "balanced";
+    }
+}
+
+inline ApprovalMode parseApprovalMode(const std::string& s) {
+    if (s == "strict") return ApprovalMode::Strict;
+    if (s == "loose") return ApprovalMode::Loose;
+    return ApprovalMode::Balanced;
+}
+
 struct AppConfig {
     std::string apiKey;
     std::string model = "deepseek-v4-flash";
     std::string baseUrl = "https://api.deepseek.com";
-    int maxTokens = 65536;
+    int maxTokens = kMaxOutputTokens;
     double temperature = 0.0;
     // Thinking effort (config.toml "reasoning_effort"): none / low / high / max.
     // "none" turns thinking off. Invalid values fall back to "high".
@@ -247,6 +277,21 @@ struct AppConfig {
     // turn; keepDays follows the log retention rule.
     int snapshotsMaxWorkspaceGb = 2;
     int snapshotsKeepDays = 7;
+
+    // Command approval (config.toml "approval_mode", F2). One dial, three stops:
+    //   Strict   -- every Ask asks (deletes, overwrites, redirects, commit/push)
+    //               and there is NO "always": nothing is remembered.
+    //   Balanced -- (default) destructive commands ask; functional overwrites such
+    //               as `build > log.txt` run. "Always" is offered and remembered.
+    //   Loose    -- only the red line (format / partition / device) is refused;
+    //               every other command runs without a dialog.
+    // Deny is outside the dial: formatting is never executed and has no override.
+    ApprovalMode approvalMode = ApprovalMode::Balanced;
+
+    // Commands the user allowed forever with the "ALWAYS" button. Exact text,
+    // persisted in config.toml as approval_grants so a restart does not forget.
+    // Never written by the model -- only by approveTool(2).
+    std::vector<std::string> approvalGrants;
 
     bool loaded = false;
     std::string loadError;

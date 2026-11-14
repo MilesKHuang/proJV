@@ -115,8 +115,7 @@ namespace {
 
 std::string renderWide(const std::vector<Bubble>& bubbles, int cols) {
     auto doc = chat_view::renderBubbles(bubbles, true, cols);
-    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(cols),
-                                       ftxui::Dimension::Fixed(14));
+    auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(cols), ftxui::Dimension::Fixed(14));
     ftxui::Render(screen, doc);
     return screen.ToString();
 }

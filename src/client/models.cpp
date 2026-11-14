@@ -204,7 +204,7 @@ void to_json(nlohmann::json& j, const ToolDefinition& td) {
         func["parameters"] = nlohmann::json::parse(schemaStr);
     } catch (const nlohmann::json::parse_error& e) {
         debugLogWarnf("[Models] to_json(ToolDefinition) schema parse error for '%s': %s",
-                  td.name.c_str(), e.what());
+                      td.name.c_str(), e.what());
         func["parameters"] = nlohmann::json{{"type", "object"}};
     }
 }

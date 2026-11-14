@@ -6,6 +6,7 @@
 #include "debug_log.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -380,7 +381,8 @@ void SkillRunner::loadAgents() {
     skillTools.reserve(config_.tools.size());
     for (const auto& t : config_.tools) {
         if (t.rfind("mcp__", 0) == 0) {
-            debugLogWarnf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers", t.c_str());
+            debugLogWarnf("[SkillRunner] tool '%s' skipped: skills do not use MCP servers",
+                          t.c_str());
             continue;
         }
         skillTools.push_back(t);
@@ -447,8 +449,49 @@ void SkillRunner::loadAgents() {
 }
 
 // ---- main loop -----------------------------------------------------------
+namespace {
+// "DONE", "done.", "OK" -- the model acknowledging the stop instruction instead of
+// writing the report. Anything shorter than this cannot be a usable deliverable.
+// A stop-word, not a length test: a short but real verdict ("ship it") must never be
+// mistaken for an empty deliverable, and every skill that ends with a one-line answer
+// would have been retried otherwise.
+bool isTrivialDeliverableImpl(const std::string& s) {
+    std::string t;
+    for (char c : s) {
+        if (std::isalnum(static_cast<unsigned char>(c)))
+            t.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    if (t.empty()) return true; // nothing at all
+    static const char* kStop[] = {"DONE", "OK",      "FINISHED", "COMPLETE",    "END",
+                                  "NONE", "DONEALL", "ALLDONE",  "DONEALLFILES"};
+    for (const char* k : kStop)
+        if (t == k) return true;
+    return false;
+}
+std::string firstLineImpl(const std::string& s) {
+    const size_t e = s.find_first_of("\r\n");
+    const std::string line = (e == std::string::npos) ? s : s.substr(0, e);
+    return line.size() > 40 ? line.substr(0, 40) + "..." : line;
+}
+} // namespace
+
 void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     topic_ = topic;
+    auto isTrivialDeliverable = [](const std::string& s) { return isTrivialDeliverableImpl(s); };
+    auto firstLine = [](const std::string& s) { return firstLineImpl(s); };
+    // A stale cancel flag is the one failure that used to be completely silent: the
+    // probe hit, every step was skipped, and run() returned without a single event.
+    // Agent::cancel() -> ToolRegistry::cancelAll() sets it on ESC, F3, F5 and /clear,
+    // and only Agent::newTurn() cleared it -- a skill never calls newTurn().
+    if (checkCancel()) {
+        if (cbs_.onEvent)
+            cbs_.onEvent("system", "system",
+                         "[skill] cancelled before the first round: the tool registry still had "
+                         "its cancel flag set when the skill started.");
+        // Same progress contract as the mid-run cancel path below.
+        if (cbs_.onProgress) cbs_.onProgress("Cancelled");
+        return;
+    }
     if (!modelSupportsTools(cfg_.model)) {
         std::string msg =
             "[skill] model '" + cfg_.model + "' does not support tool calls; cannot run.";
@@ -469,7 +512,23 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     for (int round = 1; round <= config_.maxRounds; ++round) {
         if (checkCancel()) break;
         lastRounds_ = round;
+        const size_t before = contentEvents_;
         executeSteps(config_.roundSteps, round);
+        // Every round leaves one line in the chat, always. A round where the model
+        // dispatched without prose used to leave NOTHING: monica ran ten rounds and
+        // the chat showed a single "DONE", so the round count -- the only progress
+        // signal a long skill gives -- was invisible. With narration the line is a
+        // header; without it, it is the only evidence the round happened.
+        if (cbs_.onEvent) {
+            std::string label;
+            if (!config_.roundSteps.empty())
+                label = fill(config_.roundSteps.front().progress, round, {});
+            if (label.empty())
+                label = "Round " + std::to_string(round) + "/" + std::to_string(config_.maxRounds);
+            cbs_.onEvent("system", "system",
+                         "[skill] " + label +
+                             (contentEvents_ == before ? " -- no narration from the model" : ""));
+        }
         if (checkCancel()) break;
         if (stopRule(round)) {
             converged_ = true;
@@ -483,7 +542,30 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
         if (cbs_.onProgress) cbs_.onProgress("Cancelled");
         return;
     }
-    executeSteps(config_.onConverge, lastRounds_);
+    // The final step is the deliverable. It is normal for the model to answer "DONE"
+    // there as well (it was just told to stop), which leaves the user with no report
+    // at all -- monica did exactly that. One retry with a blunt instruction, then say
+    // so instead of returning silently.
+    if (!config_.onConverge.empty()) {
+        executeSteps(config_.onConverge, lastRounds_);
+        if (isTrivialDeliverable(slots_.count("report") ? slots_["report"] : lastDoc_)) {
+            debugLogWarnf("[Skill] on_converge produced no deliverable; retrying once");
+            if (cbs_.onEvent)
+                cbs_.onEvent("system", "system",
+                             "[skill] the final step replied '" +
+                                 firstLine(slots_.count("report") ? slots_["report"] : lastDoc_) +
+                                 "' instead of a report -- retrying once.");
+            slots_.erase("report");
+            executeSteps(config_.onConverge, lastRounds_);
+        }
+        const std::string deliverable = slots_.count("report") ? slots_["report"] : lastDoc_;
+        if (isTrivialDeliverable(deliverable) && cbs_.onEvent)
+            cbs_.onEvent("system", "system",
+                         "[skill] no deliverable was produced: the last step still answered '" +
+                             firstLine(deliverable) +
+                             "'. Its output is above; re-run with a narrower topic or fix the "
+                             "skill's on_converge prompt.");
+    }
     if (cbs_.onProgress)
         cbs_.onProgress(converged_ ? "Done (converged)" : "Done (round cap reached)");
 }
@@ -568,6 +650,7 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
             vr.concerns.push_back(r.empty() ? "[high] (no structured vote)" : "[high] " + r);
         }
         votes_[a.agent] = vr;
+        ++contentEvents_;
         if (a.emit == "vote" && cbs_.onEvent) cbs_.onEvent(display(a.agent), "vote", voteLine(vr));
         return;
     }
@@ -589,6 +672,7 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
     }
     slots_[a.into] = s;
     if (a.emit == "document") lastDoc_ = s; // independent of callback presence
+    if (!s.empty()) ++contentEvents_;
     if (!s.empty() && cbs_.onEvent) {
         if (a.emit == "message")
             cbs_.onEvent(display(a.agent), "message", s);

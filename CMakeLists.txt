@@ -8,12 +8,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # version, change ONLY the project() VERSION above; the code reads this macro.
 add_compile_definitions(PROJV_VERSION="${PROJECT_VERSION}")
 
-# ── Paths ────────────────────────────────────────────────────────────────
+# --- Paths ---------------------------------------------------------------
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
 set(SRC_DIR      "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-# ── Third-party dependencies ─────────────────────────────────────────────
+# --- Third-party dependencies --------------------------------------------
 # The bundled deps (FTXUI / SQLiteCpp / libcurl) each ship install() rules
 # that would leak their headers and static libs into our release package.
 # Those artifacts are pruned from the CPack staging tree before zipping -- see
@@ -83,7 +83,7 @@ else()
     set(CURL_LIBRARY ${CURL_LIBRARIES})
 endif()
 
-# ── Common sources (platform-agnostic business logic) ────────────────────
+# --- Common sources (platform-agnostic business logic) -------------------
 set(COMMON_SOURCES
     ${SRC_DIR}/client/models.cpp
     ${SRC_DIR}/client/deepseek.cpp
@@ -103,6 +103,14 @@ set(COMMON_SOURCES
     ${SRC_DIR}/tools/file_search_tool.cpp
     ${SRC_DIR}/tools/web_tools.cpp
     ${SRC_DIR}/tools/todo_tool.cpp
+    ${SRC_DIR}/tools/wish_tool.cpp
+    # Background tasks: detached children with file-backed output. Platform-agnostic
+    # (the #ifdefs live inside task_registry.cpp), so it belongs here.
+    ${SRC_DIR}/core/task_registry.cpp
+    ${SRC_DIR}/tools/task_output_tool.cpp
+    # Output shaping for exec_shell (tail-first truncation). Platform-agnostic and
+    # shared by both process runners, so it lives here, not in PLATFORM_SOURCES.
+    ${SRC_DIR}/tools/shell_output.cpp
     ${SRC_DIR}/platform/isystem_util.cpp
     ${SRC_DIR}/core/storage.cpp
     ${SRC_DIR}/core/tool_list_parser.cpp
@@ -160,9 +168,13 @@ set(HEADERS
     ${SRC_DIR}/tools/diff_capture.h
     ${SRC_DIR}/tools/python_tool_manager.h
     ${SRC_DIR}/tools/json_utils.h
+    ${SRC_DIR}/tools/shell_output.h
+    ${SRC_DIR}/core/task_registry.h
+    ${SRC_DIR}/core/wish.h
+    ${SRC_DIR}/tools/wish_tool.h
 )
 
-# ── Platform-specific sources ────────────────────────────────────────────
+# --- Platform-specific sources -------------------------------------------
 if(WIN32)
     set(PLATFORM_SOURCES
         ${SRC_DIR}/tools/shell_tool.cpp
@@ -179,12 +191,12 @@ else()
     )
 endif()
 
-# ── Release build: strip debug logs ──────────────────────────────────────
+# --- Release build: strip debug logs -------------------------------------
 # Use generator expression for multi-config generators (MSVC/Xcode).
 # $<$<CONFIG:Release>:PROJV_RELEASE> adds the define only for Release config.
 add_compile_definitions($<$<CONFIG:Release>:PROJV_RELEASE>)
 
-# ── Static library (proJV_lib) ───────────────────────────────────────────
+# --- Static library (proJV_lib) ------------------------------------------
 add_library(proJV_lib STATIC ${COMMON_SOURCES} ${PLATFORM_SOURCES} ${HEADERS})
 
 # Common includes
@@ -195,7 +207,7 @@ target_include_directories(proJV_lib PRIVATE
     ${CURL_INCLUDE_DIR}
 )
 
-# ── Platform: Windows ────────────────────────────────────────────────────
+# --- Platform: Windows ---------------------------------------------------
 if(WIN32)
     target_link_libraries(proJV_lib PRIVATE
         crypt32 ole32 shell32 comctl32 comdlg32 gdi32 user32 dbghelp advapi32
@@ -212,7 +224,7 @@ if(WIN32)
         target_compile_options(proJV_lib PRIVATE /utf-8 /wd4005)
     endif()
 
-# ── Platform: Linux ──────────────────────────────────────────────────────
+# --- Platform: Linux -----------------------------------------------------
 else()
     target_link_libraries(proJV_lib PRIVATE
         ${CURL_LIBRARY}
@@ -222,9 +234,10 @@ else()
     )
 endif()
 
-# ── TUI frontend ─────────────────────────────────────────────────────────
+# --- TUI frontend --------------------------------------------------------
 add_executable(proJV_tui
     ${SRC_DIR}/tui/main_tui.cpp
+    ${SRC_DIR}/tui/slash_menu.cpp
     ${SRC_DIR}/tui/terminal.cpp
     ${SRC_DIR}/tui/app_tui.cpp
     ${SRC_DIR}/tui/chat_view.cpp
@@ -263,7 +276,7 @@ if(MSVC)
     target_compile_options(proJV_tui PRIVATE /utf-8)
 endif()
 
-# ── Deploy example skills next to the runtime exe ────────────────────────
+# --- Deploy example skills next to the runtime exe -----------------------
 # The engine reads skills from {exeDir}/projv_files/skills/. Repo example
 # skills live in <repo>/skills/ (bigbang, monica). Copy them next to the built
 # exe after linking, so a plain run finds them and any release that ships
@@ -276,7 +289,7 @@ add_custom_command(TARGET proJV_tui POST_BUILD
     COMMENT "Deploying example skills -> projv_files/skills/"
 )
 
-# ── Tests ────────────────────────────────────────────────────────────────
+# --- Tests ---------------------------------------------------------------
 option(PROJV_BUILD_TESTS "Build proJV unit tests" ON)
 option(PROJV_BUILD_E2E "Build the headless end-to-end harness (dev only)" OFF)
 if(PROJV_BUILD_E2E)
@@ -323,7 +336,7 @@ if(PROJV_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# ── Release payload: install rules + CPack ───────────────────────────────
+# --- Release payload: install rules + CPack ------------------------------
 # Default install prefix: a user-level directory, so `cmake --install` needs no
 # administrator rights. An explicit
 # -DCMAKE_INSTALL_PREFIX always wins; we only replace CMake's own default.
@@ -412,7 +425,7 @@ install(CODE [[
   endif()
 ]])
 
-# ── CPack: one-click package (ZIP on Windows, TGZ on Linux) ──────────────
+# --- CPack: one-click package (ZIP on Windows, TGZ on Linux) -------------
 # Releases are produced by .github/workflows/release.yml on a `v*` tag; the
 # same commands work locally:
 #   cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -435,6 +448,3 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "proJV -- native C++ DeepSeek AI agent (TU
 set(CPACK_PACKAGE_FILE_NAME "proJV-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
 include(CPack)
-
-
-

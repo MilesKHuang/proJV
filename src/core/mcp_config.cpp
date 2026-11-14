@@ -131,7 +131,7 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
         }
         if (!seen.insert(cfg.name).second) {
             debugLogWarnf("[mcp] server '%s' skipped: duplicate name (first one wins)",
-                      cfg.name.c_str());
+                          cfg.name.c_str());
             continue;
         }
         cfg.command = trim(item.value("command", std::string()));
@@ -160,8 +160,8 @@ bool loadConfig(const std::string& path, std::vector<McpServerConfig>& out, std:
         cfg.protocol = item.value("protocol", std::string("stateful"));
         if (cfg.protocol != "stateful" && cfg.protocol != "stateless") {
             debugLogWarnf("[mcp] server '%s' skipped: protocol must be \"stateful\" or "
-                      "\"stateless\" (got \"%s\")",
-                      cfg.name.c_str(), cfg.protocol.c_str());
+                          "\"stateless\" (got \"%s\")",
+                          cfg.name.c_str(), cfg.protocol.c_str());
             continue;
         }
         cfg.trusted = item.value("trusted", false);

@@ -1,5 +1,6 @@
 // proJV -- Linux process runner (fork/exec + pipe + killpg)
 #include "platform/iprocess_runner.h"
+#include "tools/shell_output.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -212,12 +213,15 @@ class ProcessRunnerLinux : public IProcessRunner {
         while (!result.stdout_.empty() &&
                (result.stdout_.back() == '\n' || result.stdout_.back() == '\r'))
             result.stdout_.pop_back();
-        if (result.stdout_.size() > 32000)
-            result.stdout_ = result.stdout_.substr(0, 32000) + "\n... (truncated)";
+        // Memory guard only, and it keeps the TAIL: display shaping is exec_shell's
+        // job (tools/shell_output). Truncating the head here used to hide every
+        // build verdict, because the compiler prints it last.
+        shell_output::keepTailWithMiddleNotice(result.stdout_, shell_output::kRunnerKeepBytes);
         result.stderr_ = err;
         while (!result.stderr_.empty() &&
                (result.stderr_.back() == '\n' || result.stderr_.back() == '\r'))
             result.stderr_.pop_back();
+        shell_output::keepTailWithMiddleNotice(result.stderr_, shell_output::kRunnerKeepBytes);
         return result;
     }
 

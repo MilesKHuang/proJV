@@ -8,6 +8,7 @@
 #include "core/agent.h"
 #include "core/mcp_manager.h"
 #include "core/skill_runner.h"
+#include "core/task_registry.h"
 #include "core/turn_requests.h"
 #include "tools/registry.h"
 #include "tools/tool_paths.h"
@@ -50,9 +51,7 @@ class TuiApp {
     // Config access / persistence / approval.
     const AppConfig& getConfig() const { return config; }
     void saveApiKeyAndConnect(const std::string& apiKey);
-    void saveFullConfig(const std::string& apiKey, const std::string& baseUrl, int maxTokens,
-                        double temperature, const std::string& compiler, const std::string& python,
-                        const std::string& model);
+    void saveFullConfig(const AppConfig& next);
     void approveTool(int action) {
         if (agent) agent->approveTool(action);
     }
@@ -112,6 +111,15 @@ class TuiApp {
     // Snapshot of the live skill agent pool for the sidebar (see START/agents).
     std::vector<SkillRunner::AgentSnapshot> skillAgentStatuses() const;
     size_t pendingCount() const { return pendingQueue_.size(); }
+
+    // For the "/" completion menu: the installed skill folders and where their
+    // config.json files live. Read-only, cheap (a directory listing).
+    std::vector<std::string> installedSkills() const;
+    std::string skillsDir() const { return skillsDir_; }
+
+    // Background tasks (exec_shell background:true). The dock reads snapshots; the
+    // turn loop takes the finished ones and reports them to the model.
+    std::vector<bg_task::Snapshot> taskSnapshots() const;
 
     // Invoked on the agent thread when a turn completes (used to trigger a redraw).
     std::function<void()> onTurnComplete;
@@ -186,9 +194,10 @@ class TuiApp {
     void joinSkillThread();
     void drainPendingQueue();
 
-    // Skill helpers. buildSharedContext() renders the main session into the
-    // "[SHARED SESSION CONTEXT]" board both skill paths feed to SkillRunner.
-    std::string buildSharedContext() const;
+    // Skill helpers. buildSharedContext() renders a DIGEST of the main session (see
+    // Agent::summarizeConversationForSharing) -- not the raw transcript, which used
+    // to make every sub-agent carry the whole conversation.
+    std::string buildSharedContext();
 
     AppConfig config;
     DeepSeekClient client;
@@ -208,6 +217,9 @@ class TuiApp {
     Storage storage;
     Agent* agent = nullptr;
     IProcessRunner* procRunner_ = nullptr;
+    // Detached children. Declared after `tools` so its executor lambdas (which hold
+    // a pointer to it) can never outlive it.
+    TaskRegistry taskRegistry_;
 
     std::vector<bubble_model::Bubble> chatHistory;
     int64_t lastMessageId_ = 0;
@@ -243,8 +255,9 @@ class TuiApp {
     };
     std::optional<PendingSkill> pendingSkill_;
     // Image round requested by the view_image tool. Same lifecycle and the same
-    // mutex as pendingSkill_; turnRequest_ guarantees only one of the two can be
-    // queued per tool round.
+    // mutex as pendingSkill_. turnRequest_ is a queue now, so a skill and an image
+    // round can both be pending in one tool round; the image is pushed to the
+    // front and is consumed first, the skill follows in the next pass.
     struct PendingImages {
         std::vector<ImageAttachment> images;
     };

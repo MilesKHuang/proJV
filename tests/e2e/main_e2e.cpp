@@ -7,11 +7,16 @@
 //
 // argv[1] = workspace path, argv[2] = captures file written by the fake server.
 #include "tui/app_tui.h"
+#include "tui/config_view.h"
 
 #include "core/config.h"
 #include "platform/iprocess_runner.h"
 #include "platform/isystem_util.h"
 #include "json.hpp"
+
+#include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/dom/elements.hpp>
 
 #include <chrono>
 #include <cstdio>
@@ -87,6 +92,18 @@ int main(int argc, char** argv) {
     }
     const std::string ws = argv[1];
     const fs::path captures = argv[2];
+
+    // The workspace IS the launch directory (config.toml "workspace_path" is
+    // retired), so the harness must actually launch from the fixture. Without this
+    // the app used the repo root: AGENTS.md and shot.png were never found, and the
+    // view_image round silently turned into a tool error.
+    std::error_code chdirEc;
+    fs::current_path(ws, chdirEc);
+    if (chdirEc) {
+        std::printf("FAIL  cannot enter the fixture workspace '%s': %s\n", ws.c_str(),
+                    chdirEc.message().c_str());
+        return 2;
+    }
 
     SystemUtil::Init(CreateSystemUtil());
     IProcessRunner* runner = CreateProcessRunner();
@@ -250,6 +267,53 @@ int main(int argc, char** argv) {
         check(sys.find("[PROJECT CONTEXT]") != std::string::npos, "F3: directory tree re-injected");
         check(sys.find("[AGENTS.MD]") != std::string::npos, "F3: AGENTS.md re-injected");
         check(fixedPrefixIsSystem(msgs, 3), "F3: system prefix intact");
+    }
+
+    // ---- 6. the F2 dialog builds and renders -----------------------------
+    // It used to be build-time only: pressing F2 threw an uncaught C++ exception
+    // (0xE06D7363) and the whole app died. Rendering it into a fixed screen catches
+    // that class of crash without a human at the keyboard.
+    try {
+        auto dlg = config_view::makeConfigDialog(app, [] {});
+        check(true, "F2: config dialog constructs");
+        // Churn the heap between construction and render: the dialog used to keep a
+        // raw pointer to a vector owned by a temporary, and a render after that memory
+        // was reused threw "vector too long" and killed the app. Without the churn the
+        // freed block often still looks valid and the bug hides.
+        {
+            std::vector<std::string> churn(8192, std::string(96, 'x'));
+            churn.clear();
+            churn.shrink_to_fit();
+        }
+        auto screen =
+            ftxui::Screen::Create(ftxui::Dimension::Fixed(100), ftxui::Dimension::Fixed(30));
+        ftxui::Render(screen, dlg->Render());
+        check(true, "F2: config dialog builds and renders");
+        // A dialog that fits must still show its exit: the one-column layout needed
+        // ~30 rows and pushed "Cancel" off a 30-row terminal, which is how it became
+        // impossible to close.
+        const std::string rendered = screen.ToString();
+        check(rendered.find("Cancel") != std::string::npos,
+              "F2: Cancel is visible on a 100x30 screen");
+        check(rendered.find("Save") != std::string::npos, "F2: Save is visible");
+        {
+            std::vector<std::string> churn(8192, std::string(96, 'y'));
+            churn.clear();
+            churn.shrink_to_fit();
+        }
+        ftxui::Render(screen, dlg->Render());
+        check(true, "F2: config dialog renders twice (no dangling entries)");
+        // The approval dialogs are on the same path: a render crash there would
+        // take the app down exactly when the user must decide something.
+        auto approve = config_view::makeApprovalDialog(app, [] {});
+        auto screen2 =
+            ftxui::Screen::Create(ftxui::Dimension::Fixed(100), ftxui::Dimension::Fixed(24));
+        ftxui::Render(screen2, approve->Render());
+        check(true, "F2: approval dialog builds and renders");
+    } catch (const std::exception& e) {
+        check(false, "F2: config dialog builds and renders", std::string("threw: ") + e.what());
+    } catch (...) {
+        check(false, "F2: config dialog builds and renders", "threw a non-std exception");
     }
 
     app.shutdown();

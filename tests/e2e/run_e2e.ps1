@@ -42,7 +42,6 @@ base_url = "http://127.0.0.1:$port"
 max_tokens = 4096
 temperature = 0.0
 reasoning_effort = "max"
-workspace_path = '$($ws -replace '\\','\\')'
 context_window = 0
 "@
 Set-Content -Path (Join-Path $cfgDir "config.toml") -Value $cfg -Encoding UTF8
@@ -58,7 +57,9 @@ try {
     & (Join-Path $exeDir "proJV_e2e.exe") $ws $captures
     $code = $LASTEXITCODE
 } finally {
-    if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+    if (-not $server.HasExited) {
+        Stop-Process -Id $server.Id -Force
+    }
 }
 
 Write-Output "---- request bodies captured: $((Get-Content $captures | Measure-Object -Line).Lines)"

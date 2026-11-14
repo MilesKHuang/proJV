@@ -145,19 +145,29 @@ TEST_CASE("view_image: a user message without the flag is not marked") {
     CHECK_FALSE(bubbles[0].synthetic);
 }
 
-TEST_CASE("view_image: only one follow-up turn can be queued per round") {
+TEST_CASE("view_image: follow-up turns queue instead of colliding") {
     turn_requests::State st;
     CHECK_FALSE(st.busy());
+    CHECK(st.claim(turn_requests::Kind::Skill));
+    CHECK(st.peek() == turn_requests::Kind::Skill);
+    // The queue accepts a second request and keeps the order (skill, then image).
     CHECK(st.claim(turn_requests::Kind::Image));
-    CHECK(st.is(turn_requests::Kind::Image));
-    CHECK_FALSE(st.claim(turn_requests::Kind::Skill)); // second caller is refused
-    CHECK(st.refusedMessage() != nullptr);
-    CHECK(std::string(st.refusedMessage()).find("view_image") != std::string::npos);
+    CHECK(st.peek() == turn_requests::Kind::Image); // image jumps the queue
+    CHECK(st.size() == 2);
+    st.consume();
+    CHECK(st.peek() == turn_requests::Kind::Skill);
+    st.consume();
+    CHECK_FALSE(st.busy());
+
+    // Withdrawing a request that is still queued, and one that is not.
+    CHECK(st.claim(turn_requests::Kind::Skill));
+    CHECK(st.drop(turn_requests::Kind::Skill));
+    CHECK_FALSE(st.drop(turn_requests::Kind::Skill));
+    CHECK_FALSE(st.busy());
 
     st.release();
     CHECK_FALSE(st.busy());
     CHECK(st.claim(turn_requests::Kind::Skill)); // next round is fine
-    CHECK(std::string(st.refusedMessage()).find("run_skill") != std::string::npos);
     CHECK_FALSE(st.claim(turn_requests::Kind::None));
 }
 

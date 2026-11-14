@@ -46,13 +46,10 @@ struct Session {
     static size_t estimateTokens(const std::string& text);
 
     // Vision attachments: a flat per-image budget (docs: <=1024 tokens/image,
-    // images are resized down to that bound before inference).
-    static constexpr size_t kImageTokenEstimate = 1024;
+    // images are resized down to that bound before inference). The value lives in
+    // image_input.h; this forwarder exists so the estimate and the constant cannot
+    // drift apart (they used to be two separate 1024s).
     static size_t estimateImageTokens(size_t imageCount);
-
-    // Soft strip: merges the following tool result content INTO the assistant
-    // message content, then removes the tool_calls and tool result messages.
-    void softStripLastToolCalls();
 
     // Quick detection: returns true if orphaned tool messages exist (O(n) scan).
     // Does NOT modify messages. Call before buildRequestBody as a cheap check.

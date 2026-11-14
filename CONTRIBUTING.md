@@ -7,12 +7,12 @@ lives in the dev guide.
 
 ## Before you start
 
-1. Read [docs/en/dev-guide/README.md](docs/en/dev-guide/README.md) — request
+1. Read [docs/en/dev-guide/README.md](docs/en/dev-guide/README.md) -- request
    path, build commands, code conventions (threading, cancellation, error
    format, test seams).
 2. Skim [module-map.md](docs/en/dev-guide/module-map.md) to find the module your
    change belongs to.
-3. Find your change in [recipes.md](docs/en/dev-guide/recipes.md) — it lists the
+3. Find your change in [recipes.md](docs/en/dev-guide/recipes.md) -- it lists the
    files to touch, in order.
 
 ## Build and test
@@ -33,7 +33,7 @@ needs a new test; a bug fix needs a test that fails before it.
 
 - Branch from `main`: `feat/<short-slug>`, `fix/<short-slug>`,
   `docs/<short-slug>`.
-- Commit subjects follow `type(scope): summary` — `feat(tools)`, `fix(skill)`,
+- Commit subjects follow `type(scope): summary` -- `feat(tools)`, `fix(skill)`,
   `docs:`, `build:`, `chore(tests)`.
 - In the body, say **why** and list the files that changed shape (new config
   keys, new tools, new seams). Reviewers read the body, not the diff.
@@ -44,7 +44,7 @@ Checklist in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md
 
 - tests pass locally;
 - new or changed behaviour is covered by a test;
-- **docs updated in both languages** — `docs/en/` and `docs/zh/` are mirrors,
+- **docs updated in both languages** -- `docs/en/` and `docs/zh/` are mirrors,
   same file names; `README.md` and `README_zh.md` likewise;
 - no secrets: never commit `config.toml`, `projv_files/sessions/`, API keys or
   logs.

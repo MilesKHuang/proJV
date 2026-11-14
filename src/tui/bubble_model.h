@@ -1,9 +1,8 @@
 // proJV TUI -- bubble model: Message -> display bubbles (pure logic, no UI deps)
 //
-// This is a 1:1 extraction of the legacy ImGui logic in
-// src/ui/render_chat.cpp (App::deriveBubblesFromMessage + formatToolMsg).
-// Keeping the derivation rules as pure functions lets unit tests lock the
-// behavior down while the rendering shell (ImGui -> FTXUI) changes.
+// Kept as pure functions so the derivation rules are unit-testable and the
+// rendering shell (FTXUI) can change without touching them: deriveBubbles() is the
+// single place that decides which Message becomes which bubble.
 #pragma once
 
 #include "models.h"

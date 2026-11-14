@@ -326,19 +326,64 @@ Verdict evaluateSegment(const std::string& segment) {
             v.decision = Decision::Ask;
             return v;
         }
+        // commit rewrites history, push publishes it. Neither deletes a file, so
+        // neither was gated -- but both are irreversible in practice, and the user
+        // must see the exact command the model is about to run.
+        if (lowered.find("commit") != std::string::npos ||
+            lowered.find("push") != std::string::npos) {
+            v.decision = Decision::Ask;
+            return v;
+        }
     }
 
-    // Inline interpreter code can delete anything the interpreter can, and
-    // there is no way to read it reliably, so ask. `python script.py` is a
-    // normal workflow and stays Allow -- only `-c` / `-e` inline code counts.
+    // Inline interpreter code (`python -c`, `node -e`) used to ask unconditionally:
+    // "there is no way to read it reliably". In practice that punished read-only
+    // one-liners -- inspecting a SQLite file, parsing JSON -- as hard as a delete,
+    // and the user paid a dialog per call. Same rule as the shell now: scan the
+    // payload for the primitives that can destroy data and ask only for those.
+    // Irreducible limit: obfuscation (getattr(__import__('os'),'remove')) gets
+    // through. The command is still visible in the transcript, and `rm`-equivalent
+    // shell text keeps asking.
     static const std::set<std::string> kInterpreters = {"python", "python3", "py", "node",
                                                         "perl",   "ruby",    "php"};
     if (kInterpreters.count(cmd)) {
-        for (const std::string& a : words(segment))
-            if (a == "-c" || a == "-e") {
-                v.decision = Decision::Ask;
-                return v;
+        const std::vector<std::string> w = words(segment);
+        bool destructive = false;
+        for (size_t i = 0; i < w.size() && !destructive; ++i) {
+            if (w[i] != "-c" && w[i] != "-e") continue;
+            // The payload is everything after the flag; join it back so quoting
+            // does not hide a keyword from the scan.
+            std::string payload;
+            for (size_t j = i + 1; j < w.size(); ++j)
+                payload += " " + w[j];
+            const std::string p = lowerCopy(payload);
+            // API-qualified names only: bare "remove" also matches list.remove(),
+            // and bare "format" matches "{}".format(), which would put an approval
+            // dialog in front of every harmless one-liner again.
+            static const char* kDestructive[] = {
+                "os.remove",  "rmtree",     "unlink",      "shutil",       "os.rename",
+                "os.replace", "truncate",   "shred",       "os.system",    "subprocess",
+                "popen",      "os.kill",    "exec(",       "eval(",        "chmod",
+                "chown",      "drop table", "delete from", "drop database"};
+            for (const char* pat : kDestructive) {
+                if (p.find(pat) != std::string::npos) {
+                    destructive = true;
+                    break;
+                }
             }
+            // A write-mode open() has no fixed token: open(f,'w') / open(f,"a").
+            if (!destructive &&
+                (p.find("'w'") != std::string::npos || p.find("\"w\"") != std::string::npos ||
+                 p.find("'a'") != std::string::npos || p.find("\"a\"") != std::string::npos))
+                destructive = true;
+            break; // one payload is enough; flags after it are not scanned twice
+        }
+        if (destructive) {
+            v.decision = Decision::Ask;
+            return v;
+        }
+        // Read-only inline code falls through to the redirect check below: a
+        // `python -c "print(1)" > log.txt` is still an overwrite.
     }
 
     // 3. Overwriting an existing file. mv/cp only matter when the target is
@@ -353,9 +398,13 @@ Verdict evaluateSegment(const std::string& segment) {
         return v;
     }
 
-    // 4. Redirects: `echo x > f` truncates f just as well as rm does.
+    // 4. Redirects: `echo x > f` truncates f just as well as rm does. Functional,
+    //    not destructive: this is how builds and tests are logged, and gating it
+    //    made a normal session a dozen dialogs. The workspace snapshot still runs
+    //    per turn, so /undo covers a redirect that ate a source file.
     if (hasFileRedirect(segment)) {
         v.decision = Decision::Ask;
+        v.kind = Kind::Functional;
         return v;
     }
 

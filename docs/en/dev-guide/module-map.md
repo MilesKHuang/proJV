@@ -20,6 +20,15 @@ the code disagree, the code wins.
   the fixed system block, so the prefix cache stays stable.
 - **Read together with.** `chat_view.*`, `status_bar.*`, `status_line.*`,
   `approval_logic.*`, `config_view.*`, `skill_trigger.*`, `core/turn_requests.h`.
+- **Slash menu.** `src/tui/slash_menu.{h,cpp}` is the `/` completion list: a pure
+  table (builtins + installed skills, description read from `config.json`) plus a
+  prefix-then-substring filter. `main_tui.cpp` drives it from `InputOption::on_change`
+  and hijacks Up/Down/Enter/Escape in the existing `CatchEvent` while it is open.
+  It only fills the input box; nothing in the execution path changes.
+- **Background dock.** The right dock shows skill agents and running `bg#N` tasks
+  (`TaskRegistry::snapshots()`), each with its latest output line. The line is the
+  LAST non-empty line, not the first: a narration is a paragraph and the first line
+  is its oldest sentence.
 - **Tests.** `tests/golden/*`, `test_approval_logic.cpp`, `test_skill_trigger.cpp`,
   `test_agents_md.cpp`, `test_turn_end.cpp`.
 
@@ -72,6 +81,16 @@ the code disagree, the code wins.
   `tools/registry.h`, `config.*`.
 - **Tests.** `test_agent_request.cpp`, `test_turn_end.cpp`,
   `test_reasoning_content.cpp`, `test_prompt_*`.
+- **Wish mode.** `src/core/wish.h` is the whole state (objective, passes, idle
+  rounds, decisions taken, blocked). `wish_decide` / `wish_block`
+  (`src/tools/wish_tool.cpp`) are always registered and filtered out of the request
+  by `Agent::getFilteredToolDefinitions()` whenever no wish is active -- registering
+  and unregistering at runtime would write `ToolRegistry`'s bare maps from a second
+  thread. `TuiApp::runAgentTurnLoop` keeps looping while the wish is active and the
+  TODO is open, and stops on: TODO empty (after one was seen), two idle passes, the
+  model's `wish_block`, 50 passes, or `/wish cancel`.
+- **Tests.** `test_agent_request.cpp`, `test_turn_end.cpp`,
+  `test_reasoning_content.cpp`, `test_prompt_*`, `test_wish.cpp`.
 
 ## 5. API client
 
@@ -111,7 +130,18 @@ the code disagree, the code wins.
   after, then hangs it on the tool message. Display-only -- it is persisted with
   the row and never serialized.
 - **Tests.** `test_file_tools.cpp`, `test_diff_capture.cpp`, `test_web_api.cpp`.
-
+- **Output shaping.** `src/tools/shell_output.{h,cpp}` is the single place that
+  truncates command output, and it keeps the TAIL: compilers and test runners print
+  the verdict last. Two layers use it -- the platform runner keeps 4 MB (a memory
+  guard, dropping the middle) and `exec_shell` keeps the last 400 lines, or 200 KB
+  under `full_output`. Cuts back off to a UTF-8 boundary.
+- **Background tasks.** `src/core/task_registry.{h,cpp}` spawns detached children
+  that write straight to a per-task temp file -- a pipe nobody drains deadlocks the
+  child once the OS buffer fills. One monitor thread per registry (not per task),
+  joined in `shutdown()`; Windows adds a Job Object with `KILL_ON_JOB_CLOSE` so a
+  proJV crash takes the children with it. `exec_shell(background:true)` starts one,
+  `task_output` reads it, `/end_task` kills it, and the turn loop reports finished
+  ids through `turn_requests` (`Kind::Process`).
 ## 7. Skill engine
 
 - **Responsibility.** Run a JSON-described multi-agent program: fixed agents,

@@ -213,7 +213,8 @@ void spawnGrandchild() {
 #else
     pid_t p = fork();
     if (p == 0) {
-        for (;;) sleep(60);
+        for (;;)
+            sleep(60);
     }
     if (p > 0) {
         char buf[32];
@@ -234,7 +235,8 @@ int main(int argc, char** argv) {
         if (arg.rfind(pidPrefix, 0) == 0) gPidFile = arg.substr(pidPrefix.size());
     }
     if (gMode == "sleep") {
-        for (;;) std::this_thread::sleep_for(std::chrono::seconds(60));
+        for (;;)
+            std::this_thread::sleep_for(std::chrono::seconds(60));
     }
     if (gMode == "fork") spawnGrandchild();
     if (gMode != "fork") writePidFile(std::string());
@@ -245,10 +247,12 @@ int main(int argc, char** argv) {
         line.clear();
         // One newline-delimited frame. EOF ends the loop unless --mode=noexit,
         // which is exactly what that mode exists to test.
-        while ((c = fgetc(stdin)) != EOF && c != '\n') line.push_back((char)c);
+        while ((c = fgetc(stdin)) != EOF && c != '\n')
+            line.push_back((char)c);
         if (c == EOF) {
             if (gMode == "noexit") {
-                for (;;) std::this_thread::sleep_for(std::chrono::seconds(1));
+                for (;;)
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
             }
             return 0;
         }

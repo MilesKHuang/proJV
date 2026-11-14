@@ -20,6 +20,11 @@ struct TodoData {
     // Saved user prompt from when TODO was initialized.
     // Present as long as a TODO is active; cleared on action=done.
     std::string activeUserPrompt;
+
+    // Decisions taken on the user's behalf in /wish mode (wish_decide). Kept here
+    // rather than in Wish so they survive the wish ending -- they are the record
+    // the user reads afterwards, and the raw material for reports.
+    std::vector<std::string> decisions;
 };
 
 // Register the update_todo tool

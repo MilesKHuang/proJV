@@ -8,6 +8,7 @@
 #include "status_bar.h"
 #include "speaker_colors.h"
 #include "todo_view.h"
+#include "slash_menu.h"
 #include "config_view.h"
 #include "mcp_view.h"
 #include "theme_editor_view.h"
@@ -157,13 +158,14 @@ std::string truncateToCols(const std::string& s, int maxCols) {
 //   line 1: [name] <state> (+spinner) -- colored like the main status line
 //   line 2: dim, truncated last narration (the agent's last bubble text)
 ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& agents,
-                                int spinnerFrame) {
+                                int spinnerFrame,
+                                const std::vector<bg_task::Snapshot>& tasks = {}) {
     const auto& T = ThemeManager::instance().current();
     ftxui::Elements els;
     els.push_back(ftxui::text("Agents") | ftxui::bold);
     els.push_back(ftxui::separator());
-    if (agents.empty()) {
-        els.push_back(ftxui::text("(no skill running)") | ftxui::dim);
+    if (agents.empty() && tasks.empty()) {
+        els.push_back(ftxui::text("(no skill or task running)") | ftxui::dim);
         return ftxui::vbox(std::move(els));
     }
     for (const auto& a : agents) {
@@ -181,13 +183,35 @@ ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& a
         }
         els.push_back(ftxui::hbox(std::move(line1)));
 
-        // Line 2: dim, truncated last narration.
+        // Line 2: dim, truncated last narration. rfind, not find: the dock must
+        // show what the agent is doing NOW, and the first line of a multi-paragraph
+        // narration is the oldest thing in it.
         std::string st = a.status;
-        auto nl = st.find('\n'); // first line only
-        if (nl != std::string::npos) st = st.substr(0, nl);
+        while (!st.empty() && (st.back() == '\n' || st.back() == '\r' || st.back() == ' '))
+            st.pop_back();
+        auto nl = st.rfind('\n');
+        if (nl != std::string::npos) st = st.substr(nl + 1);
         if (st.empty())
             st = (a.activity == SkillRunner::AgentActivity::Working) ? "working..." : "(idle)";
         els.push_back(ftxui::text(truncateToCols(st, 34)) | ftxui::dim |
+                      ftxui::color(theme_map::hexToColor(T.textDisabled)));
+    }
+    // Background tasks: id, state, and the latest output line. Separate block so a
+    // running skill and a running build never look like the same thing.
+    for (const auto& t : tasks) {
+        if (t.state != bg_task::State::Running) continue;
+        els.push_back(ftxui::separator());
+        ftxui::Elements line1;
+        const std::string id = "bg#" + std::to_string(t.id);
+        const ftxui::Color bgColor =
+            theme_map::hexToColor(T.*panelActivityColor(SkillRunner::AgentActivity::Working));
+        line1.push_back(ftxui::text("[" + id + "]") | ftxui::bold | ftxui::color(bgColor));
+        line1.push_back(ftxui::text(" " + std::string(bg_task::stateLabel(t.state)) + " ") |
+                        ftxui::color(bgColor));
+        line1.push_back(ftxui::spinner(6, spinnerFrame));
+        els.push_back(ftxui::hbox(std::move(line1)));
+        std::string last = t.lastLine.empty() ? t.command : t.lastLine;
+        els.push_back(ftxui::text(truncateToCols(last, 34)) | ftxui::dim |
                       ftxui::color(theme_map::hexToColor(T.textDisabled)));
     }
     return ftxui::vbox(std::move(els));
@@ -386,7 +410,8 @@ int main(int argc, char** argv) {
     // require the platform layer or the TUI to be up.
     {
         std::vector<std::string> args;
-        for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+        for (int i = 1; i < argc; ++i)
+            args.emplace_back(argv[i]);
         std::string metaText;
         if (const auto metaExit = cli_args::parseMetaArgs(args, metaText)) {
             std::fputs(metaText.c_str(), stdout);
@@ -458,6 +483,15 @@ int main(int argc, char** argv) {
     bool show_todo = true;
     bool show_model = false;
     bool show_about = false;
+
+    // "/" completion menu state (M2.5). slash_all is computed once: the skills
+    // folder only changes with a restart-worthy action, and listSkills() is a
+    // directory listing.
+    bool show_slash = false;
+    int slash_selected = 0;
+    std::vector<slash_menu::Command> slash_items;
+    std::vector<slash_menu::Command> slash_all =
+        slash_menu::all(app.installedSkills(), app.skillsDir());
 
     // Agent turns run on a background thread; post a Custom event on every
     // streamed token update and on turn completion so the FTXUI loop redraws
@@ -536,10 +570,47 @@ int main(int argc, char** argv) {
         return markdown_view::renderSoftWrappedInput(input, input_cursor, state.focused) | yframe |
                size(HEIGHT, LESS_THAN, 8) | xflex;
     };
+    input_opt.on_change = [&] {
+        // Only a leading "/" with no space yet can be a command name. Typing the
+        // first character of the arguments ("/wish a...") closes the menu, which is
+        // exactly what the user means.
+        const size_t sp = input.find_first_of(" \t");
+        const bool bare = !input.empty() && input[0] == '/' && sp == std::string::npos;
+        if (!bare || input.size() < 1) {
+            show_slash = false;
+            return;
+        }
+        slash_items = slash_menu::filter(slash_all, input);
+        slash_selected = 0;
+        show_slash = !slash_items.empty();
+    };
+
     Component input_comp =
         Input(&input, "type a message (Enter=send, Esc=quit, F2=config)", input_opt);
 
     input_comp |= CatchEvent([&](Event e) {
+        // The "/" menu is handled first: Enter must fill the input, not send "/w",
+        // and Escape must close the menu, not quit the program.
+        if (show_slash && !slash_items.empty()) {
+            const int n = static_cast<int>(slash_items.size());
+            if (e == Event::ArrowUp) {
+                slash_selected = (slash_selected + n - 1) % n;
+                return true;
+            }
+            if (e == Event::ArrowDown) {
+                slash_selected = (slash_selected + 1) % n;
+                return true;
+            }
+            if (e == Event::Return) {
+                input = slash_menu::completion(slash_items[slash_selected]);
+                show_slash = false;
+                return true;
+            }
+            if (e == Event::Escape) {
+                show_slash = false;
+                return true;
+            }
+        }
         if (e == Event::Return) {
             if (!input.empty()) {
                 app.sendMessage(input);
@@ -699,13 +770,14 @@ int main(int argc, char** argv) {
         // (legacy GUI layout, not a bottom strip).
         Element mainArea;
         if (show_todo) {
-            Element dock = vbox({
-                               todo_view::renderTodoPanel(app.copyTodoData()) | flex | yframe |
-                                   vscroll_indicator,
-                               separator(),
-                               renderAgentPanel(app.skillAgentStatuses(), spinnerFrame),
-                           }) |
-                           size(WIDTH, EQUAL, 36);
+            Element dock =
+                vbox({
+                    todo_view::renderTodoPanel(app.copyTodoData()) | flex | yframe |
+                        vscroll_indicator,
+                    separator(),
+                    renderAgentPanel(app.skillAgentStatuses(), spinnerFrame, app.taskSnapshots()),
+                }) |
+                size(WIDTH, EQUAL, 36);
             mainArea = hbox({
                 std::move(chatColumn) | flex,
                 separator(),
@@ -740,6 +812,50 @@ int main(int argc, char** argv) {
                 }
             }
             els.push_back(statusEl);
+        }
+        // The "/" menu sits directly above the input box: it belongs to the line
+        // being typed, not to the chat.
+        if (show_slash && !slash_items.empty()) {
+            const auto& T = ThemeManager::instance().current();
+            Elements menu;
+            const int n = static_cast<int>(slash_items.size());
+            // A scrolling window, not a hard cut: with 16 entries a fixed "first 8"
+            // hid half the list behind a "... 8 more" line the arrow keys could not
+            // reach. The window follows the selection instead.
+            constexpr int kVisible = 10;
+            int first = 0;
+            if (n > kVisible) {
+                first = slash_selected - (kVisible - 2);
+                first = std::max(0, std::min(first, n - kVisible));
+            }
+            const int last = std::min(n, first + kVisible);
+            if (first > 0)
+                menu.push_back(text("  ^ " + std::to_string(first) + " more above") | dim);
+            for (int i = first; i < last; ++i) {
+                std::string cmd = "  " + slash_items[i].name;
+                if (!slash_items[i].args.empty()) cmd += " " + slash_items[i].args;
+                // Padding is on the command alone (ASCII, so bytes == columns); the
+                // description gets its own element so it can be muted. One string
+                // meant the command and its explanation competed for attention.
+                while (cmd.size() < 34)
+                    cmd += ' ';
+                const std::string desc = slash_items[i].desc;
+                Element row;
+                if (i == slash_selected) {
+                    // Inverted: the highlight carries the selection, the text stays
+                    // plain so the inverted colours keep their contrast.
+                    row = hbox({text(cmd) | bold, text(desc)}) | inverted |
+                          color(theme_map::hexToColor(T.phaseStreaming));
+                } else {
+                    row = hbox({text(cmd) | bold,
+                                text(desc) | color(theme_map::hexToColor(T.textDisabled))});
+                }
+                menu.push_back(std::move(row));
+            }
+            if (last < n)
+                menu.push_back(text("  v " + std::to_string(n - last) + " more below") | dim);
+            menu.push_back(text("  Enter = fill the command, Esc = close, Up/Down = move") | dim);
+            els.push_back(vbox(std::move(menu)));
         }
         els.push_back(input_comp->Render());
         if (app.pendingCount() > 0) {
@@ -797,6 +913,16 @@ int main(int argc, char** argv) {
     main_renderer->Add(spinner_ticker);
 
     Component config_dialog = config_view::makeConfigDialog(app, [&] { show_config = false; });
+    // Esc and F2 close it, always. Without this the only way out was the Cancel
+    // button -- and if the dialog was taller than the terminal, that button was
+    // clipped off the bottom, leaving no exit at all.
+    config_dialog = config_dialog | CatchEvent([&](Event e) {
+                        if (e == Event::Escape || e == Event::F2) {
+                            show_config = false;
+                            return true;
+                        }
+                        return false;
+                    });
     Component approval_dialog =
         config_view::makeApprovalDialog(app, [&] { show_approval = false; });
     Component mcp_dialog = mcp_view::makeMcpDialog(app, [&] { show_mcp = false; });

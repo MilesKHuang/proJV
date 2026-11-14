@@ -41,8 +41,8 @@ mcp.json
 # OS
 .DS_Store
 Thumbs.db
-__pycache__/  
-build_linux/  
+__pycache__/
+build_linux/
 
 dist/
 dist_linux/

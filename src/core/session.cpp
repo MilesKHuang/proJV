@@ -1,4 +1,5 @@
 #include "session.h"
+#include "image_input.h"
 #include "json.hpp"
 #include "debug_log.h"
 #include "token_estimate.h"
@@ -13,7 +14,8 @@ static constexpr const char* CONTEXT_COMPACT_SUMMARY_FULL_PREFIX =
 
 // -- Vision: charge a flat per-image budget (deepseek docs: <=1024/image) --
 size_t Session::estimateImageTokens(size_t imageCount) {
-    return imageCount * static_cast<size_t>(kImageTokenEstimate);
+    // One constant, in image_input.h: a second 1024 here would silently drift.
+    return image_input::imageTokens(imageCount);
 }
 
 // -- Token estimation: see core/token_estimate.h (official 0.3 / 0.6 per char) --
@@ -196,44 +198,6 @@ void Session::pruneForContext(size_t maxTokens) {
               messages.size(), beforeTokenCount / 1000, total / 1000);
 }
 
-void Session::softStripLastToolCalls() {
-    std::lock_guard<std::mutex> lock(mtx);
-
-    int lastIdx = -1;
-    for (int i = (int)messages.size() - 1; i >= 0; --i) {
-        if (!messages[i].toolCalls.empty()) {
-            lastIdx = i;
-            break;
-        }
-    }
-    if (lastIdx < 0) return;
-
-    std::string combined = messages[lastIdx].content;
-    std::vector<size_t> resultIndices;
-
-    for (size_t j = (size_t)lastIdx + 1; j < messages.size(); ++j) {
-        if (messages[j].role == "tool") {
-            resultIndices.push_back(j);
-            if (!combined.empty()) combined += "\n\n";
-            combined += "--- " + messages[j].name + " result ---\n";
-            combined += messages[j].content;
-        } else {
-            break;
-        }
-    }
-
-    messages[lastIdx].content = combined;
-    messages[lastIdx].toolCalls.clear();
-
-    for (auto it = resultIndices.rbegin(); it != resultIndices.rend(); ++it) {
-        messages.erase(messages.begin() + *it);
-    }
-
-    size_t removedCount = resultIndices.size();
-    debugLogf(
-        "[Session] softStripLastToolCalls: merged %zu tool results into assistant msg (index %d)",
-        removedCount, lastIdx);
-}
 
 // -- Basic accessors ----------------------------------------------------
 
@@ -358,9 +322,10 @@ void Session::repairOrphanedToolCalls() {
             }
 
             if (!neededIds.empty()) {
-                debugLogWarnf("[Session] repair Pass1: stripping %zu orphaned tool_calls from msg[%zu] "
-                          "(missing %zu tool results)",
-                          messages[i].toolCalls.size(), i, neededIds.size());
+                debugLogWarnf(
+                    "[Session] repair Pass1: stripping %zu orphaned tool_calls from msg[%zu] "
+                    "(missing %zu tool results)",
+                    messages[i].toolCalls.size(), i, neededIds.size());
                 if (messages[i].content.empty()) {
                     messages[i].content = "[Tool calls repaired - results were missing]";
                 }

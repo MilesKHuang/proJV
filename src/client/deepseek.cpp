@@ -226,8 +226,8 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
             if (*outHttpStatus == 200 || *outHttpStatus == 0) return (int)res;
             if (isRetryableHttpStatus(*outHttpStatus) && retries < retryConfig_.maxRetries) {
                 ++retries;
-                debugLogWarnf("[DeepSeek] HTTP %ld retryable, attempt %d/%d", *outHttpStatus, retries,
-                          retryConfig_.maxRetries);
+                debugLogWarnf("[DeepSeek] HTTP %ld retryable, attempt %d/%d", *outHttpStatus,
+                              retries, retryConfig_.maxRetries);
                 std::this_thread::sleep_for(
                     std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
                 continue;
@@ -239,7 +239,7 @@ int DeepSeekClient::postWithRetry(void* curl, const std::string& url, const std:
         if (retries < retryConfig_.maxRetries) {
             ++retries;
             debugLogWarnf("[DeepSeek] curl_easy_perform error %d, retry %d/%d", (int)res, retries,
-                      retryConfig_.maxRetries);
+                          retryConfig_.maxRetries);
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(retryConfig_.delayForAttempt(retries - 1)));
             continue;
@@ -749,7 +749,8 @@ std::string DeepSeekClient::searchWeb(const std::string& query, int count, bool 
     long status = 0;
     int rc = postJson("v1/tools/search", body.dump(), respBody, &status);
     if (rc != CURLE_OK) {
-        const std::string err = "Error: " + curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
+        const std::string err =
+            "Error: " + curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
         if (errorOut) *errorOut = err;
         return err;
     }
@@ -787,7 +788,8 @@ std::string DeepSeekClient::fetchWeb(const std::string& url, std::string* errorO
     long status = 0;
     int rc = postJson("v1/tools/fetch", body.dump(), respBody, &status);
     if (rc != CURLE_OK) {
-        const std::string err = "Error: " + curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
+        const std::string err =
+            "Error: " + curl_error::describe(rc, curl_easy_strerror((CURLcode)rc));
         if (errorOut) *errorOut = err;
         return err;
     }

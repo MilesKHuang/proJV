@@ -1,5 +1,6 @@
 #include "agent.h"
 #include "prompts.h"
+#include "tools/wish_tool.h"
 #include "json.hpp"
 #include "debug_log.h"
 #include "snapshot.h"
@@ -24,7 +25,6 @@ static constexpr const char* ERROR_STUCK_LOOP_PREFIX = "\xe2\x9a\xa0 [Auto-recov
 static constexpr const char* ERROR_STUCK_LOOP_MIDDLE = "' repeatedly and it failed ";
 static constexpr const char* ERROR_STUCK_LOOP_SUFFIX =
     " times.\n\nTool calls cleaned up, last result preserved. Continue differently.";
-static constexpr const char* BATCH_COMPLETE = "[Batch complete. Continuing...]";
 static constexpr const char* HTTP_RETRY_FAILED = "Error: API request failed after retry.\nError: ";
 static constexpr const char* IMAGE_400_HINT =
     "\nHint: the current model may not support image input. Switch to a Flash "
@@ -39,15 +39,21 @@ static constexpr const char* QUICK_HELP =
     "| `/restore N` | Roll the workspace back to before turn N (`/restore N confirm`) |\n"
     "| `/<skill> <topic>` | Run an installed multi-agent skill (e.g. `/monica D:\\dir`) |\n"
     "| `/skill list` | List installed skills |\n"
+    "| `/wish <what you want>` | Decide the open questions yourself and keep working until "
+    "the TODO list is empty (`/wish cancel` stops it; `/wish` alone shows progress) |\n"
+    "| `/end_task <id>\\|all` | Stop a background task started with `exec_shell(background:"
+    "true)` |\n"
+    "Type `/` in the input box to see this list and pick from it.\n"
     "\nproJV v" PROJV_VERSION " - native C++ DeepSeek AI agent (FTXUI).\n";
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
-
+static constexpr const char* WISH_SYSTEM_PREFIX = "[WISH] ";
 // ============================================================================
 // Agent
 // ============================================================================
 
 Agent::Agent(DeepSeekClient& client, ToolRegistry& tools) : client(client), toolRegistry(tools) {
     registerTodoTool(tools, &todoData, &todoMutex);
+    registerWishTools(tools, &todoData, &todoMutex, &wish_, &wishMutex_);
     contextBudget = Session::computeContextBudget(effectiveContextWindow(), configMaxTokens);
 }
 
@@ -162,8 +168,10 @@ static std::string snapshotReportText(const char* cmd, const snapshot::Report& r
     s += ".";
     if (!r.restored.empty() || !r.removed.empty()) {
         s += " Those edits no longer exist -- do not assume the files still contain them.\n";
-        for (const std::string& p : r.restored) s += "  M " + p + "\n";
-        for (const std::string& p : r.removed) s += "  D " + p + "\n";
+        for (const std::string& p : r.restored)
+            s += "  M " + p + "\n";
+        for (const std::string& p : r.removed)
+            s += "  D " + p + "\n";
     }
     return s;
 }
@@ -281,7 +289,6 @@ void Agent::run() {
     } else {
         doCompaction();
         checkContextWarning();
-        toolCallDepth_ = 0;
         reasoningLengthRetries_ = 0;
         setPhase(AgentPhase::Streaming);
         updateSnapshot();
@@ -400,7 +407,13 @@ void Agent::run() {
                     // so no final answer was generated. Retry with a bigger
                     // budget and an explicit instruction to stop over-thinking.
                     ++reasoningLengthRetries_;
-                    configMaxTokens = std::min(configMaxTokens * 2, 65536);
+                    // Never shrink the budget on a retry: the old
+                    // min(x*2, 65536) left the 65536 default unchanged and cut a
+                    // larger configured value in half.
+                    const int doubled = (configMaxTokens > kMaxOutputTokens / 2)
+                                            ? kMaxOutputTokens
+                                            : configMaxTokens * 2;
+                    configMaxTokens = std::max(configMaxTokens, doubled);
                     addPersistedMessage(Message::System(
                         "[Auto-recovery] Reasoning consumed the entire output budget "
                         "(finish_reason=length) and no answer was produced. "
@@ -447,7 +460,10 @@ void Agent::run() {
                 // Policy runs per call, not per batch: "allow this command" is
                 // granted for one exact command text, so each call has to be
                 // looked at on its own. A red line is refused without asking.
-                const delete_guard::Verdict verdict = evaluateCommandPolicy(call);
+                const std::string command = commandOf(call);
+                const delete_guard::Verdict verdict = call.name == "exec_shell"
+                                                          ? evaluateCommandPolicy(command)
+                                                          : delete_guard::Verdict{};
                 if (verdict.decision == delete_guard::Decision::Deny) {
                     debugLogWarnf("[Agent] policy denied %s: %s", call.name.c_str(),
                                   verdict.reason.c_str());
@@ -460,8 +476,7 @@ void Agent::run() {
                     ++toolIndex_;
                     continue;
                 }
-                if (verdict.decision == delete_guard::Decision::Ask &&
-                    !hasGrant(commandOf(call))) {
+                if (policyNeedsApproval(verdict, command)) {
                     const bool granted = awaitApproval(call);
                     if (cancelRequested_.load()) {
                         wasCancelled = true;
@@ -541,8 +556,10 @@ void Agent::run() {
                 else
                     break;
             }
-            if (toolCallDepth_ >= maxToolCallsPerRound_) {
-                toolCallDepth_ = 0;
+            // Stuck-loop detection: two failures in a row are already the signal, so
+            // there is no counter to wait for. The message names the tool that keeps
+            // failing, which is the actionable part.
+            if (consec >= 2) {
                 std::unordered_map<std::string, int> fcnt;
                 for (auto& r : toolResults_)
                     if (r.isError) fcnt[r.name]++;
@@ -553,25 +570,19 @@ void Agent::run() {
                         mr = c;
                         wt = n;
                     }
-                if (mr >= 2) {
-                    session.softStripLastToolCalls();
+                session.stripOrphanedToolCalls();
+                if (mr >= 2)
                     addPersistedMessage(Message::System(
                         std::string(ERROR_STUCK_LOOP_PREFIX) + wt + ERROR_STUCK_LOOP_MIDDLE +
                         std::to_string(mr) + ERROR_STUCK_LOOP_SUFFIX));
-                } else
-                    addPersistedMessage(Message::System(BATCH_COMPLETE));
-            }
-            if (consec >= 2) {
-                toolCallDepth_ = 0;
-                session.stripOrphanedToolCalls();
-                addPersistedMessage(Message::System(ERROR_CONSECUTIVE_FAILURES));
+                else
+                    addPersistedMessage(Message::System(ERROR_CONSECUTIVE_FAILURES));
                 setPhase(AgentPhase::Streaming);
                 pendingToolCalls_.clear();
                 toolResults_.clear();
                 updateSnapshot();
                 break;
             }
-            ++toolCallDepth_;
             doCompaction();
             repairSession();
             session.validateToolCallPairs();
@@ -610,20 +621,25 @@ void Agent::run() {
 // ========== Public API ==========
 
 void Agent::approveTool(int action) {
+    std::string toPersist;
     {
         std::lock_guard<std::mutex> lk(approvalMutex_);
-        // "Always" binds to the exact command text of the call on screen. It
-        // used to set one flag for the whole session, which meant one click
-        // allowed every destructive command until /clear.
-        if (action == 2 && pendingApproval_) {
+        // "Always" binds to the exact command text of the call on screen, and is
+        // refused in Strict mode: that mode exists so nothing can be remembered.
+        if (action == 2 && pendingApproval_ && approvalMode() != ApprovalMode::Strict) {
             const std::string cmd = commandOf(*pendingApproval_);
-            if (!cmd.empty() && std::find(grants_.begin(), grants_.end(), cmd) == grants_.end())
+            if (!cmd.empty() && std::find(grants_.begin(), grants_.end(), cmd) == grants_.end()) {
                 grants_.push_back(cmd);
+                toPersist = cmd;
+            }
         }
         approvalAction_ = action;
         approvalDone_ = true;
         approvalGranted_ = (action != 0);
     }
+    // Outside the lock: the callback writes config.toml, which must never run while
+    // the agent thread is waiting on approvalMutex_.
+    if (!toPersist.empty() && onGrantPersist) onGrantPersist(toPersist);
     approvalCv_.notify_one();
 }
 
@@ -666,10 +682,16 @@ void Agent::clearSession() {
     cancel();
     session.clear();
     contextTokensDirty_ = true;
-    toolCallDepth_ = 0;
+    {
+        std::lock_guard<std::mutex> lk(wishMutex_);
+        // /clear ends the wish but keeps nothing: the TODO is reset below with the
+        // rest of the session state.
+        wish_.clear();
+    }
     {
         std::lock_guard<std::mutex> lk(approvalMutex_);
-        grants_.clear();
+        // Grants are policy, not session state: they live in config.toml now, so
+        // /clear must not silently revoke what the user allowed forever.
         pendingApproval_.reset();
     }
     setPhase(AgentPhase::Idle);
@@ -900,7 +922,8 @@ bool Agent::compactSession(bool force) {
     std::string err;
     ChatResponse resp = client.sendMessage(req, &err);
     if (!err.empty() || resp.messages.empty()) {
-        debugLogWarnf("[Compact] LLM call failed: %s", err.empty() ? "empty response" : err.c_str());
+        debugLogWarnf("[Compact] LLM call failed: %s",
+                      err.empty() ? "empty response" : err.c_str());
         return false;
     }
     std::string s = resp.messages.back().content;
@@ -914,8 +937,70 @@ bool Agent::compactSession(bool force) {
     return true;
 }
 
-// ========== Tool execution ==========
+std::string Agent::summarizeConversationForSharing() {
+    // 1. Local digest: the three per-turn blocks are already summaries the model
+    //    wrote, so they are always worth sending even when the transcript is huge.
+    std::string local;
+    {
+        std::lock_guard<std::mutex> lk(todoMutex);
+        const std::string ur = buildUserRequestSystemMessage(todoData);
+        const std::string ov = buildOverviewSystemMessage(todoData);
+        const std::string tc = buildTodoSystemMessage(todoData);
+        if (!ur.empty()) local += ur + "\n";
+        if (!ov.empty()) local += ov + "\n";
+        if (!tc.empty()) local += tc + "\n";
+    }
 
+    // 2. A bounded slice of the conversation, newest first. 12 KB is roughly 4k
+    //    tokens: enough for the compactor to see what the work was, small enough that
+    //    the summary request itself can never become the problem it solves.
+    constexpr size_t kSliceBudget = 12 * 1024;
+    constexpr size_t kPerMessageCap = 1500;
+    auto msgs = session.getContextMessages();
+    std::string tail;
+    for (auto it = msgs.rbegin(); it != msgs.rend(); ++it) {
+        if (it->role == "system") continue; // the fixed prefix is not conversation
+        std::string body = it->content;
+        if (body.size() > kPerMessageCap) body = body.substr(0, kPerMessageCap) + " [...]";
+        std::string line = it->role + ": " + body + "\n";
+        if (tail.size() + line.size() > kSliceBudget) break;
+        tail = line + tail; // keep chronological order
+    }
+    if (tail.empty() && local.empty()) return std::string();
+    local += tail;
+
+    // Small session: the digest IS the summary, no API call needed.
+    if (local.size() < 6000) return local;
+
+    // 3. Ask the model, with the compactor's own prompt. Read-only: nothing is
+    //    applied to the session, so a skill run can never rewrite the conversation.
+    ChatRequest req;
+    req.model = model_;
+    req.messages.push_back(Message::System(loadPromptFile("compactor.md")));
+    req.messages.push_back(Message::User(local));
+    req.stream = false;
+    req.maxTokens = std::min(configMaxTokens, 2048);
+    req.temperature = 0.0;
+    std::string err;
+    const ChatResponse resp = client.sendMessage(req, &err);
+    if (!err.empty() || resp.messages.empty()) {
+        debugLogWarnf("[Agent] shared-context summary failed (%s); using the local digest",
+                      err.empty() ? "empty response" : err.c_str());
+        return local;
+    }
+    const std::string s = resp.messages.back().content;
+    if (s.size() < 50) {
+        debugLogWarnf("[Agent] shared-context summary too short (%zu bytes); using the local "
+                      "digest",
+                      s.size());
+        return local;
+    }
+    debugLogf("[Agent] shared context: %zu bytes of transcript -> %zu byte summary", local.size(),
+              s.size());
+    return s;
+}
+
+// ========== Tool execution ==========
 ToolResult Agent::executeTool(const ToolCall& call) {
     ToolResult r;
     r.toolCallId = call.id;
@@ -931,6 +1016,12 @@ ToolResult Agent::executeTool(const ToolCall& call) {
     }
     r.content = toolRegistry.execute(call.name, call.arguments);
     r.isError = (r.content.compare(0, 6, "Error:") == 0);
+    // A wish pass counts as progress when the model did anything at all -- reading,
+    // grepping and running commands are work. Only a pass with no tool call is idle.
+    if (call.name != "wish_block") {
+        std::lock_guard<std::mutex> lk(wishMutex_);
+        if (wish_.active) wish_.progressedThisPass = true;
+    }
     if (toolRegistry.isCancelled()) r.isCancelled = true;
     // A file-writing tool leaves the unified diff of what it changed here. It
     // rides on the ToolResult and the tool row, never inside `content`.
@@ -953,10 +1044,9 @@ bool Agent::hasGrant(const std::string& command) const {
     return std::find(grants_.begin(), grants_.end(), command) != grants_.end();
 }
 
-delete_guard::Verdict Agent::evaluateCommandPolicy(const ToolCall& call) const {
+delete_guard::Verdict Agent::evaluateCommandPolicy(const std::string& command) const {
     delete_guard::Verdict v;
-    if (call.name != "exec_shell") return v; // every other tool is allow-by-default
-    const std::string cmd = commandOf(call);
+    const std::string& cmd = command;
     if (cmd.empty()) return v;
     v = delete_guard::evaluate(cmd);
     if (v.decision == delete_guard::Decision::Ask && v.needsExistenceCheck) {
@@ -966,10 +1056,36 @@ delete_guard::Verdict Agent::evaluateCommandPolicy(const ToolCall& call) const {
         std::error_code ec;
         std::filesystem::path target(v.checkTarget);
         if (target.is_relative()) target = std::filesystem::current_path(ec) / target;
-        if (!ec && !std::filesystem::exists(target, ec))
-            v.decision = delete_guard::Decision::Allow;
+        if (!ec && !std::filesystem::exists(target, ec)) v.decision = delete_guard::Decision::Allow;
     }
     return v;
+}
+
+bool Agent::policyNeedsApproval(const delete_guard::Verdict& v, const std::string& command) const {
+    if (v.decision != delete_guard::Decision::Ask) return false;
+    // A command the user allowed forever never asks again, in any mode.
+    if (hasGrant(command)) return false;
+    switch (approvalMode()) {
+    case ApprovalMode::Strict:
+        // Every Ask asks. Nothing is offered to remember.
+        return true;
+    case ApprovalMode::Loose:
+        // Only the red line (Deny) is refused; it never reaches this point.
+        debugLogf("[Agent] approval_mode=loose: %s", command.c_str());
+        return false;
+    case ApprovalMode::Balanced:
+    default:
+        // Functional overwrites (`build > log.txt`) run; destructive ones ask.
+        if (v.kind == delete_guard::Kind::Functional) {
+            debugLogf("[Agent] approval_mode=balanced: %s", command.c_str());
+            return false;
+        }
+        return true;
+    }
+}
+
+bool Agent::policyNeedsApproval(const std::string& command) const {
+    return policyNeedsApproval(evaluateCommandPolicy(command), command);
 }
 
 bool Agent::awaitApproval(const ToolCall& call) {
@@ -1006,6 +1122,8 @@ ChatRequest Agent::buildChatRequest() const {
         std::vector<Message> inj;
         // P3: the capability map. Opaque text from the TUI, one string per turn.
         if (!capabilitiesBlock_.empty()) inj.push_back(Message::System(capabilitiesBlock_));
+        const Wish w = wishSnapshot();
+        if (w.active) inj.push_back(Message::System(wishSystemMessage(w)));
         if (!ur.empty()) inj.push_back(Message::System(ur));
         if (!tm.empty()) inj.push_back(Message::System(tm));
         if (!ov.empty()) inj.push_back(Message::System(ov));
@@ -1052,6 +1170,16 @@ std::vector<ToolDefinition> Agent::getFilteredToolDefinitions() const {
     // once here, at the single read point, instead of relying on the map.
     std::sort(all.begin(), all.end(),
               [](const ToolDefinition& a, const ToolDefinition& b) { return a.name < b.name; });
+    // /wish tools exist only in /wish mode. Filtered, not unregistered: the registry
+    // is read by the agent thread and written by syncTools on a turn boundary, so
+    // registering and unregistering at runtime would need a lock it does not have.
+    if (!wishSnapshot().active) {
+        all.erase(std::remove_if(all.begin(), all.end(),
+                                 [](const ToolDefinition& d) {
+                                     return d.name == "wish_decide" || d.name == "wish_block";
+                                 }),
+                  all.end());
+    }
     // Fast path: nothing is restricted and nothing was auto-registered, so the
     // whole registry goes out (the pre-MCP behaviour).
     if (allowedTools_.empty() && autoToolNames_.empty()) return all;
@@ -1098,6 +1226,83 @@ size_t Agent::getEstimatedContextTokens() const {
 void Agent::setRequestParams(int mt, double t) {
     configMaxTokens = mt;
     configTemperature = t;
+}
+
+// ========== /wish ==========
+
+void Agent::startWish(const std::string& objective) {
+    std::lock_guard<std::mutex> lk(wishMutex_);
+    wish_.reset(objective);
+}
+
+void Agent::cancelWish() {
+    std::lock_guard<std::mutex> lk(wishMutex_);
+    wish_.clear();
+}
+
+Wish Agent::wishSnapshot() const {
+    std::lock_guard<std::mutex> lk(wishMutex_);
+    return wish_;
+}
+
+Wish Agent::endWishPass() {
+    std::lock_guard<std::mutex> lk(wishMutex_);
+    if (!wish_.active) return wish_;
+    // Remember that a checklist existed: update_todo(done) empties it, and an empty
+    // TODO must only mean "finished" once there was something to finish.
+    if (hasUnfinishedTodo()) wish_.sawTodo = true;
+    ++wish_.passes;
+    if (wish_.progressedThisPass)
+        wish_.idleRounds = 0;
+    else
+        ++wish_.idleRounds;
+    wish_.progressedThisPass = false;
+    return wish_;
+}
+
+bool Agent::hasUnfinishedTodo() const {
+    // Read the data, not the panel: F9 can hide the TODO view while the checklist
+    // is still the definition of done.
+    std::lock_guard<std::mutex> lk(todoMutex);
+    return !todoData.pendingTodo.empty();
+}
+
+std::string Agent::unfinishedTodoText() const {
+    std::lock_guard<std::mutex> lk(todoMutex);
+    return todoData.pendingTodo;
+}
+
+std::vector<std::string> Agent::wishDecisions() const {
+    std::lock_guard<std::mutex> lk(todoMutex);
+    return todoData.decisions;
+}
+
+std::string Agent::wishStopReason(const Wish& w) const {
+    if (!w.active) return std::string();
+    if (w.blocked) return "blocked: " + w.blockReason;
+    if (w.sawTodo && !hasUnfinishedTodo()) return std::string("todo:done");
+    if (w.idleRounds >= wish_mode::kMaxIdleRounds)
+        return "idle: two passes without a single tool call";
+    if (w.passes >= wish_mode::kMaxPasses)
+        return "passes: " + std::to_string(w.passes) + " (the ceiling)";
+    return std::string();
+}
+
+std::string Agent::wishSystemMessage(const Wish& w) {
+    if (!w.active) return std::string();
+    return std::string(WISH_SYSTEM_PREFIX) +
+           "Mode: decide and proceed. This overrides the normal \"ask when ambiguous\" rule.\n"
+           "Wish: " +
+           w.objective +
+           "\n"
+           "- Step 1: call update_todo(init) with a full checklist. That list IS the "
+           "definition of done; every part of the wish needs its own line.\n"
+           "- When a choice would change what you build (language, data model, public API, "
+           "destructive step), do NOT ask. Pick the most defensible option, call "
+           "wish_decide, and continue in the same turn.\n"
+           "- Never end a turn with a question. If you truly cannot proceed, call "
+           "wish_block.\n"
+           "- The wish is done when every TODO line is marked done.\n";
 }
 
 bool Agent::handleQuickCommand(const std::string& input) {

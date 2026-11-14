@@ -154,3 +154,120 @@ TEST_CASE("monica: one supervisor reply dispatches to several workers, then DONE
         if (e == "Supervisor|message|DONE") done = true;
     CHECK(done);
 }
+
+TEST_CASE("skill: a 'DONE' answer in the final step is retried, then reported") {
+    // Exactly what happened with monica: the supervisor answered DONE in the
+    // on_converge step too, so the user got a "finished" with no deliverable.
+    ensureSysUtil();
+    const std::string root = PROJV_EXAMPLE_SKILLS_DIR;
+
+    std::vector<std::string> events;
+    SkillRunner::Callbacks cbs;
+    cbs.onEvent = [&events](const std::string& r, const std::string& k, const std::string& t) {
+        events.push_back(r + "|" + k + "|" + t);
+    };
+
+    int convergeCalls = 0;
+    SkillRunner sr(testConfig(), nullptr, cbs, "", root);
+    sr.setResponderMulti("supervisor",
+                         [&convergeCalls](const std::string&, const std::vector<Message>&) {
+                             ++convergeCalls;
+                             std::vector<ToolCall> out;
+                             out.push_back(emitCall("DONE"));
+                             return out;
+                         });
+    for (int w = 1; w <= 10; ++w)
+        sr.setResponder(
+            "worker_" + std::to_string(w),
+            [](const std::string&, const std::vector<Message>&) { return emitCall("ok"); });
+
+    sr.run("monica", "T");
+
+    // on_converge ran twice: the first answer was trivial, so it retried once.
+    bool retried = false, warned = false;
+    for (const auto& e : events) {
+        if (e.find("retrying once") != std::string::npos) retried = true;
+        if (e.find("no deliverable was produced") != std::string::npos) warned = true;
+    }
+    CHECK(retried);
+    CHECK(warned); // and it says so instead of returning silently
+}
+
+TEST_CASE("skill: a real report in the final step is not retried") {
+    ensureSysUtil();
+    const std::string root = PROJV_EXAMPLE_SKILLS_DIR;
+
+    std::vector<std::string> events;
+    SkillRunner::Callbacks cbs;
+    cbs.onEvent = [&events](const std::string& r, const std::string& k, const std::string& t) {
+        events.push_back(r + "|" + k + "|" + t);
+    };
+
+    int calls = 0;
+    SkillRunner sr(testConfig(), nullptr, cbs, "", root);
+    sr.setResponderMulti("supervisor", [&calls](const std::string&, const std::vector<Message>&) {
+        ++calls;
+        std::vector<ToolCall> out;
+        out.push_back(emitCall("## Report\n\n- src/a.cpp: formatted, 3 full-width chars "
+                               "replaced\n- src/b.cpp: dead code at line 42 (unused symbol)"));
+        return out;
+    });
+    for (int w = 1; w <= 10; ++w)
+        sr.setResponder(
+            "worker_" + std::to_string(w),
+            [](const std::string&, const std::vector<Message>&) { return emitCall("ok"); });
+
+    sr.run("monica", "T");
+
+    for (const auto& e : events) {
+        CHECK(e.find("retrying once") == std::string::npos);
+        CHECK(e.find("no deliverable was produced") == std::string::npos);
+    }
+}
+
+TEST_CASE("skill: a stale cancel flag is reported, not silently swallowed") {
+    // The real failure: ESC / F3 / F5 / /clear latch ToolRegistry's cancel flag, and
+    // a user-invoked skill never calls Agent::newTurn() to clear it. Every step was
+    // skipped and run() returned with zero events -- the user saw nothing at all.
+    ensureSysUtil();
+    const std::string root = PROJV_EXAMPLE_SKILLS_DIR;
+
+    std::vector<std::string> events;
+    SkillRunner::Callbacks cbs;
+    cbs.onEvent = [&events](const std::string& r, const std::string& k, const std::string& t) {
+        events.push_back(r + "|" + k + "|" + t);
+    };
+
+    SkillRunner sr(testConfig(), nullptr, cbs, "", root);
+    sr.setCancelProbe([] { return true; }); // as if the flag were left behind
+    sr.run("monica", "D:/ws/projv");
+
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].find("cancelled before the first round") != std::string::npos);
+}
+
+TEST_CASE("skill: a clean start runs with no probe hits") {
+    ensureSysUtil();
+    const std::string root = PROJV_EXAMPLE_SKILLS_DIR;
+
+    std::vector<std::string> events;
+    SkillRunner::Callbacks cbs;
+    cbs.onEvent = [&events](const std::string& r, const std::string& k, const std::string& t) {
+        events.push_back(r + "|" + k + "|" + t);
+    };
+
+    SkillRunner sr(testConfig(), nullptr, cbs, "", root);
+    sr.setCancelProbe([] { return false; });
+    sr.setResponderMulti("supervisor", [](const std::string&, const std::vector<Message>&) {
+        std::vector<ToolCall> out;
+        out.push_back(emitCall("DONE"));
+        return out;
+    });
+    sr.run("monica", "D:/ws/projv");
+
+    CHECK(events.size() >= 1);
+    bool cancelled = false;
+    for (auto& e : events)
+        if (e.find("cancelled before") != std::string::npos) cancelled = true;
+    CHECK_FALSE(cancelled);
+}

@@ -52,7 +52,8 @@ void TuiApp::setupTools() {
         }
     }
 
-    registerShellTool(tools, paths_, procRunner_);
+    registerShellTool(tools, paths_, procRunner_, &taskRegistry_);
+    registerTaskOutputTool(tools, &taskRegistry_);
     registerFileTools(tools, paths_);
     registerFormatTool(tools, paths_, procRunner_, config.clangFormatPath);
     registerMdFileTool(tools, paths_);
@@ -114,17 +115,17 @@ void TuiApp::setupTools() {
 
             {
                 std::lock_guard<std::mutex> lk(skillMutex_);
-                if (!turnRequest_.claim(turn_requests::Kind::Skill))
-                    return std::string("Error: ") + turnRequest_.refusedMessage();
+                // The queue always accepts; the runtime drains it in order.
+                turnRequest_.claim(turn_requests::Kind::Skill);
                 if (lastSkillThisTurn_ == folder) {
-                    turnRequest_.release();
+                    turnRequest_.drop(turn_requests::Kind::Skill);
                     return "Error: skill '" + folder +
                            "' already ran in this turn. Its output "
                            "is above -- read the produced files and report it instead of "
                            "re-running the workflow.";
                 }
                 if (skillCallsThisTurn_ >= 4) {
-                    turnRequest_.release();
+                    turnRequest_.drop(turn_requests::Kind::Skill);
                     return "Error: at most 4 skills per turn. Ask the user how to continue.";
                 }
                 pendingSkill_ = PendingSkill{folder, topic};
@@ -189,8 +190,8 @@ void TuiApp::setupTools() {
             const size_t count = images.size();
             {
                 std::lock_guard<std::mutex> lk(skillMutex_);
-                if (!turnRequest_.claim(turn_requests::Kind::Image))
-                    return std::string("Error: ") + turnRequest_.refusedMessage();
+                // Image jumps the queue: the model cannot continue without it.
+                turnRequest_.claim(turn_requests::Kind::Image);
                 pendingImages_ = PendingImages{std::move(images)};
             }
             if (onStreamingTick) onStreamingTick();
@@ -256,6 +257,17 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     });
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setReasoningEffort(config.reasoningEffort);
+    agent->setApprovalMode(config.approvalMode);
+    agent->setPersistentGrants(config.approvalGrants);
+    // ALWAYS -> write it into config.toml. Core has no config access, so the TUI
+    // owns persistence; this runs on the agent thread right after the click.
+    agent->onGrantPersist = [this](const std::string& cmd) {
+        if (std::find(config.approvalGrants.begin(), config.approvalGrants.end(), cmd) ==
+            config.approvalGrants.end())
+            config.approvalGrants.push_back(cmd);
+        saveConfig(config);
+        debugLogf("[TuiApp] approval grant persisted: %s", cmd.c_str());
+    };
     agent->setWorkspacePath(paths_.describe());
     agent->setModel(config.model);
     agent->setContextWindow(config.contextWindow);
@@ -276,7 +288,7 @@ bool TuiApp::initialize(IProcessRunner* procRunner) {
     fs::create_directories(sessionsDir_, ec);
     if (ec) {
         debugLogWarnf("[TuiApp] Failed to create sessions dir '%s': %s", sessionsDir_.c_str(),
-                  ec.message().c_str());
+                      ec.message().c_str());
     }
 
     agent->ensureStorage = [this]() {
@@ -506,6 +518,130 @@ void TuiApp::sendMessage(const std::string& text) {
         return;
     }
 
+    // /wish: start, inspect or cancel the wish mode. Starting it also starts a
+    // turn -- a wish that only sets a flag would sit there doing nothing.
+    if (trimmed == "/wish" || trimmed.rfind("/wish ", 0) == 0) {
+        std::string arg = trimmed.size() > 6 ? trimmed.substr(6) : std::string();
+        const size_t b = arg.find_first_not_of(" \t");
+        arg = (b == std::string::npos) ? std::string() : arg.substr(b);
+
+        if (arg.empty()) {
+            const Wish w = agent->wishSnapshot();
+            std::string msg;
+            if (!w.active) {
+                msg = "[wish] not active. Usage: /wish <what you want built>";
+            } else {
+                msg = "[wish] active: " + w.objective + "\n" + std::to_string(w.passes) +
+                      " pass(es), " + std::to_string(w.decisions) + " decision(s), " +
+                      (agent->hasUnfinishedTodo() ? "TODO still open" : "TODO clear") +
+                      ".\n/wish cancel stops it; the TODO list is kept.";
+            }
+            bubble_model::Bubble cb;
+            cb.role = "system";
+            cb.content = msg;
+            chatHistory.push_back(cb);
+            resetChatScroll();
+            return;
+        }
+        if (arg == "cancel") {
+            agent->cancelWish();
+            bubble_model::Bubble cb;
+            cb.role = "system";
+            cb.content = "[wish] cancelled. The TODO list and the recorded decisions are kept.";
+            chatHistory.push_back(cb);
+            resetChatScroll();
+            return;
+        }
+        agent->startWish(arg);
+        bubble_model::Bubble cb;
+        cb.role = "system";
+        cb.content = "[wish] started: " + arg +
+                     "\nThe model decides the open questions itself and keeps working until "
+                     "its TODO list is empty. /wish cancel stops it.";
+        chatHistory.push_back(cb);
+        resetChatScroll();
+        agent->startTurn(arg, std::vector<ImageAttachment>());
+        launchAgentThread();
+        return;
+    }
+
+    // /end_task <id> | all: stop a background task. Killing is deliberate: ESC only
+    // detaches from a wait, it never kills a build the user started on purpose.
+    if (trimmed == "/end_task" || trimmed.rfind("/end_task ", 0) == 0) {
+        std::string arg = trimmed.size() > 9 ? trimmed.substr(9) : std::string();
+        const size_t b = arg.find_first_not_of(" \t");
+        arg = (b == std::string::npos) ? std::string() : arg.substr(b);
+        std::string msg;
+        if (arg.empty()) {
+            const auto snaps = taskRegistry_.snapshots();
+            if (snaps.empty())
+                msg = "[bg] no background tasks in this session.";
+            else {
+                msg = "[bg] tasks:";
+                for (const auto& s : snaps)
+                    msg += "\n- bg#" + std::to_string(s.id) + " " + bg_task::stateLabel(s.state) +
+                           (s.exitCode >= 0 ? " (exit " + std::to_string(s.exitCode) + ")" : "") +
+                           " -- " + s.command;
+                msg += "\nUsage: /end_task <id> or /end_task all";
+            }
+        } else if (arg == "all") {
+            const size_t n = taskRegistry_.endAll();
+            msg = "[bg] stopped " + std::to_string(n) + " task(s).";
+        } else {
+            std::string err;
+            const int id = std::atoi(arg.c_str());
+            if (id <= 0)
+                msg = "[bg] '" + arg + "' is not a task id.";
+            else if (taskRegistry_.end(id, err))
+                msg = "[bg] bg#" + std::to_string(id) + " stopped.";
+            else
+                msg = "[bg] " + err + ".";
+        }
+        bubble_model::Bubble cb;
+        cb.role = "system";
+        cb.content = msg;
+        chatHistory.push_back(cb);
+        resetChatScroll();
+        return;
+    }
+
+    // /approval: what the policy is and what has been remembered. Without this the
+    // persisted grants are invisible, and an invisible allow-list is a bad one.
+    if (trimmed == "/approval" || trimmed.rfind("/approval ", 0) == 0) {
+        std::string arg = trimmed.size() > 9 ? trimmed.substr(9) : std::string();
+        const size_t b = arg.find_first_not_of(" \t");
+        arg = (b == std::string::npos) ? std::string() : arg.substr(b);
+        std::string msg;
+        if (arg == "clear") {
+            agent->clearGrants();
+            config.approvalGrants.clear();
+            saveConfig(config);
+            msg = "[approval] remembered commands cleared.";
+        } else if (!arg.empty() && arg != "list") {
+            msg = "[approval] usage: /approval, /approval clear";
+        } else {
+            msg = "[approval] mode: " + approvalModeName(agent->approvalMode()) +
+                  "\n  strict   -- every delete/overwrite asks, no ALWAYS\n"
+                  "  balanced -- destructive asks, build output runs (default)\n"
+                  "  loose    -- only format/partition is refused\n";
+            const auto grants = agent->grants();
+            if (grants.empty()) {
+                msg += "remembered: (none)";
+            } else {
+                msg += "remembered (" + std::to_string(grants.size()) + "):";
+                for (const auto& g : grants)
+                    msg += "\n- " + g;
+                msg += "\n/approval clear forgets them all.";
+            }
+        }
+        bubble_model::Bubble cb;
+        cb.role = "system";
+        cb.content = msg;
+        chatHistory.push_back(cb);
+        resetChatScroll();
+        return;
+    }
+
     // "@<path>" image markers (vision). Runs after the skill branch, so a
     // "/monica ... @C:\a.png" line was already handed to the skill engine.
     std::string turnText = trimmed;
@@ -593,15 +729,14 @@ void TuiApp::runAgentTurnLoop() {
         // so this check has to happen before the next iteration starts.
         if (tools.isCancelled()) break;
 
-        // An image round (view_image) wins over a skill if both somehow queued;
-        // turnRequest_ makes that impossible, this is just the consume order.
+        // Image first: turn_requests pushes it to the front of the queue.
         std::optional<PendingImages> images;
         {
             std::lock_guard<std::mutex> lk(skillMutex_);
             if (pendingImages_) {
                 images = std::move(pendingImages_);
                 pendingImages_.reset();
-                turnRequest_.release();
+                turnRequest_.drop(turn_requests::Kind::Image);
             }
         }
         if (images) {
@@ -619,23 +754,26 @@ void TuiApp::runAgentTurnLoop() {
         PendingSkill sk;
         {
             std::lock_guard<std::mutex> lk(skillMutex_);
-            if (!pendingSkill_) break;
-            sk = std::move(*pendingSkill_);
-            pendingSkill_.reset();
-            turnRequest_.release();
+            if (pendingSkill_) {
+                sk = std::move(*pendingSkill_);
+                pendingSkill_.reset();
+                turnRequest_.drop(turn_requests::Kind::Skill);
+            }
         }
 
-        const bool skillOk = runSkillBlocking(sk.name, sk.topic, std::string());
+        if (!sk.name.empty()) {
+            const bool skillOk = runSkillBlocking(sk.name, sk.topic, std::string());
 
-        // ESC during the skill run: do not resume the conversation.
-        if (tools.isCancelled()) break;
+            // ESC during the skill run: do not resume the conversation.
+            if (tools.isCancelled()) break;
 
-        // One-shot System message for the follow-up turn. A skill's output is
-        // raw material, not a verdict: pipelines like avenger -> steve -> musk
-        // need the main agent to review the produced document and say what is
-        // weak before moving on, so the wrap-up is NOT capped to a few lines.
-        agent->setTurnNudge(
-            skillOk ? "[skill done] '" + sk.name +
+            // One-shot System message for the follow-up turn. A skill's output is
+            // raw material, not a verdict: pipelines like avenger -> steve -> musk
+            // need the main agent to review the produced document and say what is
+            // weak before moving on, so the wrap-up is NOT capped to a few lines.
+            agent->setTurnNudge(
+                skillOk
+                    ? "[skill done] '" + sk.name +
                           "' finished -- its narration and final document are the messages above.\n"
                           "- Never call run_skill again for this same skill to 'check' its "
                           "result; read the produced files instead.\n"
@@ -648,7 +786,70 @@ void TuiApp::runAgentTurnLoop() {
                           "' did not finish -- cancelled or failed.\n"
                           "- Do not retry unless the user asks.\n"
                           "- Say what happened, what was already produced, and the next step.\n");
-        // Loop: one more turn consumes the nudge and reports the result.
+            // One more pass consumes the nudge; step 1 of the next pass, so the wish
+            // checks below must not cut the skill's report turn short.
+            continue;
+        }
+
+        // 1b. Background tasks that finished since the last check. This outranks the
+        // wish: the model asked to be told, and the output is only useful while the
+        // instruction that started it is still in context.
+        {
+            const std::vector<int> done = taskRegistry_.takeFinished();
+            if (!done.empty()) {
+                std::string msg = "[background] ";
+                for (size_t i = 0; i < done.size(); ++i) {
+                    if (i) msg += "\n[background] ";
+                    const auto snaps = taskRegistry_.snapshots();
+                    const bg_task::Snapshot* s = nullptr;
+                    for (const auto& cand : snaps)
+                        if (cand.id == done[i]) s = &cand;
+                    msg += "bg#" + std::to_string(done[i]);
+                    if (s)
+                        msg += " " + std::string(bg_task::stateLabel(s->state)) + " (exit " +
+                               std::to_string(s->exitCode) + "), " +
+                               std::to_string(s->outputBytes) + " bytes: " + s->command;
+                    msg += "\nRead it with task_output(" + std::to_string(done[i]) + ").";
+                }
+                bubble_model::Bubble cb;
+                cb.role = "system";
+                cb.content = msg;
+                chatHistory.push_back(cb);
+                agent->addPersistedMessage(Message::System(msg));
+                continue; // let the model react to the result
+            }
+        }
+
+        // 2. A queued user message outranks the wish. Leaving it until the wish
+        // finishes would hide it for hours, so break out here: the caller drains the
+        // queue and starts a normal turn, and the wish state survives for it.
+        if (pendingCount() > 0) break;
+        // 3. Wish: keep working while the checklist is open. Nothing is injected --
+        // the [WISH], [TODO] and [USER REQUEST ON-GOING] blocks are rebuilt from
+        // state by buildChatRequest() on every pass.
+        {
+            const Wish w = agent->endWishPass();
+            if (w.active) {
+                const std::string stop = agent->wishStopReason(w);
+                if (stop.empty()) continue;
+                std::string msg = "**Wish stopped** (" + stop + ")\n";
+                const auto decisions = agent->wishDecisions();
+                if (!decisions.empty()) {
+                    msg += "\nDecisions taken for you:\n";
+                    for (const auto& d : decisions)
+                        msg += "- " + d + "\n";
+                }
+                const std::string todo = agent->unfinishedTodoText();
+                if (!todo.empty()) msg += "\nStill open:\n" + todo;
+                bubble_model::Bubble cb;
+                cb.role = "system";
+                cb.content = msg;
+                chatHistory.push_back(cb);
+                resetChatScroll();
+                agent->cancelWish();
+            }
+        }
+        break;
     }
 
     {
@@ -691,24 +892,17 @@ std::vector<SkillRunner::AgentSnapshot> TuiApp::skillAgentStatuses() const {
 }
 
 // The main session rendered as reference material for skill agents.
-std::string TuiApp::buildSharedContext() const {
+std::string TuiApp::buildSharedContext() {
     if (!agent) return std::string();
-    auto msgs = agent->getSession().getContextMessages();
-    std::string b;
-    for (const auto& m : msgs) {
-        if (m.role == "system") continue;
-        if (m.role == "user") {
-            if (!m.content.empty()) b += "USER: " + m.content + "\n\n";
-        } else if (m.role == "assistant") {
-            if (!m.content.empty()) b += "ASSISTANT: " + m.content + "\n\n";
-        } else if (m.role == "tool") {
-            b += "TOOL(" + m.name + "): " + m.content + "\n\n";
-        }
-    }
-    if (b.empty()) return std::string();
-    return "[SHARED SESSION CONTEXT - the main agent's full conversation so far. "
-           "Reference material only; use it to resolve vague references.]\n\n" +
-           b;
+    // A digest, not the transcript. The full conversation used to be pasted into
+    // every sub-agent's prompt -- in a long session that is hundreds of thousands of
+    // tokens per agent. The digest reuses the compactor (same prompt, same
+    // overview + todo + slice input) and never touches the session.
+    const std::string digest = agent->summarizeConversationForSharing();
+    if (digest.empty()) return std::string();
+    return "[SHARED SESSION CONTEXT - a summary of the main agent's session so far, not the raw "
+           "log. Reference material only; use it to resolve vague references.]\n\n" +
+           digest;
 }
 
 // ----- single skill execution path (both triggers go through here) ----------
@@ -731,8 +925,10 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
     if (onStreamingTick) onStreamingTick();
 
     SkillRunner::Callbacks cbs;
-    cbs.onEvent = [this](const std::string& role, const std::string& kind,
-                         const std::string& text) {
+    int events = 0;
+    cbs.onEvent = [this, &events](const std::string& role, const std::string& kind,
+                                  const std::string& text) {
+        ++events;
         std::string content;
         if (kind == "vote")
             content = "**[" + role + " vote]** " + text;
@@ -762,9 +958,33 @@ bool TuiApp::runSkillBlocking(const std::string& name, const std::string& topic,
         skillRunner_ = std::move(runner);
     }
 
+    // A skill that dies silently is the worst failure mode there is: the dock shows
+    // it for a moment, nothing reaches the chat, and the Release log (WARNING+) has
+    // no trace. Both halves are recorded here -- the exception text when it throws,
+    // and "produced nothing" when it returns without a single event.
+    std::string crash;
     try {
         r->run(name, topic);
+    } catch (const std::exception& e) {
+        crash = e.what();
     } catch (...) {
+        crash = "unknown exception";
+    }
+    if (!crash.empty()) {
+        debugLogErrf("[skill] %s crashed: %s (topic: %.120s)", name.c_str(), crash.c_str(),
+                     topic.c_str());
+        const std::string msg = "[skill] " + name + " crashed before it could report anything:\n" +
+                                crash + "\n(topic: " + topic +
+                                ")\nThe session is intact; fix the cause and re-run.";
+        if (agent) agent->addPersistedMessage(Message::System(msg));
+    } else if (events == 0) {
+        debugLogWarnf("[skill] %s produced no event (topic: %.120s)", name.c_str(), topic.c_str());
+        const std::string msg =
+            "[skill] " + name + " finished without producing a single message (topic: " + topic +
+            ").\nCommon causes: the topic is not something the skill can act on, the agent "
+            "budget ran out before the first round, or the API rejected the first request. "
+            "Check projv_files/logs/proJV-<date>.log and try a narrower topic.";
+        if (agent) agent->addPersistedMessage(Message::System(msg));
     }
 
     {
@@ -785,6 +1005,12 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic,
         pendingQueue_.push_back(persisted);
         return;
     }
+    // A user-invoked skill starts un-cancelled. Agent::cancel() (ESC, F3, F5, /clear)
+    // latches ToolRegistry's cancel flag, and only newTurn() ever cleared it -- the
+    // skill path never calls newTurn(), so the first probe hit cancelled the whole run
+    // before round 1 with no output at all. ESC during the run still works: it sets
+    // the same flag again, and the runner probes it between steps.
+    tools.resetCancel();
     if (agent->ensureStorage) agent->ensureStorage();
 
     joinSkillThread();
@@ -794,6 +1020,14 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic,
         agentThreadRunning_.store(false);
         if (onTurnComplete) onTurnComplete();
     });
+}
+
+std::vector<bg_task::Snapshot> TuiApp::taskSnapshots() const {
+    return taskRegistry_.snapshots();
+}
+
+std::vector<std::string> TuiApp::installedSkills() const {
+    return SkillRunner::listSkills(skillsDir_);
 }
 
 void TuiApp::drainPendingQueue() {
@@ -825,6 +1059,10 @@ void TuiApp::shutdown() {
     if (agent) agent->cancel();
     joinAgentThread();
     joinModelsThread();
+    // Detached children: kill them and join their monitor thread. A background build
+    // that outlives the TUI would keep writing to a file nobody reads. The Job Object
+    // (KILL_ON_JOB_CLOSE) is the second line of defence for a hard crash.
+    taskRegistry_.shutdown();
     // MCP last: killing servers is only safe once no callTool can be in flight,
     // and every server's worker thread is joined here (never detached).
     if (mcpManager_) mcpManager_->shutdownAll();
@@ -895,16 +1133,25 @@ void TuiApp::saveApiKeyAndConnect(const std::string& apiKey) {
     config.loadError.clear();
 }
 
-void TuiApp::saveFullConfig(const std::string& apiKey, const std::string& baseUrl, int maxTokens,
-                            double temperature, const std::string& compiler,
-                            const std::string& python, const std::string& model) {
-    config.apiKey = apiKey;
-    config.baseUrl = baseUrl;
-    config.maxTokens = maxTokens;
-    config.temperature = temperature;
-    config.cppCompilerPath = compiler;
-    config.pythonPath = python;
-    config.model = model;
+void TuiApp::saveFullConfig(const AppConfig& next) {
+    // One source of truth: the dialog edits a copy of AppConfig and hands it back,
+    // so a key that exists in AppConfig cannot be silently dropped by the panel.
+    config.apiKey = next.apiKey;
+    config.baseUrl = next.baseUrl;
+    config.model = next.model;
+    config.maxTokens = next.maxTokens;
+    config.temperature = next.temperature;
+    config.reasoningEffort = next.reasoningEffort;
+    config.contextWindow = next.contextWindow;
+    config.cppCompilerPath = next.cppCompilerPath;
+    config.pythonPath = next.pythonPath;
+    config.clangFormatPath = next.clangFormatPath;
+    config.snapshotsMaxWorkspaceGb = next.snapshotsMaxWorkspaceGb;
+    config.snapshotsKeepDays = next.snapshotsKeepDays;
+    config.oscStatus = next.oscStatus;
+    config.approvalMode = next.approvalMode;
+    config.approvalGrants = next.approvalGrants;
+    config.themeName = next.themeName;
     config.loaded = true;
     config.loadError.clear();
 
@@ -984,6 +1231,8 @@ void TuiApp::applyConfigToAgent() {
     refreshEnvironmentBlock();
     agent->setRequestParams(config.maxTokens, config.temperature);
     agent->setReasoningEffort(config.reasoningEffort);
+    agent->setApprovalMode(config.approvalMode);
+    agent->setPersistentGrants(config.approvalGrants);
     agent->setModel(config.model);
     agent->setContextWindow(0); // reset auto-detect on model switch
 }

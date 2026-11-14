@@ -35,11 +35,16 @@ const BuiltinInfo kBuiltins[] = {
     {"file_search", "File", "<=50 paths"},
     {"format_file", "File", "clang-format, else a whitespace pass"},
     {"exec_shell", "Run",
-     "timeout_ms default = max = 1800000; stdout 32000; silence is not failure"},
+     "timeout_ms default = max = 1800000; tail 400 lines by default, full_output <=200 KB, "
+     "silence is not failure"},
+    {"task_output", "Run", "background task output; tail 400 lines, full_output <=200 KB"},
     {"web_search", "Web", "count 1-50, default 10, billed"},
     {"fetch_url", "Web", "one page as Markdown, 100KB"},
     {"md_file", "Docs", ".md only, 8KB per call, append supported"},
     {"update_todo", "Plan", "init / update / done -- the panel the user watches"},
+    {"wish_decide", "Plan",
+     "only in /wish mode: record a decision taken on the user's behalf instead of asking"},
+    {"wish_block", "Plan", "only in /wish mode: stop and say what is missing"},
     {"view_image", "Image", "<=8 images, 30MB each, ends the turn, Flash only"},
     {"run_skill", "Skill", "minutes, ONE per turn -- the call ends the turn"},
 };
@@ -215,6 +220,15 @@ std::string buildCapabilities(const CapabilityInputs& in) {
     std::sort(missing.begin(), missing.end());
 
     std::map<std::string, std::vector<std::string>> byGroup;
+    // Pytools describe themselves, so a large pytool set is the one group that can
+    // grow without a bound: 400 tools x a 60-char sentence is 30 KB. Above the
+    // same threshold the skills section uses, descriptions are dropped.
+    size_t unknownCount = 0;
+    for (const auto& name : names) {
+        if (!findBuiltin(name)) ++unknownCount;
+    }
+    constexpr size_t kMaxDescribedTools = 12;
+    const bool describeTools = unknownCount <= kMaxDescribedTools;
     for (const auto& name : names) {
         const BuiltinInfo* b = findBuiltin(name);
         std::string item = name;
@@ -225,10 +239,12 @@ std::string buildCapabilities(const CapabilityInputs& in) {
             // A pytool (or anything registered from outside): group "Tool", with a
             // shortened description so it is not just an unexplained name.
             std::string desc;
-            for (const auto& d : in.tools) {
-                if (d.name == name) {
-                    desc = firstSentence(d.description, 60);
-                    break;
+            if (describeTools) {
+                for (const auto& d : in.tools) {
+                    if (d.name == name) {
+                        desc = firstSentence(d.description, 60);
+                        break;
+                    }
                 }
             }
             if (!desc.empty()) item += " (" + desc + ")";
@@ -253,6 +269,10 @@ std::string buildCapabilities(const CapabilityInputs& in) {
         if (label == "Other") label = "Missing"; // allowlist entries that do not exist
         emitGroup(out, label, it->second);
     }
+    if (!describeTools && unknownCount > 0)
+        out << "        (descriptions omitted: " << unknownCount
+            << " tools registered from outside the binary. Their schemas are in the tool "
+               "definitions of this request.)\n";
 
     // -- 3. Skills ----------------------------------------------------------
     std::vector<std::string> skills = in.skills;
@@ -304,9 +324,15 @@ std::string buildCapabilities(const CapabilityInputs& in) {
             line +=
                 ": " + std::to_string(s.tools.size()) + (s.tools.size() == 1 ? " tool" : " tools");
             if (!s.tools.empty()) {
+                // Cap the names: one server with 50 tools used to put 500+ chars on
+                // a single line and push the whole map out of shape. The count stays
+                // exact, so "(+40 more)" still tells the model how much is behind it.
+                constexpr size_t kMaxMcpToolNames = 10;
                 line += " --";
-                for (const auto& t : s.tools)
-                    line += " " + t;
+                for (size_t i = 0; i < s.tools.size() && i < kMaxMcpToolNames; ++i)
+                    line += " " + s.tools[i];
+                if (s.tools.size() > kMaxMcpToolNames)
+                    line += " (+" + std::to_string(s.tools.size() - kMaxMcpToolNames) + " more)";
             }
             out << line << "\n";
         }
@@ -321,16 +347,11 @@ std::string buildCapabilities(const CapabilityInputs& in) {
                "config.json, projv_files/pytool/<name>/tool.json, projv_files/mcp.json.\n";
 
     std::string text = out.str();
-    // Hard ceiling: the map must never crowd out the conversation. Never silently:
-    // a cut map says where the rest is.
-    constexpr size_t kMaxCapabilityChars = 4000;
-    if (text.size() > kMaxCapabilityChars) {
-        size_t cut = text.rfind('\n', kMaxCapabilityChars);
-        if (cut == std::string::npos) cut = kMaxCapabilityChars;
-        text = text.substr(0, cut) +
-               "\n[... capability map truncated. Read projv_files/mcp.json and the skill "
-               "config.json files for the rest.]";
-    }
+    // No global byte ceiling. The old 4000-char cut ran tail-first over a block
+    // whose order is File..Other, so Skills and MCP -- the parts the user actually
+    // configured -- were always the first to disappear. Every section now has its
+    // own bound (<=3 skill descriptions, 10 MCP tool names), and describe() still
+    // reports the size for the status line.
     return text;
 }
 

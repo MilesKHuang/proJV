@@ -12,15 +12,20 @@
   read-only children. A path outside those roots is refused with
   `__WORKSPACE_VIOLATION__` and never reaches the filesystem.
 - **Shell commands that delete or overwrite.** `exec_shell` is classified
-  before it runs (`src/core/delete_guard.cpp`):
-  - `Ask` -- deletes (`rm`, `del`, `rmdir`, `Remove-Item`), overwrites (`mv`,
-    `cp`, shell redirects to a real file), git destruction (`git clean`,
-    `reset --hard`, `checkout --`, `stash drop`), inline interpreter code
-    (`python -c`, `node -e`). One dialog per exact command text; "always"
-    applies to that command only, not to the session.
+  before it runs (`src/core/delete_guard.cpp`), and the verdict is filtered through
+  `approval_mode` (`config.toml`, F2):
+  - `Ask` + destructive -- deletes (`rm`, `del`, `rmdir`, `Remove-Item`),
+    overwrites of existing files (`mv`, `cp`), git history (`git clean`,
+    `reset --hard`, `checkout --`, `stash drop`, `commit`, `push`), inline
+    interpreter code that removes or writes (`python -c`, `node -e`). One dialog
+    per exact command text; "always" writes that text into `config.toml` so it
+    survives a restart (and is listable/clearable with `/approval`).
+  - `Ask` + functional -- output redirection (`build > log.txt`) and gateable
+    interpreter one-liners. **balanced** (the default) runs them without a dialog;
+    **strict** asks; **loose** runs everything except the red line below.
   - `Deny` -- disk formatting and partitioning (`format`, `diskpart`, `mkfs.*`,
     `fdisk`, `parted`, `wipefs`, `sgdisk`, `dd of=/dev/*`). No dialog, no
-    override.
+    override, in every mode.
   - Everything else runs without asking.
 
 ## What is not bounded

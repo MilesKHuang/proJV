@@ -12,6 +12,8 @@ set(TEST_SOURCES
     unit/test_curl_error_text.cpp
     unit/test_cli_args.cpp
     unit/test_delete_guard.cpp
+    unit/test_config.cpp
+    unit/test_approval_policy.cpp
     unit/test_log_files.cpp
     unit/test_snapshot.cpp
     unit/test_theme_map.cpp
@@ -20,6 +22,8 @@ set(TEST_SOURCES
     unit/test_skill_swarm.cpp
     unit/test_skill_engine.cpp
     unit/test_skill_monica.cpp
+    unit/test_skill_rounds.cpp
+    unit/test_shared_context.cpp
     unit/test_skill_sop.cpp
     unit/test_skill_trigger.cpp
     unit/test_web_api.cpp
@@ -30,6 +34,10 @@ set(TEST_SOURCES
     unit/test_turn_end.cpp
     unit/test_reasoning_content.cpp
     unit/test_file_tools.cpp
+    unit/test_shell_output.cpp
+    unit/test_wish.cpp
+    unit/test_task_registry.cpp
+    unit/test_slash_menu.cpp
     unit/test_tool_paths.cpp
     unit/test_capabilities.cpp
     unit/test_diff_capture.cpp
@@ -51,6 +59,7 @@ set(TEST_SOURCES
     golden/test_markdown_render.cpp
     golden/test_theme_editor.cpp
     ${SRC_DIR}/tui/bubble_model.cpp
+    ${SRC_DIR}/tui/slash_menu.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp
@@ -66,7 +75,7 @@ set(TEST_SOURCES
     ${SRC_DIR}/tui/theme_editor_view.cpp
 )
 
-# ── MCP test fixture ─────────────────────────────────────────────────────
+# -- MCP test fixture -----------------------------------------------------
 # MCP is a process protocol, so the test spawns a real executable. It must be its
 # own target: linking the code into proJV_tests would produce a "server" that is
 # already inside the test process and never exercises a pipe.

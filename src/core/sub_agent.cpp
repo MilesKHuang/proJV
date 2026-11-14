@@ -130,7 +130,8 @@ std::vector<ToolCall> SubAgent::doRequest(const std::string& verb, bool force,
 
     client_.streamBlocking(req, cb);
     if (!lastError_.empty()) {
-        debugLogWarnf("[Skill][%s] '%s' failed: %s", name_.c_str(), verb.c_str(), lastError_.c_str());
+        debugLogWarnf("[Skill][%s] '%s' failed: %s", name_.c_str(), verb.c_str(),
+                      lastError_.c_str());
     }
 
     // Return ALL calls in this response (parallel tool calling), not just one.
@@ -218,6 +219,10 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
         if (!text.empty()) {
             narr = text;
             setNarration(text);
+        } else if (!calls.empty()) {
+            // A tool-only round produces no prose. Without this the dock stayed on
+            // the last sentence that had text, which can be ten rounds old.
+            setNarration("\u2192 " + calls[0].name);
         }
         if (calls.empty()) {
             // auto mode: the model may answer in prose without ever calling the

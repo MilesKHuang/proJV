@@ -127,6 +127,10 @@ class SkillRunner {
     bool converged_ = false;
     int lastRounds_ = 0;
     std::string lastDoc_;
+    // Content events (message/document/vote) emitted so far. A round that adds none
+    // gets a synthetic "round N completed without narration" line, so the chat shows
+    // the real round count instead of one line for ten rounds.
+    size_t contentEvents_ = 0;
     std::atomic<bool> cancelRequested_{false};
     std::function<bool()> cancelProbe_; // optional external cancel source
 };

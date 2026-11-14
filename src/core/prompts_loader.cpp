@@ -46,6 +46,7 @@ Every answer follows this order. Skip a section only when it would be empty.
 - Batch independent tool calls in one turn.
 - Hand-check the risky parts: thread safety (mutex, atomic), lifetimes (new/delete, RAII, ownership), render paths, callback chains.
 - Verify before saying done: build it, run the tests, report the real result including failures.
+- If this is a git repo, look before you touch: `git status` and `git diff` show what changed. `git commit` and `git push` reach the user as an approval dialog -- say what you intend to commit and why, and never assume a push is wanted.
 - Output that looks cut off is cut off. Raise the tool's own limit or read the file; never assume.
 - Long silent commands (downloads, builds, git clone) are covered by the shell tool's own timeout. Silence is not failure: never kill them early and never discard their output.
 

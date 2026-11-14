@@ -236,7 +236,8 @@ bool Manager::reloadIfChanged(const std::string& path) {
         configError_ = err;
         configStamp_ = ticks;
         configSize_ = size;
-        debugLogWarnf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(), err.c_str());
+        debugLogWarnf("[mcp] reload skipped, keeping %zu server(s): %s", servers_.size(),
+                      err.c_str());
         return false;
     }
     configPath_ = path;
@@ -549,14 +550,14 @@ bool Manager::listTools(ServerHandle& h, std::string& err) {
             // {"type":"object"} and drops properties/required).
             if (!t["inputSchema"].is_object()) {
                 debugLogWarnf("[mcp:%s] tool '%s' skipped: inputSchema is not an object",
-                          h.cfg.name.c_str(), name.c_str());
+                              h.cfg.name.c_str(), name.c_str());
                 continue;
             }
             try {
                 def.inputSchemaJson = t["inputSchema"].dump();
             } catch (const std::exception& e) {
                 debugLogWarnf("[mcp:%s] tool '%s' skipped: inputSchema dump failed: %s",
-                          h.cfg.name.c_str(), name.c_str(), e.what());
+                              h.cfg.name.c_str(), name.c_str(), e.what());
                 continue;
             }
         } else {
@@ -724,7 +725,7 @@ Manager::SyncResult Manager::syncTools(ToolRegistry& registry) {
                 added.push_back(def.name);
             } else {
                 debugLogWarnf("[mcp:%s] tool '%s' already registered; skipped", server.c_str(),
-                          def.name.c_str());
+                              def.name.c_str());
             }
         }
         result.added.insert(result.added.end(), added.begin(), added.end());

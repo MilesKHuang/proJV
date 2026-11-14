@@ -11,13 +11,16 @@
   外加 `projv_files/sessions/`、`projv_files/logs/` 两个只读子根。
   根外路径直接以 `__WORKSPACE_VIOLATION__` 拒绝，不会落到文件系统。
 - **会删除或覆盖的 shell 命令。** `exec_shell` 执行前先分类
-  （`src/core/delete_guard.cpp`）：
-  - `Ask`：删除类（`rm`、`del`、`rmdir`、`Remove-Item`）、覆盖类（`mv`、
-    `cp`、重定向到真实文件）、git 破坏类（`git clean`、`reset --hard`、
-    `checkout --`、`stash drop`）、内联解释器代码（`python -c`、`node -e`）。
-    一条完整命令文本一次弹窗；"本会话允许"只对该条命令生效，不是整个会话。
-  - `Deny`：格式化与分区（`format`、`diskpart`、`mkfs.*`、`fdisk`、
-    `parted`、`wipefs`、`sgdisk`、`dd of=/dev/*`）。不弹窗，不可放行。
+  （`src/core/delete_guard.cpp`），结论再按 `approval_mode`（`config.toml`，F2）过滤：
+  - `Ask` + 破坏性：删除类（`rm`、`del`、`rmdir`、`Remove-Item`）、覆盖已存在文件
+    （`mv`、`cp`）、git 历史类（`git clean`、`reset --hard`、`checkout --`、
+    `stash drop`、`commit`、`push`）、会删/写文件的内联解释器代码
+    （`python -c`、`node -e`）。一条命令一个弹窗；「总是」把这条原文写进
+    `config.toml`，重启仍有效，可用 `/approval` 查看与清除。
+  - `Ask` + 功能性：输出重定向（`build > log.txt`）和被拦截的一行式解释器脚本。
+    **balanced**（默认）直接跑；**strict** 会问；**loose** 除下面的红线外全部放行。
+  - `Deny`：格式化与分区（`format`、`diskpart`、`mkfs.*`、`fdisk`、`parted`、
+    `wipefs`、`sgdisk`、`dd of=/dev/*`）。任何档位下都不弹窗、不可放行。
   - 其余命令直接执行。
 
 ## 没有边界的部分

@@ -6,6 +6,7 @@
 #include "client/deepseek.h"
 #include "tools/registry.h"
 #include "tools/todo_tool.h"
+#include "wish.h"
 #include "tool_list_parser.h"
 #include <functional>
 #include <thread>
@@ -65,6 +66,44 @@ class Agent {
 
     void setModel(const std::string& model);
     void setRequestParams(int maxTokens, double temperature);
+    // config.toml "approval_mode" (F2): how much the agent asks. Deny is outside
+    // the dial -- formatting/partitioning never runs, whatever the mode.
+    // This is a deliberate mirror of AppConfig::approvalMode, not a second source of
+    // truth: the agent thread reads it on every tool call, so it has to be atomic,
+    // and AppConfig (a plain struct owned by the TUI) cannot be. TuiApp pushes it in
+    // applyConfigToAgent(), the same way maxTokens and model are pushed.
+    void setApprovalMode(ApprovalMode m) { approvalMode_.store(m, std::memory_order_release); }
+    ApprovalMode approvalMode() const { return approvalMode_.load(std::memory_order_acquire); }
+    // "ALWAYS" is only offered outside Strict mode.
+    bool canAlways() const { return approvalMode() != ApprovalMode::Strict; }
+    // Commands allowed forever, loaded from config.toml at startup.
+    void setPersistentGrants(const std::vector<std::string>& grants) {
+        std::lock_guard<std::mutex> lk(approvalMutex_);
+        grants_ = grants;
+    }
+    std::vector<std::string> grants() const {
+        std::lock_guard<std::mutex> lk(approvalMutex_);
+        return grants_;
+    }
+    void clearGrants() {
+        std::lock_guard<std::mutex> lk(approvalMutex_);
+        grants_.clear();
+    }
+    // Called on the agent thread when the user clicked ALWAYS, so the TUI can write
+    // the grant into config.toml. Persistence lives in the TUI: core has no config.
+    std::function<void(const std::string&)> onGrantPersist;
+    // Would this command text reach the approval dialog right now? The turn loop
+    // and the tests both go through this, so the rule has exactly one home.
+    bool policyNeedsApproval(const std::string& command) const;
+
+    // A bounded digest of this conversation for a skill's shared context.
+    // Skills used to receive the WHOLE transcript: in a long session that is hundreds
+    // of thousands of tokens, and every sub-agent carried all of it. This reuses the
+    // compactor's shape (same prompt, same "overview + todo + transcript slice" input),
+    // is read-only -- it never applies the compaction -- and falls back to the local
+    // digest (user request + TODO + overview + last turns) whenever the model call
+    // fails, so a skill never fails because summarising did.
+    std::string summarizeConversationForSharing();
     // Reasoning effort (official enum: none/low/high/max). Anything unusable
     // falls back to the official default "high".
     void setReasoningEffort(const std::string& effort) {
@@ -136,9 +175,39 @@ class Agent {
 
     std::vector<Message> getNewMessagesSince(int64_t sinceId) const;
 
+    // --- /wish mode ------------------------------------------------------
+    // A wish keeps the turn loop going until the TODO list is empty. The state is
+    // deliberately small: the objective, the TODO and the overview are already
+    // injected every turn, so a wish only needs a switch and three counters.
+    void startWish(const std::string& objective);
+    void cancelWish();
+    Wish wishSnapshot() const;
+    // Called by the TUI once per completed pass: rolls progressedThisPass into
+    // idleRounds and counts the pass. Returns the snapshot after the roll.
+    Wish endWishPass();
+    bool hasUnfinishedTodo() const;
+    // Remaining TODO lines, for the "wish stopped" report.
+    std::string unfinishedTodoText() const;
+    std::vector<std::string> wishDecisions() const;
+    // Why the loop must stop, given the current wish state ("" = keep going).
+    std::string wishStopReason(const Wish& w) const;
+
+    // The tools this request carries: registry minus the role allowlist minus the
+    // /wish tools while no wish is active. Public so tests can assert the wish
+    // filter -- it is the only thing standing between the model and a tool that
+    // would write decisions nobody asked for.
+    std::vector<ToolDefinition> getFilteredToolDefinitions() const;
+
+  private:
+    // The [WISH] system message, inserted after P3 while a wish is active.
+    static std::string wishSystemMessage(const Wish& w);
+    // Verdict for one command text, existence check included.
+    delete_guard::Verdict evaluateCommandPolicy(const std::string& command) const;
+    // Does this verdict still need the user's click?
+    bool policyNeedsApproval(const delete_guard::Verdict& v, const std::string& command) const;
+
   private:
     void reloadAllowedTools() { allowedTools_ = parseAvailableTools(systemPrompt_); }
-    std::vector<ToolDefinition> getFilteredToolDefinitions() const;
     StreamCallbacks makeCallbacks();
     ChatRequest buildChatRequest() const;
     void doCompaction(bool force = false);
@@ -147,7 +216,6 @@ class Agent {
 
     // Shell-command policy. Red lines are refused outright; destructive
     // commands are asked one exact command at a time (see delete_guard.h).
-    delete_guard::Verdict evaluateCommandPolicy(const ToolCall& call) const;
     bool awaitApproval(const ToolCall& call);
     bool hasGrant(const std::string& command) const;
     static std::string commandOf(const ToolCall& call);
@@ -188,9 +256,9 @@ class Agent {
     std::vector<ToolCall> pendingToolCalls_;
     int toolIndex_ = 0;
     std::vector<ToolResult> toolResults_;
-    int toolCallDepth_ = 0;
-    int maxToolCallsPerRound_ = 30;
-
+    // No round-level tool-call counter on purpose: it never stopped a turn, it only
+    // injected noise every 30 calls. Runaway loops are caught by the consecutive
+    // failure check (two errors in a row) and by doCompaction().
     // Approval state. One call at a time: the grant it produces is bound to the
     // exact command text, so the dialog and the wait can never cover a batch.
     std::optional<ToolCall> pendingApproval_;
@@ -206,9 +274,15 @@ class Agent {
 
     std::atomic<bool> cancelRequested_{false};
     std::atomic<bool> compactRequested_{false};
-
+    std::atomic<ApprovalMode> approvalMode_{ApprovalMode::Balanced};
     TodoData todoData;
     mutable std::mutex todoMutex;
+
+    // /wish state. Guarded by wishMutex_: the agent thread sets progressedThisPass
+    // and the blocked flag from inside tools, the TUI reads and rolls passes from
+    // the turn loop, and /wish cancel comes from the input thread.
+    Wish wish_;
+    mutable std::mutex wishMutex_;
 
     std::string turnNudge_;
     std::string model_ = "deepseek-v4-flash";

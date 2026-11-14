@@ -21,7 +21,8 @@ namespace {
 fs::path makeTempDir(const std::string& tag) {
     std::error_code ec;
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    fs::path p = fs::temp_directory_path(ec) / ("projv_logtest_" + tag + "_" + std::to_string(stamp));
+    fs::path p =
+        fs::temp_directory_path(ec) / ("projv_logtest_" + tag + "_" + std::to_string(stamp));
     fs::create_directories(p, ec);
     return p;
 }
@@ -73,13 +74,13 @@ TEST_CASE("log_files: prune removes old day files and keeps today's") {
 TEST_CASE("log_files: prune never touches non-matching files") {
     const fs::path dir = makeTempDir("keep");
     const std::string old = dayString(30);
-    touch(dir / ("proJV-" + old + ".log"));   // matches: deleted
-    touch(dir / "proJV.log");                 // old fixed name
+    touch(dir / ("proJV-" + old + ".log")); // matches: deleted
+    touch(dir / "proJV.log");               // old fixed name
     touch(dir / "skill_metrics.log");
     touch(dir / ("crash-" + old + ".dmp"));
     touch(dir / ("proJV-" + old + ".log.bak"));
     touch(dir / ("archive-proJV-" + old + ".log"));
-    touch(dir / "proJV-2026-13-40.log");      // month 13: unparseable, kept
+    touch(dir / "proJV-2026-13-40.log"); // month 13: unparseable, kept
 
     CHECK(log_files::pruneOldLogs(dir.string(), 7) == 1);
     CHECK(fs::exists(dir / "proJV.log"));
