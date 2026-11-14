@@ -938,18 +938,20 @@ bool Agent::compactSession(bool force) {
 }
 
 std::string Agent::summarizeConversationForSharing() {
-    // 1. Local digest: the three per-turn blocks are already summaries the model
-    //    wrote, so they are always worth sending even when the transcript is huge.
-    std::string local;
+    // 1. The three per-turn blocks are summaries the model already wrote. They are the
+    //    anchor for a skill -- "what am I supposed to be doing" -- so they are kept
+    //    alongside the model summary below, never replaced by it.
+    std::string blocks;
     {
         std::lock_guard<std::mutex> lk(todoMutex);
         const std::string ur = buildUserRequestSystemMessage(todoData);
         const std::string ov = buildOverviewSystemMessage(todoData);
         const std::string tc = buildTodoSystemMessage(todoData);
-        if (!ur.empty()) local += ur + "\n";
-        if (!ov.empty()) local += ov + "\n";
-        if (!tc.empty()) local += tc + "\n";
+        if (!ur.empty()) blocks += ur + "\n";
+        if (!ov.empty()) blocks += ov + "\n";
+        if (!tc.empty()) blocks += tc + "\n";
     }
+    std::string local = blocks;
 
     // 2. A bounded slice of the conversation, newest first. 12 KB is roughly 4k
     //    tokens: enough for the compactor to see what the work was, small enough that
@@ -997,7 +999,9 @@ std::string Agent::summarizeConversationForSharing() {
     }
     debugLogf("[Agent] shared context: %zu bytes of transcript -> %zu byte summary", local.size(),
               s.size());
-    return s;
+    // Summary first, then the anchor blocks: a summary that quietly drops the user's
+    // request must not be the only thing a skill sees.
+    return s + "\n\n" + blocks;
 }
 
 // ========== Tool execution ==========
