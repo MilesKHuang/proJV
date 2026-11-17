@@ -62,12 +62,15 @@ TEST_CASE("AGENTS.md: content is wrapped and kept verbatim") {
 
 TEST_CASE("AGENTS.md: UTF-8 BOM and leading blank lines are dropped") {
     const fs::path ws = makeTempWorkspace("bom");
-    writeFile(ws / "AGENTS.md", "\xef\xbb\xbf\n\n# 规则\n用中文写提交说明。\n");
+    writeFile(ws / "AGENTS.md", "\xef\xbb\xbf\n\n# \xe8\xa7\x84\xe5\x88\x99\n"
+                                "\xe7\x94\xa8\xe4\xb8\xad\xe6\x96\x87\xe5\x86\x99\xe6\x8f\x90"
+                                "\xe4\xba\xa4\xe8\xaf\xb4\xe6\x98\x8e\xe3\x80\x82\n");
     const std::string ctx = buildAgentsMdContext(ws.string());
 
     CHECK(ctx.find("otherwise.\n# ") != std::string::npos); // BOM gone, heading first
     CHECK(ctx.find("\xef\xbb\xbf") == std::string::npos);
-    CHECK(ctx.find("\xe7\x94\xa8\xe4\xb8\xad\xe6\x96\x87") != std::string::npos); // 用中文
+    // "yong zhong wen" (use Chinese) in UTF-8
+    CHECK(ctx.find("\xe7\x94\xa8\xe4\xb8\xad\xe6\x96\x87") != std::string::npos);
     std::error_code ec;
     fs::remove_all(ws, ec);
 }

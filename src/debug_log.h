@@ -21,6 +21,8 @@
 
 #include <loguru.hpp>
 
+#include <string> // _dbg_str() takes std::string; do not rely on the includer
+
 // --- Compatibility shims for existing code -------------------------
 // Overload: accepts both std::string and const char*
 inline const char* _dbg_str(const std::string& s) {

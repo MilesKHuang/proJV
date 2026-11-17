@@ -37,26 +37,14 @@ std::string toLower(std::string s) {
 } // namespace
 
 std::vector<Command> builtins() {
-    // One entry per handler that actually exists:
-    //   handleQuickCommand (agent.cpp) -> /clear /help /undo /undo! /restore
-    //   TuiApp::sendMessage            -> /compress /wish /end_task /workspace
-    //   skill_trigger                  -> /skill list, /<skill> <topic>
-    return {
-        {"/help", "", "Show the command help in chat"},
-        {"/clear", "", "Clear the session (keeps the session file)"},
-        {"/compress", "", "Summarize early messages to free context"},
-        {"/undo", "", "Undo the file changes of the last turn"},
-        {"/undo!", "", "Undo, discarding later hand edits too"},
-        {"/restore", "<turn> confirm", "Roll the workspace back to before turn N"},
-        {"/wish", "<what you want built>",
-         "Decide it yourself, keep going until the TODO is empty"},
-        {"/wish cancel", "", "Stop the wish; the TODO list is kept"},
-        {"/end_task", "<id> | all", "Stop a background task (kills the process tree)"},
-        {"/approval", "", "Show the approval mode and the remembered commands"},
-        {"/approval clear", "", "Forget every remembered command"},
-        {"/workspace", "", "Print the current workspace path"},
-        {"/skill", "list", "List installed skills"},
-    };
+    // Same table the F1 panel and the /help message read (core/help_text.h).
+    // The clipping stays here rather than in the table: a menu row is one row of
+    // about 50 columns, while the chat help can afford the whole sentence and
+    // markdown can wrap it.
+    std::vector<Command> out = help_text::commands();
+    for (auto& c : out)
+        c.desc = clipDesc(c.desc);
+    return out;
 }
 
 std::vector<Command> all(const std::vector<std::string>& installedSkills,

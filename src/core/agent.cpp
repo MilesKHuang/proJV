@@ -1,5 +1,6 @@
 #include "agent.h"
 #include "prompts.h"
+#include "help_text.h"
 #include "tools/wish_tool.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -31,20 +32,10 @@ static constexpr const char* IMAGE_400_HINT =
     "model (F10) and resend, or send the message without @image paths.";
 static constexpr const char* USER_REJECTED_PREFIX = "[User rejected the following tool call(s): ";
 static constexpr const char* WS_VIOLATION_GUIDANCE_NO_WS = "(not set -- defaults to exe dir)";
-static constexpr const char* QUICK_HELP =
-    "### Quick Commands\n\n| Command | Description |\n|---------|-------------|\n"
-    "| `/clear` | Clear session |\n| `/help`  | Show this help |\n"
-    "| `/compress` | Summarize early messages |\n"
-    "| `/undo` | Undo the file changes of the last turn (`/undo!` drops later manual edits too) |\n"
-    "| `/restore N` | Roll the workspace back to before turn N (`/restore N confirm`) |\n"
-    "| `/<skill> <topic>` | Run an installed multi-agent skill (e.g. `/monica D:\\dir`) |\n"
-    "| `/skill list` | List installed skills |\n"
-    "| `/wish <what you want>` | Decide the open questions yourself and keep working until "
-    "the TODO list is empty (`/wish cancel` stops it; `/wish` alone shows progress) |\n"
-    "| `/end_task <id>\\|all` | Stop a background task started with `exec_shell(background:"
-    "true)` |\n"
-    "Type `/` in the input box to see this list and pick from it.\n"
-    "\nproJV v" PROJV_VERSION " - native C++ DeepSeek AI agent (FTXUI).\n";
+// /help is generated from the shared command table (core/help_text.h): the "/"
+// menu, the F1 panel and this message must not be able to disagree. The old
+// QUICK_HELP string was a second copy and had already lost /approval and
+// /workspace.
 static constexpr const char* SESSION_CLEARED = "Session cleared.";
 static constexpr const char* WISH_SYSTEM_PREFIX = "[WISH] ";
 // ============================================================================
@@ -1265,7 +1256,7 @@ Wish Agent::endWishPass() {
 }
 
 bool Agent::hasUnfinishedTodo() const {
-    // Read the data, not the panel: F9 can hide the TODO view while the checklist
+    // Read the data, not the panel: F9 can hide the dock while the checklist
     // is still the definition of done.
     std::lock_guard<std::mutex> lk(todoMutex);
     return !todoData.pendingTodo.empty();
@@ -1321,7 +1312,7 @@ bool Agent::handleQuickCommand(const std::string& input) {
         return true;
     }
     if (c == "/help") {
-        addPersistedMessage(Message::Assistant(QUICK_HELP));
+        addPersistedMessage(Message::Assistant(help_text::commandHelp()));
         return true;
     }
     if (c == "/undo" || c == "/undo!") {

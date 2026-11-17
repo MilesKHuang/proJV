@@ -38,6 +38,10 @@ set(TEST_SOURCES
     unit/test_wish.cpp
     unit/test_task_registry.cpp
     unit/test_slash_menu.cpp
+    unit/test_help_text.cpp
+    unit/test_ctrlc_guard.cpp
+    unit/test_modal_focus.cpp
+    unit/test_paste_flatten.cpp
     unit/test_tool_paths.cpp
     unit/test_capabilities.cpp
     unit/test_diff_capture.cpp

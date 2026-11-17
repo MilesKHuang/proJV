@@ -8,22 +8,22 @@
 
 | 键 | 作用 |
 |----|------|
-| `F1` | 关于 |
+| `F1` | 帮助：命令与键位，可滚动 |
 | `F2` | 配置 |
 | `F3` | 新对话 |
-| `F4` | MCP server（开关 / 重启） |
-| `F5` | 打开历史会话（选择器） |
+| `F4` | 打开历史会话（选择器） |
+| `F5` | MCP server（开关 / 重启） |
 | `F6` | 切换主题 |
 | `F7` | 主题编辑器 |
-| `F8` | 思考链折叠 / 展开 |
-| `F9` | TODO 面板 |
+| `F8` | 思考链展开 / 折叠 |
+| `F9` | 切换 Dock（TODO + 后台任务） |
 | `F10` | 切换模型（从 API 拉取） |
 | `Tab` | 切换角色 |
 | `↑` / `↓` | 按行滚动聊天区 |
 | `PgUp` / `PgDn` | 按页滚动 |
 | `Enter` | 发送 |
-| `Esc` | 运行中取消 / 空闲时退出 |
-| `Ctrl+C` | 退出（会话先 checkpoint 再关闭） |
+| `Esc` | 运行中取消 / 清空输入 / 空闲时先确认再退出 |
+| `Ctrl+C` | 无动作：终端用它复制选区 |
 
 ## 命令
 
@@ -81,7 +81,7 @@
 | `reasoning_effort` | 思考强度：`none` / `low` / `high` / `max`，默认 `max`；`none` 表示关闭思考（官方默认强度为 `high`） |
 | `context_window` | 0 = 自动 |
 | `theme` | 当前主题名 |
-| `osc_status` | `true`（默认）：用 OSC 7501 把 `working` / `blocked` / `done` / `error` 上报给宿主终端；不认识的终端会直接忽略，输出被重定向时不多写一个字节。正常退出留 `clear`；中断退出（Ctrl-C、关窗口）留 `error`，让这次运行在宿主列表里仍然可见。`PROJV_NO_OSC=1` 强制关闭 |
+| `osc_status` | `true`（默认）：用 OSC 7501 把 `working` / `blocked` / `done` / `error` 上报给宿主终端；不认识的终端会直接忽略，输出被重定向时不多写一个字节。正常退出留 `clear`；中断退出（关窗口）留 `error`，让这次运行在宿主列表里仍然可见。`PROJV_NO_OSC=1` 强制关闭 |
 | `cpp_compiler_path` | 可选，编译类任务用 |
 | `python_path` | pytool 解释器；留空 = `python` |
 | `clang_format_path` | `format_file` 用的二进制；留空 = 走 PATH |

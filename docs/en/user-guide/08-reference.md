@@ -6,22 +6,22 @@
 
 | Key | Action |
 |-----|--------|
-| `F1` | About |
+| `F1` | Help: every command and key, scrollable |
 | `F2` | Configuration |
 | `F3` | New chat |
-| `F4` | MCP servers (toggle / restart) |
-| `F5` | Open session (picker over `projv_files/sessions/`) |
+| `F4` | Open session (picker over `projv_files/sessions/`) |
+| `F5` | MCP servers (toggle / restart) |
 | `F6` | Switch theme |
 | `F7` | Theme editor |
-| `F8` | Toggle reasoning (collapsed summary <-> full chain) |
-| `F9` | Toggle TODO panel |
+| `F8` | Reveal / collapse the reasoning chain |
+| `F9` | Toggle the dock (TODO + background tasks) |
 | `F10` | Switch model (fetched from the API) |
 | `Tab` | Cycle role |
 | `Up` / `Down` | Scroll chat by one row |
 | `PgUp` / `PgDn` | Scroll chat by one page |
 | `Enter` | Send |
-| `Esc` | Cancel the running turn / quit when idle |
-| `Ctrl+C` | Quit (session is checkpointed and closed) |
+| `Esc` | Cancel the running turn / clear the input / ask before quitting |
+| `Ctrl+C` | Nothing: the terminal keeps it for copying a selection |
 
 ## Commands
 
@@ -82,7 +82,7 @@ covers the topic you are typing.
 | `reasoning_effort` | thinking depth: `none` / `low` / `high` / `max`, default `max`; `none` turns thinking off (the API default level is `high`) |
 | `context_window` | 0 = auto |
 | `theme` | active theme name |
-| `osc_status` | `true` (default): report `working` / `blocked` / `done` / `error` to the hosting terminal over OSC 7501; hosts that do not know it ignore it, and a redirected stdout gets no extra bytes. A normal exit leaves `clear` behind; an interrupted exit (Ctrl-C, window close) leaves `error` so the run stays visible. `PROJV_NO_OSC=1` forces it off |
+| `osc_status` | `true` (default): report `working` / `blocked` / `done` / `error` to the hosting terminal over OSC 7501; hosts that do not know it ignore it, and a redirected stdout gets no extra bytes. A normal exit leaves `clear` behind; an interrupted exit (window close) leaves `error` so the run stays visible. `PROJV_NO_OSC=1` forces it off |
 | `cpp_compiler_path` | optional, for build tasks |
 | `python_path` | interpreter for pytool; empty = `python` |
 | `clang_format_path` | binary used by `format_file`; empty = PATH |

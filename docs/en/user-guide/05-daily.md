@@ -11,7 +11,7 @@ you type.
 | Action | How |
 |-------|-----|
 | new chat | `F3` |
-| open an old one | `F5` (picker) |
+| open an old one | `F4` (picker) |
 | clear the current one | `/clear` |
 | shrink a long one | `/compress` - summarises early messages and keeps recent ones |
 
@@ -77,7 +77,7 @@ Narrower terminals get the single-column unified diff (`+` added, `-` removed,
 - `format_file` on an already-formatted file shows no block at all.
 - The `F9` TODO dock takes 36 cells; with it open the chat column may drop below
   the split threshold and the diff falls back to one column.
-- The diff is display-only. It is stored with the tool row, so `F5` replays it,
+- The diff is display-only. It is stored with the tool row, so `F4` replays it,
   but it is never sent to the model and costs no tokens.
 
 ## Reading the screen

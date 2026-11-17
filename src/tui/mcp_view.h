@@ -1,4 +1,4 @@
-// proJV TUI -- F4 MCP server panel.
+// proJV TUI -- F5 MCP server panel.
 #pragma once
 
 #include "app_tui.h"

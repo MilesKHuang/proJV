@@ -198,7 +198,6 @@ void Session::pruneForContext(size_t maxTokens) {
               messages.size(), beforeTokenCount / 1000, total / 1000);
 }
 
-
 // -- Basic accessors ----------------------------------------------------
 
 void Session::addMessage(const Message& msg) {

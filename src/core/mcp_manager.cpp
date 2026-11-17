@@ -286,7 +286,7 @@ bool Manager::reloadIfChanged(const std::string& path) {
             continue;
         }
         // Same process: adopt the new text (description, enabled) without touching
-        // it. A Dead server is NOT retried here -- F4's R is the retry entry point,
+        // it. A Dead server is NOT retried here -- F5's R is the retry entry point,
         // otherwise every message would retry a broken server.
         h->cfg.description = cfg.description;
         h->cfg.enabled = cfg.enabled;

@@ -145,7 +145,7 @@
 - **入口。** `src/core/mcp_manager.cpp`（`start` / `stop` / `syncTools` /
   `callTool`）、`src/core/mcp_protocol.cpp`（换行分帧、`_meta`、`resultType`）、
   `src/core/mcp_process.cpp`（三根管道、Job Object / `killpg`）、
-  `src/core/mcp_config.cpp`（`projv_files/mcp.json`）、`src/tui/mcp_view.cpp`（F4）。
+  `src/core/mcp_config.cpp`（`projv_files/mcp.json`）、`src/tui/mcp_view.cpp`（F5）。
 - **规矩。** 每个 server 一个 `worker_` 线程，由 `start` / `stop` / `shutdownAll`
   负责 join，**永不 detach**。`syncTools()` 是 `ToolRegistry` 与
   `Agent::autoToolNames_` 的唯一写入方，只在回合边界的 agent 线程上跑。

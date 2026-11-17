@@ -63,7 +63,7 @@ TEST_CASE("chat_view: reasoning collapsed shows summary") {
     b.push_back(think);
 
     std::string out = renderToString(b, false);
-    CHECK(out.find("F8 expand") != std::string::npos);
+    CHECK(out.find("F8 reveal") != std::string::npos);
     CHECK(out.find("secret thought") != std::string::npos);
 }
 

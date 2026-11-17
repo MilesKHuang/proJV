@@ -48,7 +48,7 @@ Add one entry:
 | `env` | no | Extra environment variables for the child |
 | `protocol` | no | `"stateful"` (default, legacy `initialize` handshake) or `"stateless"` (modern: no handshake, every request carries its own metadata) |
 | `trusted` | no | **`false` by default. A server that is not trusted is never started** |
-| `enabled` | no | `false` by default. Must be turned on explicitly, or with `F4` |
+| `enabled` | no | `false` by default. Must be turned on explicitly, or with `F5` |
 | `timeout_ms` | no | Per-request timeout, default `120000` |
 
 A bad entry (missing `name`, unknown `protocol`, duplicate `name`) is skipped with
@@ -70,10 +70,10 @@ re-reads the list and diffs it by name:
 | Same entry, `enabled` flipped | Started or stopped; the process is not respawned |
 | Same entry, `command`/`args`/`env`/`protocol`/`trusted`/`timeout_ms` changed | Restarted with the new definition |
 | Only `description` changed | Nothing restarted; the capability map picks up the new text |
-| A server that is already `dead` | **Not retried automatically** -- `R` in `F4` is the retry button, otherwise every message would retry a broken server |
-| Invalid JSON (half-saved file) | The running servers are left completely untouched; the parse error is shown in `F4` |
+| A server that is already `dead` | **Not retried automatically** -- `R` in `F5` is the retry button, otherwise every message would retry a broken server |
+| Invalid JSON (half-saved file) | The running servers are left completely untouched; the parse error is shown in `F5` |
 
-`F4` is still the fastest way to toggle one server, and it writes `enabled` back to
+`F5` is still the fastest way to toggle one server, and it writes `enabled` back to
 the file.
 
 ## 3. Turn it on
@@ -81,9 +81,9 @@ the file.
 Two ways, both equivalent:
 
 - set `"enabled": true` and send a message (or restart proJV), or
-- press `F4`, select the server, press `Enter`.
+- press `F5`, select the server, press `Enter`.
 
-`F4` also shows the live state (`stopped` / `connecting` / `handshaking` /
+`F5` also shows the live state (`stopped` / `connecting` / `handshaking` /
 `ready` / `dead`), the number of tools each server contributed, and the selected
 server's `description`. `R` restarts the selected server. Toggling writes `enabled`
 back to `mcp.json`, so the choice survives a restart.

@@ -53,17 +53,20 @@ dialog shows the tool name and its arguments.
 
 - Press `Esc` while it is busy: the turn is cancelled, the current tool call
   is interrupted, and the app stays open.
-- Press `Esc` while idle: quits.
-- `Ctrl+C` quits at any time; the session database is checkpointed and closed.
+- Press `Esc` while idle with text typed: the input box is cleared.
+- Press `Esc` while idle and empty: a "Quit proJV?" box appears. Cancel has the
+  default focus, so one stray keypress cannot end a session.
+- `Ctrl+C` does nothing on purpose: the hosting terminal uses it to copy a text
+  selection, and cancelling is `Esc`'s job (see 08-reference).
 
 ## 6. Where to look
 
 | Key | Panel |
 |-----|-------|
-| `F8` | reasoning / thinking chain (collapsed summary -> full window) |
-| `F9` | TODO panel |
+| `F8` | reasoning / thinking chain (reveal / collapse) |
+| `F9` | the dock: TODO list + background tasks |
 | `F2` | configuration |
-| `F5` | session history |
+| `F4` | session history |
 
 ## Check it worked
 

@@ -85,11 +85,15 @@ Rule of thumb: a fixed cast that must vote unanimously -> let the engine
 orchestrate (steve, bigbang); a cast that must be picked at runtime -> one
 driver (monica, avenger, musk).
 
-## The agent sidebar
+## The activity strip
 
-While a skill runs, the right-hand panel lists every role with its status,
-message count and whether it is currently busy. Workers light up in parallel -
-that is how you can tell dispatch really is concurrent.
+While a skill runs, a strip under the title bar lists every role: its live icon
+and the last line it narrated. The strip wraps, so a 120 column terminal shows
+three roles per row and a narrow one shows two; an idle app keeps a single
+"(no active agents)" line so the chat above never jumps. Running background
+tasks are not shown here -- they stay in the dock, on the right, next to the
+TODO list. Workers light up in parallel, which is how you can tell that dispatch
+really is concurrent.
 
 ## Author your own
 

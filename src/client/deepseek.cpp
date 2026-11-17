@@ -522,7 +522,7 @@ std::vector<ModelInfo> DeepSeekClient::fetchModels(std::string* errorOut) {
 static constexpr size_t kSearchContentTrunc = 50 * 1024; // need_content=true per item
 static constexpr size_t kFetchContentTrunc = 100 * 1024; // page markdown
 
-// Trim ASCII whitespace (local copy: the parser-level trim() lives further down).
+// Trim ASCII whitespace.
 static std::string trimWs(const std::string& s) {
     auto b = s.find_first_not_of(" \t\r\n");
     if (b == std::string::npos) return "";
@@ -861,13 +861,6 @@ void DeepSeekClient::setConfig(const AppConfig& cfg) {
 // Already defined above; this comment documents the split point.
 
 // -- SSE Parser (unchanged) ------------------------------------------------
-
-static std::string trim(const std::string& s) {
-    auto start = s.find_first_not_of(" \t\r\n");
-    if (start == std::string::npos) return "";
-    auto end = s.find_last_not_of(" \t\r\n");
-    return s.substr(start, end - start + 1);
-}
 
 size_t DeepSeekClient::parseSSEChunk(const std::string& buffer, size_t startOffset,
                                      StreamCallbacks& callbacks) {

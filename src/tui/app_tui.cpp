@@ -1005,7 +1005,7 @@ void TuiApp::startSkill(const std::string& name, const std::string& topic,
         pendingQueue_.push_back(persisted);
         return;
     }
-    // A user-invoked skill starts un-cancelled. Agent::cancel() (ESC, F3, F5, /clear)
+    // A user-invoked skill starts un-cancelled. Agent::cancel() (ESC, F3, F4, /clear)
     // latches ToolRegistry's cancel flag, and only newTurn() ever cleared it -- the
     // skill path never calls newTurn(), so the first probe hit cancelled the whole run
     // before round 1 with no output at all. ESC during the run still works: it sets

@@ -118,7 +118,7 @@ class Manager {
     std::vector<std::string> toolNames(const std::string& name) const;
     bool empty() const { return servers_.empty(); }
 
-    // F4 Toggle: flip `enabled` in mcp.json and start/stop to match. The TUI
+    // F5 Toggle: flip `enabled` in mcp.json and start/stop to match. The TUI
     // only calls this while idle (see mcp_view), so it cannot race a turn.
     void setEnabled(const std::string& name, bool enabled);
 

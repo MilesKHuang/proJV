@@ -481,7 +481,7 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     auto firstLine = [](const std::string& s) { return firstLineImpl(s); };
     // A stale cancel flag is the one failure that used to be completely silent: the
     // probe hit, every step was skipped, and run() returned without a single event.
-    // Agent::cancel() -> ToolRegistry::cancelAll() sets it on ESC, F3, F5 and /clear,
+    // Agent::cancel() -> ToolRegistry::cancelAll() sets it on ESC, F3, F4 and /clear,
     // and only Agent::newTurn() cleared it -- a skill never calls newTurn().
     if (checkCancel()) {
         if (cbs_.onEvent)

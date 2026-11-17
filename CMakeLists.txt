@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(proJV VERSION 0.7.8 LANGUAGES C CXX)
+project(proJV VERSION 0.7.9 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -117,11 +117,17 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/core/project_context.cpp
     ${SRC_DIR}/core/context_assembler.cpp
+    # The one command table (/help, the "/" menu, F1). In the lib so the unit test
+    # can link it without pulling in the TUI.
+    ${SRC_DIR}/core/help_text.cpp
     ${SRC_DIR}/core/sub_agent.cpp
     ${SRC_DIR}/core/image_input.cpp
     ${SRC_DIR}/core/skill_trigger.cpp
     ${SRC_DIR}/core/skill_runner.cpp
     ${SRC_DIR}/core/terminal_status.cpp
+    # Paste detection: pure timing/boolean logic, no FTXUI. Lives in the lib (not
+    # in proJV_tui) because the unit test links proJV_lib only.
+    ${SRC_DIR}/tui/paste_flatten.cpp
     # MCP client (stdio JSON-RPC): framing, three-pipe child control, config,
     # resident server pool. Platform-agnostic; the #ifdefs live in mcp_process.
     ${SRC_DIR}/core/mcp_protocol.cpp

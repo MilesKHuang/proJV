@@ -47,7 +47,7 @@ proJV 可以接 [MCP](https://modelcontextprotocol.io) server。一个 MCP serve
 | `env` | 否 | 传给子进程的额外环境变量 |
 | `protocol` | 否 | `"stateful"`（默认，legacy `initialize` 握手）或 `"stateless"`（modern：不握手，每个请求自带元数据） |
 | `trusted` | 否 | **默认 `false`。没被信任的 server 根本不会被启动** |
-| `enabled` | 否 | 默认 `false`。必须显式打开，或用 `F4` |
+| `enabled` | 否 | 默认 `false`。必须显式打开，或用 `F5` |
 | `timeout_ms` | 否 | 单个请求超时，默认 `120000` |
 
 写坏的条目（缺 `name`、`protocol` 非法、`name` 重复）只会被跳过并记一行日志，不会
@@ -67,19 +67,19 @@ proJV 可以接 [MCP](https://modelcontextprotocol.io) server。一个 MCP serve
 | 同一条目，`enabled` 翻转 | 启或停；进程不重启 |
 | 同一条目，`command`/`args`/`env`/`protocol`/`trusted`/`timeout_ms` 变了 | 用新定义重启 |
 | 只改了 `description` | 不重启任何进程，能力地图换成新文案 |
-| 本来就是 `dead` 的 server | **不会自动重试** —— `F4` 里的 `R` 才是重试入口，否则每发一条消息都会重试一个坏 server |
-| JSON 写坏（存了半截） | 现有 server 完全不动，解析错误显示在 `F4` |
+| 本来就是 `dead` 的 server | **不会自动重试** —— `F5` 里的 `R` 才是重试入口，否则每发一条消息都会重试一个坏 server |
+| JSON 写坏（存了半截） | 现有 server 完全不动，解析错误显示在 `F5` |
 
-`F4` 仍然是切换单个 server 最快的方式，它会把 `enabled` 写回文件。
+`F5` 仍然是切换单个 server 最快的方式，它会把 `enabled` 写回文件。
 
 ## 3. 打开它
 
 两种方式，等价：
 
 - 写 `"enabled": true` 然后发一条消息（或重启 proJV）；或
-- 按 `F4`，选中该 server，按 `Enter`。
+- 按 `F5`，选中该 server，按 `Enter`。
 
-`F4` 面板还会显示实时状态（`stopped` / `connecting` / `handshaking` / `ready` /
+`F5` 面板还会显示实时状态（`stopped` / `connecting` / `handshaking` / `ready` /
 `dead`）、每个 server 贡献了几个工具，以及选中条目的 `description`。`R` 重启选中的
 server。开关会写回 `mcp.json` 的 `enabled`，重启后仍然生效。
 

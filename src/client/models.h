@@ -127,6 +127,14 @@ inline const std::string& kReasoningEffortOfficialDefault() {
     return v;
 }
 
+// The four legal values, in the order the F2 radio buttons show them. This is the
+// same set normalizeReasoningEffort() returns, so a lookup by value always hits and
+// the UI can never produce a string the loader would reject.
+inline const std::vector<std::string>& kEffortValues() {
+    static const std::vector<std::string> v = {"none", "low", "high", "max"};
+    return v;
+}
+
 // What proJV ships with: the highest documented level, so a fresh install gets
 // the best answer quality. Users may lower it (or turn thinking off with
 // "none") in config.toml; an invalid value falls back to the official default.

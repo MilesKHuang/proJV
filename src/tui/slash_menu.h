@@ -4,20 +4,20 @@
 // given the same skills directory this always produces the same bytes, which is
 // what the unit test pins down.
 //
-// The table lists only commands that exist. A menu entry that does nothing when
-// picked is worse than a menu without it, so /wish and /end_task are added when
-// their handlers land, not before.
+// The table itself lives in core/help_text.h, because the chat /help message and
+// the F1 panel read the same entries. Including it here (instead of copying the
+// entries) is what stops the three readers from drifting apart again.
 #pragma once
 #include <string>
 #include <vector>
 
+#include "core/help_text.h"
+
 namespace slash_menu {
 
-struct Command {
-    std::string name; // "/wish"
-    std::string args; // "<description>"; empty = no argument
-    std::string desc; // one line, clipped to 48 chars
-};
+// The menu entry IS the help entry: one struct, one order, no conversion that
+// could reorder or drop a field.
+using Command = help_text::CmdHint;
 
 // Commands compiled into the binary. Order is the display order for an empty
 // filter: the ones a user needs most first.

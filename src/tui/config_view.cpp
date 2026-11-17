@@ -3,6 +3,8 @@
 
 #include "approval_logic.h"
 #include "core/snapshot.h"
+#include "theme_map.h"
+#include "theme_manager.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
@@ -26,7 +28,18 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     auto temperature = std::make_shared<std::string>(
         cfg->temperature < 0.0001 ? "0" : std::to_string(cfg->temperature));
     auto contextWindow = std::make_shared<std::string>(std::to_string(cfg->contextWindow));
-    auto effect = std::make_shared<std::string>(cfg->reasoningEffort);
+    // effort: four steps instead of a free-text field. Aliases (minimal/medium/
+    // xhigh/ultra) and unknown values are normalised first, so an old config lands
+    // on a visible selection rather than on "none of the above".
+    auto effortNames = std::make_shared<std::vector<std::string>>(
+        std::vector<std::string>{"none -- no thinking", "low", "high (official default)", "max"});
+    const auto& effortValues = kEffortValues();
+    std::string curEffort = normalizeReasoningEffort(cfg->reasoningEffort);
+    if (curEffort.empty()) curEffort = kReasoningEffortOfficialDefault();
+    auto effortIndex = std::make_shared<int>(static_cast<int>(
+        std::find(effortValues.begin(), effortValues.end(), curEffort) - effortValues.begin()));
+    if (*effortIndex >= static_cast<int>(effortValues.size()))
+        *effortIndex = 2; // unreachable after the normalise above; "high" is the safe landing
     auto snapGb = std::make_shared<std::string>(std::to_string(cfg->snapshotsMaxWorkspaceGb));
     auto snapDays = std::make_shared<std::string>(std::to_string(cfg->snapshotsKeepDays));
 
@@ -42,7 +55,7 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     Component modelInput = Input(&cfg->model, singleLine);
     Component maxTokensInput = Input(maxTokens.get(), singleLine);
     Component tempInput = Input(temperature.get(), singleLine);
-    Component effectInput = Input(effect.get(), singleLine);
+    Component effortBox = Radiobox(effortNames.get(), effortIndex.get());
     Component contextInput = Input(contextWindow.get(), singleLine);
     Component cppInput = Input(&cfg->cppCompilerPath, singleLine);
     Component pyInput = Input(&cfg->pythonPath, singleLine);
@@ -82,16 +95,15 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
         }
     };
 
-    Component saveBtn = Button("Save", [&app, onClose, cfg, maxTokens, temperature, effect,
-                                        contextWindow, snapGb, snapDays, intOr, doubleOr, modeIndex,
-                                        modeNames] {
+    Component saveBtn = Button("Save", [&app, onClose, cfg, maxTokens, temperature, effortIndex,
+                                        effortNames, contextWindow, snapGb, snapDays, intOr,
+                                        doubleOr, modeIndex, modeNames] {
         // Clamp exactly where config.cpp clamps on load: the file and the UI must
         // never disagree about what a legal value is.
         cfg->maxTokens =
             std::clamp(intOr(*maxTokens, cfg->maxTokens), kMinOutputTokens, kMaxOutputTokens);
         cfg->temperature = std::clamp(doubleOr(*temperature, cfg->temperature), 0.0, 2.0);
-        cfg->reasoningEffort = normalizeReasoningEffort(*effect);
-        if (cfg->reasoningEffort.empty()) cfg->reasoningEffort = kReasoningEffortOfficialDefault();
+        cfg->reasoningEffort = kEffortValues()[static_cast<size_t>(std::clamp(*effortIndex, 0, 3))];
         const int cw = intOr(*contextWindow, static_cast<int>(cfg->contextWindow));
         cfg->contextWindow = cw < 0 ? 0 : static_cast<size_t>(cw);
         cfg->snapshotsMaxWorkspaceGb = std::max(0, intOr(*snapGb, cfg->snapshotsMaxWorkspaceGb));
@@ -108,7 +120,7 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
         modelInput,
         maxTokensInput,
         tempInput,
-        effectInput,
+        effortBox,
         contextInput,
         cppInput,
         pyInput,
@@ -142,7 +154,7 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
                        row("Model", modelInput),
                        row("Max Tokens", maxTokensInput),
                        row("Temperature", tempInput),
-                       row("Effort", effectInput),
+                       row("Effort", effortBox),
                        row("Context Window", contextInput),
                        separator(),
                        row("C++ Compiler", cppInput),
@@ -240,8 +252,11 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
         els.push_back(text("COMMAND APPROVAL") | bold);
         els.push_back(separator());
         els.push_back(text("This command deletes or overwrites files:"));
-        els.push_back(text("  " + (cmd.empty() ? std::string("(arguments unreadable)") : cmd)) |
-                      color(Color::RGB(224, 200, 96)));
+        // Awaiting-approval red, from the theme: the command echo used to be the
+        // one hard-coded colour in this dialog and did not follow a theme switch.
+        els.push_back(
+            text("  " + (cmd.empty() ? std::string("(arguments unreadable)") : cmd)) |
+            color(theme_map::hexToColor(ThemeManager::instance().current().phaseAwaitApproval)));
 
         if (!files.empty()) {
             els.push_back(text("Targets:"));

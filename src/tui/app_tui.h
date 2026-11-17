@@ -139,7 +139,7 @@ class TuiApp {
     // Cancel agent + join threads (call before exit).
     void shutdown();
 
-    // --- MCP (F4) -------------------------------------------------------
+    // --- MCP (F5) -------------------------------------------------------
     // Null before initialize() and after shutdown().
     mcp::Manager* mcpManager() { return mcpManager_.get(); }
     // Flip `enabled` in mcp.json and start/stop the server to match.

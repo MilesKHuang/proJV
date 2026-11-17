@@ -34,7 +34,7 @@
 
 ## Three things that make it different
 
-- **Native C++, ~3.4 MB, zero package managers.** FTXUI + libcurl + SQLite, all
+- **Native C++, ~4 MB, zero package managers.** FTXUI + libcurl + SQLite, all
   vendored. One `cmake --build` and you have a single binary you can scp.
 - **Multi-agent skills are data, not code.** A skill is a folder:
   `config.json` + one `.md` per role + verb tool schemas. Copy it in — it runs.
@@ -88,30 +88,10 @@ Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 | **Terminal status** | reports `working` / `blocked` / `done` to the host terminal over **OSC 7501** (Program Status Protocol), so Windows Terminal, Ghostty or Ostlr can show a tab badge; a redirected stdout gets no extra bytes, `osc_status = false` or `PROJV_NO_OSC=1` turns it off |
 | **Themes** | 2 built-in + 6 curated, visual editor with live preview, JSON import/export |
 | **Python tools** | drop a folder with `tool.json` + `main.py` and the agent can call it |
-| **MCP servers** | point `projv_files/mcp.json` at an external process and its tools become callable as `mcp__server__tool`; the process is spawned once and reused across turns, `F4` to toggle it |
+| **MCP servers** | point `projv_files/mcp.json` at an external process and its tools become callable as `mcp__server__tool`; the process is spawned once and reused across turns, `F5` to toggle it |
 | **Cost awareness** | live token counts and a price estimate from `config.toml` |
 
 Details -> [user guide](docs/en/user-guide/README.md) · [skills](docs/en/user-guide/06-skills.md) · [pytool](docs/en/user-guide/07-pytool.md) · [MCP](docs/en/user-guide/10-mcp.md)
-
----
-
-## How it compares
-
-Facts verified 2026-10-25; `—` means "not checked here". proJV column reflects
-this repository.
-
-| | proJV | Claude Code | OpenAI Codex CLI | Aider |
-|---|---|---|---|---|
-| Implementation | C++20 | TypeScript (Node) | Rust | Python |
-| Install | one binary, deps vendored | npm | npm / brew / release | pip |
-| Runtime needed | none | Node.js | none (npm wrapper) | Python |
-| Multi-agent | data-driven skill folders, workers run concurrently | subagents | TOML subagents | — |
-| Extending | drop files: skills, roles, themes, Python tools; MCP servers via `mcp.json` | MCP servers, hooks | MCP, plugins | — |
-| Model choice | DeepSeek only | Anthropic | OpenAI | many providers |
-| Cost model | DeepSeek per-token pricing | subscription or API | ChatGPT plan or API | provider-dependent |
-
-Deliberately narrow: proJV does one model provider well and puts the extension
-surface in plain files instead of a plugin registry.
 
 ---
 

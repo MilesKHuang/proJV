@@ -136,7 +136,7 @@ std::string reasoningSummary(const std::string& text) {
     std::string lastLine = text.substr(start, end - start);
     if (lastLine.size() > 60) lastLine = lastLine.substr(0, 57) + "...";
     if (!lastLine.empty()) s += " · " + lastLine;
-    s += " · F8 expand";
+    s += " · F8 reveal";
     return s;
 }
 
@@ -184,7 +184,11 @@ Element renderBubbles(const std::vector<bubble_model::Bubble>& bubbles, bool rea
             els.push_back(label("── " + b.speaker + (b.isVote ? " · vote" : "") + " ──", rc));
             if (b.isVote) {
                 bool dissent = b.content.rfind("DISSENT", 0) == 0;
-                Color vc = dissent ? Color::RGB(255, 96, 96) : Color::RGB(96, 220, 128);
+                // Themed like the diff is: the red a removed line gets, and the
+                // green an added one gets. A vote was the last hard-coded pair.
+                const auto& voteTheme = ThemeManager::instance().current();
+                Color vc = dissent ? theme_map::hexToColor(voteTheme.phaseError)
+                                   : theme_map::hexToColor(voteTheme.todoDone);
                 els.push_back(ftxui::text(b.content) | ftxui::color(vc) | ftxui::bold);
             } else {
                 els.push_back(markdown_view::renderMarkdown(b.content));

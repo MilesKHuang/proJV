@@ -188,7 +188,7 @@ the code disagree, the code wins.
 - **Entry.** `src/core/mcp_manager.cpp` (`start` / `stop` / `syncTools` /
   `callTool`), `src/core/mcp_protocol.cpp` (newline framing, `_meta`,
   `resultType`), `src/core/mcp_process.cpp` (three pipes, Job Object / `killpg`),
-  `src/core/mcp_config.cpp` (`projv_files/mcp.json`), `src/tui/mcp_view.cpp` (F4).
+  `src/core/mcp_config.cpp` (`projv_files/mcp.json`), `src/tui/mcp_view.cpp` (F5).
 - **Rule.** One `worker_` thread per server, joined by `start` / `stop` /
   `shutdownAll`, never detached. `syncTools()` is the only writer of
   `ToolRegistry` and `Agent::autoToolNames_`, and it runs on the agent thread at a

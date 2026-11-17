@@ -9,6 +9,9 @@
 #include "speaker_colors.h"
 #include "todo_view.h"
 #include "slash_menu.h"
+#include "paste_flatten.h"
+#include "clipboard.h"
+#include "ui_spinner.h"
 #include "config_view.h"
 #include "mcp_view.h"
 #include "theme_editor_view.h"
@@ -20,6 +23,7 @@
 #include "platform/cli_args.h"
 #include "platform/log_files.h"
 #include "core/config.h"
+#include "core/help_text.h"
 #include "core/terminal_status.h"
 
 #include <ftxui/component/component.hpp>
@@ -30,6 +34,7 @@
 #include <ftxui/screen/box.hpp>
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <filesystem>
 #include <functional>
@@ -99,20 +104,6 @@ ftxui::Element observeWidth(ftxui::Element child, std::function<void(int)> on_wi
     return std::make_shared<ObserveWidthNode>(ftxui::unpack(std::move(child)), std::move(on_width));
 }
 
-// Map a subagent activity to the theme color of its state word (mirrors
-// status_line::render for the main agent).
-std::string ThemeColors::*panelActivityColor(SkillRunner::AgentActivity a) {
-    switch (a) {
-    case SkillRunner::AgentActivity::Working:
-        return &ThemeColors::phaseStreaming;
-    case SkillRunner::AgentActivity::Error:
-        return &ThemeColors::statusError;
-    case SkillRunner::AgentActivity::Idle:
-    default:
-        return &ThemeColors::statusIdle;
-    }
-}
-
 const char* panelActivityLabel(SkillRunner::AgentActivity a) {
     switch (a) {
     case SkillRunner::AgentActivity::Working:
@@ -124,6 +115,11 @@ const char* panelActivityLabel(SkillRunner::AgentActivity a) {
         return "idle";
     }
 }
+
+// Colour of the spinner glyph itself, used by the status line. Green while work
+// is happening: the theme's "executing tools" accent reads against the yellow
+// body text, where the streaming yellow the glyph used to share disappeared.
+// (The activity strip picks each agent's own colour instead; see renderUnit.)
 
 // Truncate a UTF-8 string to at most `maxCols` terminal columns (CJK = 2
 // columns, ASCII = 1). Appends ".." when clipped. Byte-safe on UTF-8.
@@ -154,66 +150,120 @@ std::string truncateToCols(const std::string& s, int maxCols) {
     return out;
 }
 
-// Right-dock Agent panel: two lines per live skill agent.
-//   line 1: [name] <state> (+spinner) -- colored like the main status line
-//   line 2: dim, truncated last narration (the agent's last bubble text)
-ftxui::Element renderAgentPanel(const std::vector<SkillRunner::AgentSnapshot>& agents,
-                                int spinnerFrame,
-                                const std::vector<bg_task::Snapshot>& tasks = {}) {
-    const auto& T = ThemeManager::instance().current();
-    ftxui::Elements els;
-    els.push_back(ftxui::text("Agents") | ftxui::bold);
-    els.push_back(ftxui::separator());
-    if (agents.empty() && tasks.empty()) {
-        els.push_back(ftxui::text("(no skill or task running)") | ftxui::dim);
-        return ftxui::vbox(std::move(els));
-    }
-    for (const auto& a : agents) {
-        // Line 1: identity + state + live icon, tinted by activity.
-        ftxui::Color stateColor = theme_map::hexToColor(T.*panelActivityColor(a.activity));
-        ftxui::Color nameColor = speaker_colors::forRole(a.displayName);
-        ftxui::Elements line1;
-        line1.push_back(ftxui::text("[" + a.displayName + "]") | ftxui::bold |
-                        ftxui::color(nameColor));
-        line1.push_back(ftxui::text(" " + std::string(panelActivityLabel(a.activity))) |
-                        ftxui::color(stateColor));
-        if (a.activity == SkillRunner::AgentActivity::Working) {
-            line1.push_back(ftxui::text(" "));
-            line1.push_back(ftxui::spinner(6, spinnerFrame) | ftxui::color(stateColor));
+// Insert clipboard text the way a paste behaves: line breaks and tabs become
+// spaces (a pasted block must not send itself), control bytes are dropped, and an
+// absurd paste is capped instead of pasted forever.
+void insertPastedText(std::string& input, int& cursor, const std::string& clip) {
+    std::string cleaned;
+    cleaned.reserve(clip.size());
+    for (const char c : clip) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (c == '\r' || c == '\n' || c == '\t') {
+            cleaned += ' ';
+        } else if (u >= 32 && u != 127) {
+            cleaned += c; // UTF-8 continuation bytes are >= 0x80 and survive
         }
-        els.push_back(ftxui::hbox(std::move(line1)));
+    }
+    if (cleaned.size() > paste_flatten::kMaxFlattenChars)
+        cleaned.resize(paste_flatten::kMaxFlattenChars);
+    if (cleaned.empty()) return;
+    if (cursor < 0 || static_cast<size_t>(cursor) > input.size())
+        cursor = static_cast<int>(input.size());
+    input.insert(static_cast<size_t>(cursor), cleaned);
+    cursor += static_cast<int>(cleaned.size());
+}
 
-        // Line 2: dim, truncated last narration. rfind, not find: the dock must
-        // show what the agent is doing NOW, and the first line of a multi-paragraph
-        // narration is the oldest thing in it.
-        std::string st = a.status;
-        while (!st.empty() && (st.back() == '\n' || st.back() == '\r' || st.back() == ' '))
-            st.pop_back();
-        auto nl = st.rfind('\n');
-        if (nl != std::string::npos) st = st.substr(nl + 1);
-        if (st.empty())
-            st = (a.activity == SkillRunner::AgentActivity::Working) ? "working..." : "(idle)";
-        els.push_back(ftxui::text(truncateToCols(st, 34)) | ftxui::dim |
+// Last line of a multi-paragraph narration: the strip must show what the agent
+// is doing NOW, and the first line of a narration is the oldest thing in it.
+std::string lastNarrationLine(const std::string& status) {
+    std::string st = status;
+    while (!st.empty() && (st.back() == '\n' || st.back() == '\r' || st.back() == ' '))
+        st.pop_back();
+    const auto nl = st.rfind('\n');
+    if (nl != std::string::npos) st = st.substr(nl + 1);
+    return st;
+}
+
+// One cell width for the activity strip and one for the dock. 39 + a 1 column
+// gap puts exactly three cells on a 120 column terminal (3*39+2 = 119) and two
+// on an 80 column one (2*39+1 = 79), which is what the layout is tuned for.
+constexpr int kAgentUnitCols = 39;
+constexpr int kDockUnitCols = 34;
+
+// One cell: [name] <spinner-or-space> <narration>. The glyph column always
+// exists, so an idle agent does not shift its neighbours left by one.
+// The name is one colour for everybody -- eleven coloured names read as noise.
+// Identity lives in the single-cell glyph (its own role colour), state lives
+// there too (red on error, absent when idle), and an idle row fades to grey.
+ftxui::Element renderUnit(const std::string& name, ftxui::Color identityColor,
+                          SkillRunner::AgentActivity activity, const std::string& narration,
+                          int unitCols, int spinnerFrame) {
+    const auto& T = ThemeManager::instance().current();
+    const bool idle = activity == SkillRunner::AgentActivity::Idle;
+    const ftxui::Color nameColor = theme_map::hexToColor(idle ? T.textDisabled : T.text);
+    const ftxui::Color glyphColor = activity == SkillRunner::AgentActivity::Error
+                                        ? theme_map::hexToColor(T.statusError)
+                                        : identityColor;
+    const std::string tag = "[" + truncateToCols(name, 10) + "]";
+
+    ftxui::Elements row;
+    ftxui::Element nameElement = ftxui::text(tag) | ftxui::bold | ftxui::color(nameColor);
+    if (idle) nameElement = nameElement | ftxui::dim;
+    row.push_back(std::move(nameElement));
+    row.push_back(ftxui::text(" "));
+    if (idle) {
+        row.push_back(ftxui::text(" "));
+    } else {
+        row.push_back(tui::spinner(spinnerFrame, glyphColor));
+    }
+
+    // Tags are ASCII ("Penny", "bg#3"), so byte count is column count here.
+    const int room = unitCols - static_cast<int>(tag.size()) - 2;
+    if (room > 0) {
+        std::string detail = lastNarrationLine(narration);
+        if (detail.empty()) detail = std::string(panelActivityLabel(activity)) + "...";
+        row.push_back(ftxui::text(" " + truncateToCols(detail, room)) | ftxui::dim |
                       ftxui::color(theme_map::hexToColor(T.textDisabled)));
     }
-    // Background tasks: id, state, and the latest output line. Separate block so a
-    // running skill and a running build never look like the same thing.
+    return ftxui::hbox(std::move(row)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, unitCols);
+}
+
+// Activity strip under the title bar: every live skill agent, wrapped by FTXUI
+// when the terminal is narrow (flexbox re-measures on every layout, so a resize
+// reflows without any code here). No sorting, no folding: the order is whatever
+// SkillRunner::agentStatuses() returns, which is stable while a skill runs.
+ftxui::Element renderAgentStrip(const std::vector<SkillRunner::AgentSnapshot>& agents,
+                                int spinnerFrame) {
+    // The empty state is one dim line, not an empty list: the chat area below
+    // keeps its top edge when a skill starts instead of jumping four rows.
+    if (agents.empty()) return ftxui::text("(no active agents)") | ftxui::dim;
+    ftxui::Elements units;
+    units.reserve(agents.size());
+    for (const auto& a : agents)
+        units.push_back(renderUnit(a.displayName, speaker_colors::forRole(a.displayName),
+                                   a.activity, a.status, kAgentUnitCols, spinnerFrame));
+    // hflow() takes Elements only and cannot carry a gap, so flexbox() is used
+    // directly. Wrap is the default value but stays explicit: the strip's whole
+    // point is that it wraps.
+    return flexbox(std::move(units), FlexboxConfig().Set(FlexboxConfig::Wrap::Wrap).SetGap(1, 0));
+}
+
+// Dock bottom: one line per running background task. Separate from the strip so
+// a running build and a running skill never look like the same thing.
+ftxui::Element renderBackgroundTasks(const std::vector<bg_task::Snapshot>& tasks,
+                                     int spinnerFrame) {
+    ftxui::Elements els;
     for (const auto& t : tasks) {
         if (t.state != bg_task::State::Running) continue;
-        els.push_back(ftxui::separator());
-        ftxui::Elements line1;
-        const std::string id = "bg#" + std::to_string(t.id);
-        const ftxui::Color bgColor =
-            theme_map::hexToColor(T.*panelActivityColor(SkillRunner::AgentActivity::Working));
-        line1.push_back(ftxui::text("[" + id + "]") | ftxui::bold | ftxui::color(bgColor));
-        line1.push_back(ftxui::text(" " + std::string(bg_task::stateLabel(t.state)) + " ") |
-                        ftxui::color(bgColor));
-        line1.push_back(ftxui::spinner(6, spinnerFrame));
-        els.push_back(ftxui::hbox(std::move(line1)));
-        std::string last = t.lastLine.empty() ? t.command : t.lastLine;
-        els.push_back(ftxui::text(truncateToCols(last, 34)) | ftxui::dim |
-                      ftxui::color(theme_map::hexToColor(T.textDisabled)));
+        // A background task has no role, so its glyph takes the working accent
+        // instead of a speaker colour.
+        const ftxui::Color tagColor =
+            theme_map::hexToColor(ThemeManager::instance().current().phaseExecutingTools);
+        els.push_back(
+            renderUnit("bg#" + std::to_string(t.id), tagColor, SkillRunner::AgentActivity::Working,
+                       t.lastLine.empty() ? t.command : t.lastLine, kDockUnitCols, spinnerFrame));
     }
+    if (els.empty()) els.push_back(ftxui::text("(no background task)") | ftxui::dim);
     return ftxui::vbox(std::move(els));
 }
 
@@ -227,13 +277,25 @@ class SpinnerTicker : public ftxui::ComponentBase {
 
     ftxui::Element OnRender() override { return ftxui::text(""); }
 
-    void OnAnimation(ftxui::animation::Params&) override {
+    void OnAnimation(ftxui::animation::Params& p) override {
         if (!busy_()) return;
+        // FTXUI posts an animation task every 15 ms (~66 fps). Advancing one
+        // frame per callback made a revolution take 210 ms, which read as noise
+        // rather than motion. Accumulate and emit a frame every 120 ms instead:
+        // four glyphs at 120 ms = 480 ms per revolution.
+        accum_ += std::chrono::duration_cast<std::chrono::milliseconds>(p.duration());
+        if (accum_ < kFrameInterval) {
+            ftxui::animation::RequestAnimationFrame(); // keep the loop alive
+            return;
+        }
+        accum_ -= kFrameInterval; // subtract, never zero: no drift on slow frames
         onTick_();
         ftxui::animation::RequestAnimationFrame();
     }
 
   private:
+    static constexpr std::chrono::milliseconds kFrameInterval{120};
+    std::chrono::milliseconds accum_{0};
     std::function<bool()> busy_;
     std::function<void()> onTick_;
 };
@@ -468,8 +530,10 @@ int main(int argc, char** argv) {
     TuiApp app;
     app.initialize(procRunner);
 
-    // Window close / Ctrl+C must still close the DB before the process is
-    // reaped (FTXUI does not handle console close events on its own).
+    // A window close must still close the DB before the process is reaped
+    // (FTXUI does not handle console close events on its own). Ctrl+C no longer
+    // arrives here: system_util_win swallows it, and terminal.cpp clears
+    // ENABLE_PROCESSED_INPUT so it never becomes a CTRL_C_EVENT at all.
     SystemUtil::Instance().InstallExitHandler([&app]() { app.emergencyShutdown(); });
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -480,9 +544,10 @@ int main(int argc, char** argv) {
     bool show_open = false;
     bool show_theme = false;
     bool show_theme_editor = false;
-    bool show_todo = true;
+    bool show_dock = true;
     bool show_model = false;
-    bool show_about = false;
+    bool show_help = false;
+    bool show_quit = false;
 
     // "/" completion menu state (M2.5). slash_all is computed once: the skills
     // folder only changes with a restart-worthy action, and listSkills() is a
@@ -505,14 +570,14 @@ int main(int argc, char** argv) {
     // Agent turns AND skill runs both share the busy flag, so the
     // spinner keeps animating during a debate (phase stays Idle then).
     auto busy = [&] { return app.isBusy(); };
-    auto spinner_ticker =
-        std::make_shared<SpinnerTicker>(busy, [&] { spinnerFrame = (spinnerFrame + 1) % 8; });
+    auto spinner_ticker = std::make_shared<SpinnerTicker>(
+        busy, [&] { spinnerFrame = (spinnerFrame + 1) % tui::kSpinnerFrames; });
 
     // Idle-edge detector: plays a short system beep once a turn (or debate)
     // finishes and the app goes idle.
     bool prevBusy = false;
 
-    // Model picker state (F11): names come from the API when available.
+    // Model picker state (F10): names come from the API when available.
     auto model_names = std::make_shared<std::vector<std::string>>();
     auto model_selected = std::make_shared<int>(0);
     auto refresh_models = [&] {
@@ -541,7 +606,7 @@ int main(int argc, char** argv) {
         screen.PostEvent(Event::Custom);
     };
 
-    // Session picker state (F5): display names + full paths.
+    // Session picker state (F4): display names + full paths.
     auto session_names = std::make_shared<std::vector<std::string>>();
     auto session_paths = std::make_shared<std::vector<std::string>>();
     auto session_selected = std::make_shared<int>(0);
@@ -586,10 +651,55 @@ int main(int argc, char** argv) {
     };
 
     Component input_comp =
-        Input(&input, "type a message (Enter=send, Esc=quit, F2=config)", input_opt);
+        Input(&input, "type a message (Enter=send, Esc=quit?, F2=config)", input_opt);
+
+    // Paste detection: a multi-line paste arrives as one burst of key events, so
+    // the Returns inside it have to become spaces instead of sending the first
+    // line. Checked before every other branch -- the "/" menu also consumes
+    // Return, and a pasted "/cmd\n..." would be swallowed by it.
+    paste_flatten::BurstWindow pasteBurst;
 
     input_comp |= CatchEvent([&](Event e) {
-        // The "/" menu is handled first: Enter must fill the input, not send "/w",
+        // Ctrl+C is a no-op: cancel is Esc's job, and a terminal with a text
+        // selection never even delivers this event (the host keeps it for copy).
+        // Idle hands still reach this branch, so it has to return true -- the
+        // Input component would otherwise insert a raw 0x03.
+        if (e == Event::CtrlC) return true;
+
+        // Ctrl+V: conhost normally turns the key into a paste, but that translation
+        // belongs to the console's processed-input path, which proJV switches off --
+        // the key then arrives as a raw 0x16 and nothing pastes. Do the paste here
+        // instead. A terminal that pastes on its own sends text and never 0x16, so
+        // this cannot double-paste.
+        if (e == Event::Special("\x16")) {
+            std::string clip;
+            if (clipboard::getText(clip)) {
+                insertPastedText(input, input_cursor, clip);
+                input_opt.on_change();
+            }
+            return true;
+        }
+
+        // Every event feeds the burst window, characters included: the state is
+        // "how long since the previous key", so skipping characters would break
+        // the chain in the middle of a paste. Only Return acts on it.
+        {
+            const bool inBurst = pasteBurst.tick(std::chrono::steady_clock::now());
+            if (e == Event::Return && inBurst) {
+                if (paste_flatten::shouldFlattenReturn(true, input.size())) {
+                    // A byte offset, not a character count: the cursor is
+                    // InputOption::cursor_position, a Ref<int> handed to FTXUI.
+                    input.insert(static_cast<size_t>(input_cursor), " ");
+                    ++input_cursor;
+                    // Mutating `input` behind the Input component's back does not
+                    // fire on_change, and the "/" menu would stay stale.
+                    input_opt.on_change();
+                }
+                return true; // inside a paste: never send, never fall through
+            }
+        }
+
+        // The "/" menu is handled next: Enter must fill the input, not send "/w",
         // and Escape must close the menu, not quit the program.
         if (show_slash && !slash_items.empty()) {
             const int n = static_cast<int>(slash_items.size());
@@ -619,10 +729,20 @@ int main(int argc, char** argv) {
             return true;
         }
         if (e == Event::Escape) {
-            if (app.isBusy())
+            // Three meanings, decided by state rather than by a modifier key:
+            // a running turn is cancelled, a typed line is cleared, and an idle
+            // empty prompt asks before closing the app.
+            if (app.isBusy()) {
                 app.cancelTurn();
-            else
-                screen.Exit();
+            } else if (!input.empty()) {
+                input.clear();
+                // The cursor lives outside the component (Ref<int>), so clearing
+                // the string alone leaves it past the end of the buffer.
+                input_cursor = 0;
+                input_opt.on_change();
+            } else {
+                show_quit = true;
+            }
             return true;
         }
         if (e == Event::F2) {
@@ -633,13 +753,15 @@ int main(int argc, char** argv) {
             app.newChat();
             return true;
         }
+        // F4 opens an old session, F5 opens MCP. The keys swapped, the variable
+        // names did not: show_open / show_mcp name the dialog, not the key.
         if (e == Event::F4) {
-            show_mcp = true;
+            refresh_sessions();
+            show_open = true;
             return true;
         }
         if (e == Event::F5) {
-            refresh_sessions();
-            show_open = true;
+            show_mcp = true;
             return true;
         }
         if (e == Event::F6) {
@@ -655,7 +777,7 @@ int main(int argc, char** argv) {
             return true;
         }
         if (e == Event::F9) {
-            show_todo = !show_todo;
+            show_dock = !show_dock;
             return true;
         }
         if (e == Event::F10) {
@@ -665,7 +787,7 @@ int main(int argc, char** argv) {
             return true;
         }
         if (e == Event::F1) {
-            show_about = true;
+            show_help = true;
             return true;
         }
         if (e == Event::Tab) {
@@ -748,6 +870,12 @@ int main(int argc, char** argv) {
         }
         els.push_back(separator());
 
+        // Activity strip: agents used to be a right-dock block with two lines
+        // each. A full-width wrapped row reads better and frees the dock for the
+        // TODO list and the background tasks.
+        els.push_back(renderAgentStrip(app.skillAgentStatuses(), spinnerFrame));
+        els.push_back(separator());
+
         // Chat area (row-granular scrolling via focusPosition).
         Element chat = chat_view::renderBubbles(app.bubbles(), app.reasoningExpanded(),
                                                 app.chatContentWidth());
@@ -766,18 +894,16 @@ int main(int argc, char** argv) {
                 focusPosition(0, app.chatFocusRow()) | vscroll_indicator | yframe,
             [&](int rows) { app.setChatViewportRows(rows); });
 
-        // Right-side dock: TODO panel on top, live Agent status below
-        // (legacy GUI layout, not a bottom strip).
+        // Right-side dock: TODO panel on top, running background tasks below.
         Element mainArea;
-        if (show_todo) {
-            Element dock =
-                vbox({
-                    todo_view::renderTodoPanel(app.copyTodoData()) | flex | yframe |
-                        vscroll_indicator,
-                    separator(),
-                    renderAgentPanel(app.skillAgentStatuses(), spinnerFrame, app.taskSnapshots()),
-                }) |
-                size(WIDTH, EQUAL, 36);
+        if (show_dock) {
+            Element dock = vbox({
+                               todo_view::renderTodoPanel(app.copyTodoData()) | flex | yframe |
+                                   vscroll_indicator,
+                               separator(),
+                               renderBackgroundTasks(app.taskSnapshots(), spinnerFrame),
+                           }) |
+                           size(WIDTH, EQUAL, 36);
             mainArea = hbox({
                 std::move(chatColumn) | flex,
                 separator(),
@@ -798,7 +924,7 @@ int main(int argc, char** argv) {
                 statusEl = hbox({
                     statusEl,
                     text("  "),
-                    spinner(6, spinnerFrame) | color(Color::RGB(224, 200, 96)),
+                    tui::spinner(spinnerFrame, theme_map::hexToColor(T.phaseExecutingTools)),
                 });
             }
             {
@@ -859,9 +985,11 @@ int main(int argc, char** argv) {
         }
         els.push_back(input_comp->Render());
         if (app.pendingCount() > 0) {
+            // The todo title's yellow: both are "waiting for the model" notices.
+            const auto& T = ThemeManager::instance().current();
             els.push_back(text("Queued: " + std::to_string(app.pendingCount()) +
                                " message(s) - sends after current turn") |
-                          color(Color::RGB(224, 200, 96)));
+                          color(theme_map::hexToColor(T.todoTitle)));
         }
         els.push_back(separator());
         {
@@ -883,7 +1011,7 @@ int main(int argc, char** argv) {
                           bgcolor(theme_map::hexToColor(T.menuBarBg)));
         }
         {
-            // Compact keycap hint bar: colored keycaps replace the long "F1 about"
+            // Compact keycap hint bar: colored keycaps replace the long "F1 help"
             // labels and the - separators, so the line stays short.
             const auto& T = ThemeManager::instance().current();
             Color capFg = theme_map::hexToColor(T.text);
@@ -895,15 +1023,15 @@ int main(int argc, char** argv) {
                 return hbox({std::move(cap), text(" " + label) | dim});
             };
             els.push_back(hbox({
-                // Single-space gaps: 13 entries now that F4 (mcp) is here, and the
-                // row must still fit an 80...120 column terminal.
+                // Single-space gaps: 13 entries and about 112 columns, so the row
+                // fits a 120 column terminal and loses its right end below that.
                 hint(keycap("F1"), "help"),   text(" "), hint(keycap("F2"), "cfg"),     text(" "),
-                hint(keycap("F3"), "new"),    text(" "), hint(keycap("F4"), "mcp"),     text(" "),
-                hint(keycap("F5"), "open"),   text(" "), hint(keycap("F6"), "theme"),   text(" "),
-                hint(keycap("F7"), "edit"),   text(" "), hint(keycap("F8"), "think"),   text(" "),
-                hint(keycap("F9"), "todo"),   text(" "), hint(keycap("F10"), "model"),  text(" "),
+                hint(keycap("F3"), "new"),    text(" "), hint(keycap("F4"), "open"),    text(" "),
+                hint(keycap("F5"), "mcp"),    text(" "), hint(keycap("F6"), "theme"),   text(" "),
+                hint(keycap("F7"), "edit"),   text(" "), hint(keycap("F8"), "reveal"),  text(" "),
+                hint(keycap("F9"), "dock"),   text(" "), hint(keycap("F10"), "model"),  text(" "),
                 hint(keycap("↑↓"), "scroll"), text(" "), hint(keycap("Enter"), "send"), text(" "),
-                hint(keycap("Esc"), "quit"),
+                hint(keycap("Esc"), "quit?"),
             }));
         }
         return vbox(std::move(els));
@@ -927,7 +1055,7 @@ int main(int argc, char** argv) {
         config_view::makeApprovalDialog(app, [&] { show_approval = false; });
     Component mcp_dialog = mcp_view::makeMcpDialog(app, [&] { show_mcp = false; });
 
-    // F5: session picker (sessions live in a fixed directory).
+    // F4: session picker (sessions live in a fixed directory).
     MenuOption open_opt;
     open_opt.on_enter = [&] {
         if (*session_selected >= 0 && *session_selected < (int)session_paths->size() &&
@@ -956,7 +1084,7 @@ int main(int argc, char** argv) {
     Component theme_menu = theme_editor::makeThemeMenu([&] { show_theme = false; });
     Component theme_editor_dlg = theme_editor::makeThemeEditor([&] { show_theme_editor = false; });
 
-    // F11: model picker (state + refresh lambda defined above).
+    // F10: model picker (state + refresh lambda defined above).
     MenuOption model_opt;
     model_opt.on_enter = [&, model_names, model_selected] {
         if (*model_selected >= 0 && *model_selected < static_cast<int>(model_names->size()) &&
@@ -983,22 +1111,68 @@ int main(int argc, char** argv) {
                border;
     });
 
-    // F1: about.
-    Component about_close = Button("Close", [&] { show_about = false; });
-    Component about_dialog = Renderer(about_close, [about_close] {
+    // F1: a starter card, not the reference. It lists only what the hint bar at
+    // the bottom cannot show -- the "/" menu, "@" attachments, the three
+    // meanings of Esc, and the two commands worth knowing on day one. /help still
+    // prints every command and 08-reference still lists every key.
+    // The Close button is load-bearing: a modal with no focusable child is not
+    // Focused(), so ContainerBase::OnEvent drops every key before it reaches us
+    // (see tests/unit/test_modal_focus.cpp). Return reaches the button, Esc and
+    // F1 are caught before it.
+    Component help_close = Button("Close", [&] { show_help = false; });
+    Component help_dialog = Renderer(help_close, [&, help_close] {
+        const auto& T = ThemeManager::instance().current();
+        Elements rows;
+        for (const auto& h : help_text::quickHints()) {
+            rows.push_back(hbox({
+                text(h.key) | bold | color(theme_map::hexToColor(T.phaseExecutingTools)) |
+                    size(WIDTH, EQUAL, 8),
+                text(h.desc),
+            }));
+        }
         return vbox({
-                   text("About proJV") | bold,
+                   text("Help (F1)") | bold,
                    separator(),
-                   text("proJV v" PROJV_VERSION),
-                   text("Native C++ DeepSeek AI agent (FTXUI)."),
+                   vbox(std::move(rows)),
                    separator(),
-                   about_close->Render(),
+                   hbox({help_close->Render(), text("   Enter, Esc or F1 closes") | dim}),
+               }) |
+               size(WIDTH, LESS_THAN, 80) | border;
+    });
+    help_dialog |= CatchEvent([&](Event e) {
+        if (e == Event::Escape || e == Event::F1) {
+            show_help = false;
+            return true;
+        }
+        return false;
+    });
+
+    // Esc on an empty prompt asks first. Cancel takes the initial focus and Esc
+    // inside the box is the same as Cancel, so "get me out of here" never quits
+    // by accident.
+    Component quit_cancel = Button("Cancel", [&] { show_quit = false; });
+    Component quit_ok = Button("Quit", [&] {
+        show_quit = false;
+        screen.Exit();
+    });
+    Component quit_buttons = Container::Horizontal({quit_cancel, quit_ok});
+    Component quit_dialog = Renderer(quit_buttons, [quit_cancel, quit_ok] {
+        return vbox({
+                   text("Quit proJV?") | bold,
+                   separator(),
+                   text("The session is saved and the database is closed.") | dim,
+                   separator(),
+                   hbox({quit_cancel->Render(), text("  "), quit_ok->Render()}),
                }) |
                border;
     });
-    about_dialog |= CatchEvent([&](Event e) {
+    quit_dialog |= CatchEvent([&](Event e) {
+        // Esc is Cancel, and ONLY Esc: swallowing Return here made both buttons
+        // dead (the key never reached the focused one), so picking "Quit" and
+        // pressing Enter just closed the box. Return has to fall through to the
+        // button; Cancel is the initially focused one, so Enter is still safe.
         if (e == Event::Escape) {
-            show_about = false;
+            show_quit = false;
             return true;
         }
         return false;
@@ -1006,6 +1180,16 @@ int main(int argc, char** argv) {
 
     bool showWelcome = !app.hasApiKey();
     Component welcome = config_view::makeWelcome(app, [&] { showWelcome = false; });
+    // Without an API key this overlay owns every key: the input box below never
+    // sees them, so its Esc branch cannot run. Ctrl+C is a no-op by design now,
+    // which would leave a first-run user with no keyboard way out -- Esc quits.
+    welcome |= CatchEvent([&](Event e) {
+        if (e == Event::Escape) {
+            screen.Exit();
+            return true;
+        }
+        return false;
+    });
 
     Component with_modals =
         Modal(Modal(Modal(Modal(Modal(Modal(Modal(Modal(main_renderer, config_dialog, &show_config),
@@ -1015,15 +1199,46 @@ int main(int argc, char** argv) {
                                 theme_menu, &show_theme),
                           theme_editor_dlg, &show_theme_editor),
                     model_dialog, &show_model),
-              about_dialog, &show_about);
+              help_dialog, &show_help);
 
     // Welcome page is a modal overlay while no API key is configured; once
     // saved, showWelcome flips false and the main UI takes focus. This keeps
     // the whole component tree active so keyboard events actually route.
-    Component root = Modal(with_modals, welcome, &showWelcome);
+    // The quit confirmation wraps everything, welcome included: Modal nests as
+    // Container::Tab, so the outermost layer is the one that draws on top and
+    // gets the keys first.
+    Component root = Modal(Modal(with_modals, welcome, &showWelcome), quit_dialog, &show_quit);
+
+    // Ctrl+C must not be able to end the process in any focus state.
+    // FTXUI records SIGINT for an UNHANDLED CtrlC even with ForceHandleCtrlC(false)
+    // -- app.cpp:900 is `if (arg == Event::CtrlC && (!handled ||
+    // force_handle_ctrl_c_))`, where `!handled` alone is enough -- and the next
+    // frame turns that record into Signal(SIGABRT) -> Exit(). Every modal (help,
+    // config, MCP, session picker, theme, model, quit, welcome, approval) takes the
+    // keyboard away from the input box, so leaving the swallow to input_comp meant
+    // Ctrl+C still exited whenever a dialog was open. One wrapper around the whole
+    // tree makes it an invariant; the branch inside input_comp stays as
+    // documentation of the intent.
+    root |= CatchEvent([](Event e) { return e == Event::CtrlC; });
 
     // Apply the theme background across the whole screen.
     Component themed_root = Renderer(root, [root] {
+        // Once, after FTXUI's Install: make Ctrl+C inert for good.
+        static bool signalsIgnored = false;
+        if (!signalsIgnored) {
+            signalsIgnored = true;
+#ifdef _WIN32
+            // App::Install() (inside Loop) registers a CRT handler with
+            // std::signal(SIGINT, ...). Console handlers run LIFO, so that one runs
+            // BEFORE the handler in system_util_win and turns a real CTRL_C_EVENT
+            // into RecordSignal(SIGINT) -> Signal(SIGABRT) -> Exit(). Replacing it
+            // with SIG_IGN here, after Install, is what actually keeps Ctrl+C from
+            // ending the process; a window close still exits through the console
+            // handler, which owns CTRL_CLOSE_EVENT.
+            std::signal(SIGINT, SIG_IGN);
+            std::signal(SIGBREAK, SIG_IGN);
+#endif
+        }
         // Only writer of the OSC 7501 status sequence: the UI thread, once per
         // frame, just before FTXUI flushes its own frame. The agent thread only
         // records state (terminal_status::working/blocked/...).
@@ -1032,6 +1247,20 @@ int main(int argc, char** argv) {
         return root->Render() | flex | bgcolor(theme_map::hexToColor(T.windowBg)) |
                color(theme_map::hexToColor(T.text));
     });
+
+    // Mouse tracking off: the hosting terminal keeps the selection, which is the
+    // only copy path left now that Ctrl+C does nothing inside proJV.
+    // ForceHandleCtrlC(false): FTXUI records SIGINT for Event::CtrlC even when a
+    // component catches it (force_handle_ctrl_c_ defaults to true), and the next
+    // frame turns that record into Exit(). Both calls are public API and must
+    // happen before Loop().
+    screen.TrackMouse(false);
+    screen.ForceHandleCtrlC(false);
+    // Startup spawns child processes (python detection, skill setup, MCP
+    // handshakes) and one of them resets the console input mode. Re-assert it now
+    // that startup is done, so the mode the loop runs under is the one
+    // initTerminal() chose.
+    tui::initTerminal();
 
     screen.Loop(themed_root);
 

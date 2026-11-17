@@ -1,5 +1,6 @@
 // proJV -- Windows system utilities
 #include "platform/isystem_util.h"
+#include "debug_log.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -57,8 +58,16 @@ class SystemUtilWin : public ISystemUtil {
     static volatile LONG crashBusy_;
     std::function<void()> exitCallback_;
 
+    // Only a window close (X) ends the process now. Ctrl+C / Ctrl+Break are
+    // swallowed on purpose: cancelling a turn is Esc's job, and nothing in the
+    // UI should be able to kill a half-written session.
+    // Returning TRUE means "handled", so the system never falls back to its
+    // default action (terminate) even if the console mode gets reset elsewhere.
+    // CTRL_CLOSE_EVENT is the one event with a 5 second budget; the callback
+    // runs on its own thread, so a deadlocked UI loop cannot block it.
     static BOOL WINAPI ConsoleCtrlHandler(DWORD ctrl) {
-        if (ctrl == CTRL_CLOSE_EVENT || ctrl == CTRL_C_EVENT || ctrl == CTRL_BREAK_EVENT) {
+        if (ctrl == CTRL_C_EVENT || ctrl == CTRL_BREAK_EVENT) return TRUE;
+        if (ctrl == CTRL_CLOSE_EVENT) {
             if (prevHandler_ && prevHandler_->exitCallback_) {
                 prevHandler_->exitCallback_();
             }

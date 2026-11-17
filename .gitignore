@@ -62,3 +62,6 @@ docs/temp/
 # Skill output: avenger and bigbang write their reports here (workspace data,
 # not repository content).
 docs/sop/
+
+# Source recordings for the README GIF (frames are extracted from these; they are not shipped)
+assets/raw/*.mp4
