@@ -77,7 +77,7 @@ Capability tools (`read_file`, `exec_shell`, ...) come from the app registry and
 | `max_parallel` | int | `16` | `1 .. 64` | concurrent dispatched groups in one turn |
 | `tool_mode` | string | `"verb"` | `verb` \| `auto` | `verb` pins the action tool; `auto` lets the model choose |
 | `thinking` | string | `"on"` | `on` \| `off` | thinking mode for the whole skill |
-| `stop_when` | object | - | `{slot, equals}` | stop the round loop when `slots[slot] == equals` |
+| `stop_when` | object | - | `{"flag": "finish"}` | stop the round loop when a verb call sets that boolean to true (`{slot, equals}` is the legacy exact-string form) |
 | `round_steps` | step[] | `[]` | see §4 | the program |
 | `on_converge` | step[] | `[]` | see §4 | runs once after the loop ends |
 
@@ -172,7 +172,10 @@ if not cancelled: run on_converge (with round = the last round reached)
 
 **Stop rules, checked in this order after every round**
 
-1. `stop_when`: `slots[slot] == equals` (exact string match, so pick a token like `DONE`).
+1. `stop_when`: `{"flag": "finish"}` -- the round loop stops when a verb call carries that
+   boolean set to true, so one call can carry both the report and the completion signal.
+   (The older `{slot, equals}` form still parses, but it forces the driver to emit a magic
+   word instead of the report.)
 2. `loop_detect`: the named slot is non-empty and identical to the previous round's value (never on round 1).
 3. `converge: all_agree`: at least one vote exists and every vote has `agree: true`.
 
@@ -315,7 +318,7 @@ The driver reads a plan, splits work, judges results, and stops when it writes a
   "max_parallel": 4,
   "max_rounds": 10,
   "converge": "none",
-  "stop_when": {"slot": "board", "equals": "DONE"},
+  "stop_when": {"flag": "finish"},
   "agents": [
     {"id": "lead",    "display_name": "Lead",     "prompt": "lead.md",   "thinking": "on"},
     {"id": "worker_1","display_name": "Worker 1", "prompt": "worker.md", "thinking": "off"},
@@ -380,7 +383,7 @@ The lead's prompt must say, in as many words: **if you finish by narrating inste
 - [ ] `when` values are only `""`, `round==1`, `round>1`.
 - [ ] Every `{{...}}` in every message names a real slot, a built-in, or a `var`.
 - [ ] The closing action tells the agent to write the file with `md_file` and read the tail back.
-- [ ] A `stop_when` value is a token the driver is told to emit verbatim (`DONE`).
+- [ ] A `stop_when` flag is a boolean parameter the verb declares and the driver is told to set on the finishing call.
 - [ ] If `dynamic_dispatch` is on, the driver prompt says "always call the verb".
 - [ ] A scripted unit test exists and is registered in `tests/CMakeLists.txt`.
 - [ ] You ran it once on a throwaway topic and watched the sidebar agents light up as expected.

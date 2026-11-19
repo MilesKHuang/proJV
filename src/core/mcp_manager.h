@@ -77,11 +77,9 @@ class Manager {
     // Bind every server's cwd to the workspace proJV was started in (section
     // 6.4). Set once, before startEnabled().
     void setWorkDir(const std::string& ws) { workDir_ = ws; }
-    const std::string& workDir() const { return workDir_; }
 
     bool loadFromJson(const std::string& path);
     const std::string& configError() const { return configError_; }
-    const std::string& loadedPath() const { return configPath_; }
 
     // Spawn every enabled + trusted server. Returns immediately when a server is
     // spawned; the worker does handshake and tools/list.

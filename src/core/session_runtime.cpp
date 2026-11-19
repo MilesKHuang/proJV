@@ -1268,25 +1268,14 @@ void SessionRuntime::joinAgentThread() {
     }
 }
 
-void SessionRuntime::joinSkillThread() {
-    if (skillThread_.joinable()) {
-        try {
-            skillThread_.join();
-        } catch (...) {
-        }
-    }
-}
-
 void SessionRuntime::shutdown() {
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         if (skillRunner_) skillRunner_->cancel();
     }
-    joinSkillThread();
     if (agent_) agent_->cancel();
     joinAgentThread();
-    joinModelsThread();
-    // Detached children: kill them and join their monitor thread. A background build
+    joinModelsThread();    // Detached children: kill them and join their monitor thread. A background build
     // that outlives the process would keep writing to a file nobody reads. The Job
     // Object (KILL_ON_JOB_CLOSE) is the second line of defence for a hard crash.
     taskRegistry_.shutdown();
@@ -1306,7 +1295,6 @@ void SessionRuntime::emergencyShutdown() {
         std::lock_guard<std::mutex> lk(skillMutex_);
         if (skillRunner_) skillRunner_->cancel();
     }
-    joinSkillThread();
     if (agent_) agent_->cancel();
     joinAgentThread();
     // Do not join the models thread: it never touches the DB and might be

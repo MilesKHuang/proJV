@@ -30,7 +30,6 @@ struct Report {
 bool open(const std::string& workspace, int keepDays, int maxWorkspaceGb, std::string& err);
 
 bool isAvailable();
-std::string unavailableReason();
 
 int beginTurn(const std::string& sessionId, std::string& err); // seq, or -1
 bool endTurn(int turnSeq, std::string& err);

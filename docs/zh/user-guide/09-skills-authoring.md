@@ -75,7 +75,7 @@ myskill/
 | `max_parallel` | int | `16` | `1 .. 64` | 一个回合内并发派发的组数 |
 | `tool_mode` | string | `"verb"` | `verb` \| `auto` | `verb` 锁定动作工具；`auto` 让模型自选 |
 | `thinking` | string | `"on"` | `on` \| `off` | 整个 skill 的思考模式 |
-| `stop_when` | object | - | `{slot, equals}` | `slots[slot] == equals` 时停止轮循环 |
+| `stop_when` | object | - | `{"flag": "finish"}` | verb 调用把这个布尔设为 true 时停止轮循环（`{slot, equals}` 是旧版精确字符串形式） |
 | `round_steps` | step[] | `[]` | 见 §4 | 程序主体 |
 | `on_converge` | step[] | `[]` | 见 §4 | 循环结束后跑一次 |
 
@@ -170,7 +170,9 @@ for round = 1 .. max_rounds:
 
 **停止规则，每轮结束后按此顺序检查**
 
-1. `stop_when`：`slots[slot] == equals`（**精确字符串**匹配，所以要用 `DONE` 这类 token）。
+1. `stop_when`：`{"flag": "finish"}` —— verb 调用带这个布尔且为 true 时停止轮循环，
+   于是一次调用可以同时携带报告和完成信号。（旧的 `{slot, equals}` 仍能解析，但它会逼
+   driver 输出暗号而不是报告。）
 2. `loop_detect`：指定 slot 非空且与上一轮完全相同（第 1 轮不生效）。
 3. `converge: all_agree`：至少有一张票，且每张票都是 `agree: true`。
 
@@ -313,7 +315,7 @@ driver 读方案、拆任务、按证据裁决，写出 token 就停。
   "max_parallel": 4,
   "max_rounds": 10,
   "converge": "none",
-  "stop_when": {"slot": "board", "equals": "DONE"},
+  "stop_when": {"flag": "finish"},
   "agents": [
     {"id": "lead",    "display_name": "Lead",     "prompt": "lead.md",   "thinking": "on"},
     {"id": "worker_1","display_name": "Worker 1", "prompt": "worker.md", "thinking": "off"},
@@ -378,7 +380,7 @@ lead 的提示词里必须原话写上：**如果你用叙述结束、既没调 
 - [ ] `when` 只用 `""`、`round==1`、`round>1`。
 - [ ] 每条消息里的每个 `{{...}}` 都指向真实 slot、内置变量或 `vars`。
 - [ ] 收尾动作要求用 `md_file` 写盘，并读回文件尾自证。
-- [ ] `stop_when` 的值是一个让 driver 原样输出的 token（`DONE`）。
+- [ ] `stop_when` 指定的 flag 是 verb 声明的一个布尔参数，且提示词要求 driver 在收尾那次调用里设上。
 - [ ] 开了 `dynamic_dispatch` 时，driver 提示词里写明"最后一定要调 verb"。
 - [ ] 有一个脚本化单测，且已注册到 `tests/CMakeLists.txt`。
 - [ ] 用一个不重要的题目跑过一次，侧栏 agent 的亮灭符合预期。

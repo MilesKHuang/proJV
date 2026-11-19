@@ -39,7 +39,6 @@ class TuiApp {
 
     Agent* getAgent() { return runtime_ ? runtime_->agent() : nullptr; }
     mcp::Manager* mcpManager() { return runtime_ ? runtime_->mcpManager() : nullptr; }
-    SessionRuntime* runtime() { return runtime_.get(); }
 
     // Live agent status / phase (forwarded for streaming rendering).
     AgentStatus getStatus() const { return runtime_ ? runtime_->status() : AgentStatus{}; }

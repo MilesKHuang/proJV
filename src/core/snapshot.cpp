@@ -611,10 +611,6 @@ bool isAvailable() {
     return g.open;
 }
 
-std::string unavailableReason() {
-    return g.reason;
-}
-
 int beginTurn(const std::string& sessionId, std::string& err) {
     std::lock_guard<std::mutex> lk(g_mutex);
     err.clear();

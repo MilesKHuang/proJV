@@ -146,9 +146,7 @@ class SessionRuntime {
     void doWork();
     bool runSkillBlocking(const std::string& name, const std::string& topic,
                           const std::string& rawInput);
-    void launchAgentThread();
     void joinAgentThread();
-    void joinSkillThread();
     void joinModelsThread();
     std::string buildSharedContext();
 
@@ -208,7 +206,6 @@ class SessionRuntime {
     std::string lastSkillThisTurn_;
 
     std::unique_ptr<SkillRunner> skillRunner_;
-    std::thread skillThread_;
     std::string skillStatus_;
     mutable std::mutex skillMutex_;
 

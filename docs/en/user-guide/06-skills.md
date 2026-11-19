@@ -64,7 +64,8 @@ two ways a skill can be orchestrated:
    key questions, the *type* of source each line should hunt, and the local
    unknowns no search can settle). Round 2 dispatches the market / users /
    open-source lines plus any optional line (tech / compliance / money /
-   ecosystem) the map justifies, then audits every report and stops on `DONE`.
+   ecosystem) the map justifies, then audits every report and sets `finish` on the call
+   that carries the final document.
    Writes `docs/sop/avenger-<slug>.md`, opening with 3-5 plain lines. Every line
    report numbers its facts (`[MKT-01]`, `[USR-01]`, ...) and closes with a
    `## Sources` section; the merged map keeps those ids and ends with one
