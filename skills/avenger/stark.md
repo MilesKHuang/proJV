@@ -173,7 +173,7 @@ The line reports carry id markers (`[MKT-01]`, `[USR-01]`, `[CMP-01]`, ...) and 
   closing list is complete.
 
 ## The deliverable you must write (not optional)
-A run is not finished when you reply DONE - it is finished when
+A run is not finished when you set `finish` - it is finished when
 `docs/sop/avenger-<slug>.md` exists on disk and opens with a readable one-page
 summary. The engine only emits a chat event; nothing lands on disk unless you
 write it.

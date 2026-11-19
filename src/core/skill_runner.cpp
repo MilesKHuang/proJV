@@ -461,7 +461,9 @@ namespace {
 bool isTrivialDeliverableImpl(const std::string& s) {
     return skill_text::isTrivialDeliverable(s);
 }
-std::string firstLineImpl(const std::string& s) { return skill_text::firstLine(s); }
+std::string firstLineImpl(const std::string& s) {
+    return skill_text::firstLine(s);
+}
 } // namespace
 
 void SkillRunner::run(const std::string& skillName, const std::string& topic) {
@@ -512,7 +514,10 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
         // the chat showed a single "DONE", so the round count -- the only progress
         // signal a long skill gives -- was invisible. With narration the line is a
         // header; without it, it is the only evidence the round happened.
-        if (cbs_.onEvent) {
+        // A round that already carried the finish flag must not leave a "dispatch"
+        // line behind it: the report needs to be the last thing before "finished".
+        // Nothing is lost -- lastRounds_ carries the round number into that line.
+        if (cbs_.onEvent && !stopRequested_) {
             std::string label;
             if (!config_.roundSteps.empty())
                 label = fill(config_.roundSteps.front().progress, round, {});
@@ -533,6 +538,9 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
 
     if (cancelRequested_.load()) {
         if (cbs_.onProgress) cbs_.onProgress("Cancelled");
+        if (cbs_.onEvent)
+            cbs_.onEvent("system", "system",
+                         "[skill] cancelled after " + std::to_string(lastRounds_) + " round(s).");
         return;
     }
     // The final step is the deliverable. It is normal for the model to answer "DONE"
@@ -579,6 +587,22 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     }
     if (cbs_.onProgress)
         cbs_.onProgress(converged_ ? "Done (converged)" : "Done (round cap reached)");
+    // A skill that ends must SAY it ended. The per-round marker is emitted after
+    // that round's content, so on the finishing round it is the last line the user
+    // sees -- and it reads like a dispatch, not like "done". The dock cannot carry
+    // this: the runtime clears skillStatus_ the moment the run returns.
+    {
+        const std::string report = !finishDeliverable_.empty()
+                                       ? finishDeliverable_
+                                       : (slots_.count("report") ? slots_["report"] : lastDoc_);
+        const bool delivered = !skill_text::isTrivialDeliverable(report);
+        if (cbs_.onEvent)
+            cbs_.onEvent("system", "system",
+                         "[skill] finished after " + std::to_string(lastRounds_) + " round(s): " +
+                             (delivered
+                                  ? "report delivered (" + std::to_string(report.size()) + " chars)"
+                                  : std::string("no report was produced")));
+    }
 }
 
 // ---- step execution ------------------------------------------------------

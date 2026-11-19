@@ -153,6 +153,14 @@ TEST_CASE("monica: one supervisor reply dispatches to several workers, then DONE
     for (auto& e : events)
         if (e == "Supervisor|message|DONE") done = true;
     CHECK(done);
+
+    // The last thing the chat is told must be the outcome, not the round marker:
+    // the marker is emitted after each round's content, so without this line the
+    // final message reads like a dispatch that never happened.
+    bool finished = false;
+    for (auto& e : events)
+        if (e.find("[skill] finished after 1 round") != std::string::npos) finished = true;
+    CHECK(finished);
 }
 
 TEST_CASE("skill: a 'DONE' answer in the final step is retried, then reported") {

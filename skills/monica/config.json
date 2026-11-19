@@ -28,13 +28,13 @@
   "round_steps": [
     {"progress": "Round {{round}}/{{max_rounds}} - supervisor dispatch", "actions": [
       {"agent": "supervisor", "tool": "emit", "capture": "summary", "into": "supervisor", "emit": "message",
-       "message": "Project root: {{topic}}\n\nYou are MONICA, the supervisor. This round: (1) inspect what is still unprocessed, (2) split it into batches of 3-4 files, (3) dispatch all ready batches to idle workers IN ONE REPLY via request_agent, (4) collect the reports and check that every dispatched file came back. If every file is done, reply with exactly DONE.\n\n(round {{round}}/{{max_rounds}})"}
+       "message": "Project root: {{topic}}\n\nYou are MONICA, the supervisor. This round: (1) inspect what is still unprocessed, (2) split it into batches of 3-4 files, (3) dispatch all ready batches to idle workers IN ONE REPLY via request_agent, (4) collect the reports and check that every dispatched file came back. If every dispatched file has come back, do NOT stop with a word: make that emit call the finishing one -- set finish=true and put the consolidated report in summary.\n\n(round {{round}}/{{max_rounds}})"}
     ]}
   ],
   "on_converge": [
     {"progress": "Writing final report", "actions": [
       {"agent": "supervisor", "tool": "emit", "capture": "summary", "into": "report", "emit": "message",
-       "message": "Produce the FINAL consolidated report now, as ONE message in Markdown, grouped by file: what was formatted, which full-width characters were replaced, which Chinese comments were translated, and the suspected dead code list (file:line + why). Include any file that failed and why. This message IS the deliverable. Do not reply only DONE."}
+       "message": "Produce the FINAL consolidated report now, as ONE message in Markdown, grouped by file: what was formatted, which full-width characters were replaced, which Chinese comments were translated, and the suspected dead code list (file:line + why). Include any file that failed and why. This message IS the deliverable. Do not answer with a single word."}
     ]}
   ]
 }

@@ -50,7 +50,7 @@ Esc to stop; cancellation is checked between batches and between workers.
 | `max_rounds` | dispatch waves. 8 rounds is enough for a few hundred files |
 | `max_parallel` | how many workers may run at once (default 16) |
 | `max_tool_iters` | tool-call budget per turn; raise it if a worker runs out mid-batch |
-| `stop_when` | the supervisor's `DONE` summary stops the run |
+| `stop_when` | `{"flag":"finish"}` -- the supervisor's finishing `emit` call ends the run and carries the report |
 | `tools` | add `exec_shell` only if you accept that workers then serialize |
 
 ## Notes / limits

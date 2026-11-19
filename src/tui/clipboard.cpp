@@ -79,8 +79,7 @@ bool getText(std::string& out) {
                 WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
             if (bytes > 1) {
                 std::string buf(static_cast<size_t>(bytes), '\0');
-                WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, buf.data(), bytes, nullptr,
-                                    nullptr);
+                WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, buf.data(), bytes, nullptr, nullptr);
                 buf.resize(static_cast<size_t>(bytes - 1));
                 if (!buf.empty()) {
                     out = std::move(buf);

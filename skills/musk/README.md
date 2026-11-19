@@ -9,7 +9,7 @@ Stage 3 of the commercialisation SOP: build it, and prove it.
 Musk is the only driver (`dynamic_dispatch`). Each round is one Musk turn:
 read the board back from disk, split or advance tasks, dispatch dev -> test pairs
 through `request_agent`, judge each result on quoted evidence, and emit one
-board line. `emit DONE` ends the pipeline.
+board line. The finishing `emit` call (`finish=true`) ends the pipeline and carries the record.
 
 Every task is paired: `dev_1..2` implement, `test_1..2` verify independently
 against the same DoD, Musk judges. Same task returned three times is escalated,
@@ -27,7 +27,7 @@ why leaves report <=15 lines plus evidence and keep the detail in files.
 | `submit_reserve` | 2 | stop exploring and emit before the budget dies |
 | `max_parallel` | 4 | two pairs in flight at once |
 | `max_rounds` | 10 | one round per board wave, escalation included |
-| `stop_when` | `kanban == DONE` | Musk's own board line is the stop signal |
+| `stop_when` | `{"flag":"finish"}` -- Musk's finishing `emit` call ends the run and carries the record |
 | leaf `thinking` | off | dev/test are execution roles; the driver thinks |
 
 ## Safety, stated plainly

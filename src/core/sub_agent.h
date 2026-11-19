@@ -56,9 +56,7 @@ class SubAgent {
     // Append a user message to this agent's conversation without asking the model.
     // The converge retry uses it: an identical retry cannot succeed, a corrected
     // one can.
-    void addUserNudge(const std::string& text) {
-        session_.addMessage(Message::User(text));
-    }
+    void addUserNudge(const std::string& text) { session_.addMessage(Message::User(text)); }
 
     // First registered tool name (used as the default verb for request_agent
     // targets that have no explicit action in the program).

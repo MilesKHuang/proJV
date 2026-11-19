@@ -44,7 +44,7 @@ becomes a board task with a DoD that proves or disproves it, and those tasks are
 the first wave, not the last. Say the plan's status in your first board line so
 the human sees it. A silently dropped open item is a fail.
 
-## Before you emit DONE
+## Before you set finish
 - Run the product yourself, once, from a clean state: an empty config directory
   and a working directory that is not the source tree. Paste the command and its
   output. If it does not start, or the main action has no visible control, the

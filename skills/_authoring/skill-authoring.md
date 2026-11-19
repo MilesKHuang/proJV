@@ -187,7 +187,11 @@ if not cancelled: run on_converge (with round = the last round reached)
 
 **Stop rules, checked in this order after every round**
 
-1. `stop_when`: `slots[slot] == equals` (exact string match, so pick a token like `DONE`).
+1. `stop_when`: `{"flag": "finish"}` -- the round loop stops when a verb call carries that
+   boolean parameter set to true. One call then carries both the report and the completion
+   signal. (The older `{"slot": ..., "equals": ...}` exact-string form still parses, but it
+   forces the driver to emit a magic word instead of the report, and that is exactly the
+   contradiction this skill format exists to avoid.)
 2. `loop_detect`: the named slot is non-empty and identical to the previous round's value (never on round 1).
 3. `converge: all_agree`: at least one vote exists and every vote has `agree: true`.
 
@@ -319,7 +323,7 @@ The driver reads a plan, splits work, judges results, and stops when it writes a
 ```json
 {
   "name": "crew",
-  "description": "One lead reads the plan, dispatches workers, judges on evidence, stops on DONE.",
+  "description": "One lead reads the plan, dispatches workers, judges on evidence, stops on the finish flag.",
   "thinking": "on",
   "tools": ["read_file", "write_file", "edit_file", "grep_files", "exec_shell"],
   "tool_mode": "auto",
@@ -330,7 +334,7 @@ The driver reads a plan, splits work, judges results, and stops when it writes a
   "max_parallel": 4,
   "max_rounds": 10,
   "converge": "none",
-  "stop_when": {"slot": "board", "equals": "DONE"},
+  "stop_when": {"flag": "finish"},
   "agents": [
     {"id": "lead",    "display_name": "Lead",     "prompt": "lead.md",   "thinking": "on"},
     {"id": "worker_1","display_name": "Worker 1", "prompt": "worker.md", "thinking": "off"},
@@ -340,7 +344,7 @@ The driver reads a plan, splits work, judges results, and stops when it writes a
     {"progress": "Round {{round}}/{{max_rounds}} - lead: dispatch and judge",
      "actions": [
        {"agent": "lead", "tool": "emit", "capture": "summary", "into": "board", "emit": "message",
-        "message": "Job: {{topic}}\n\nYour board line from the last round:\n{{board.prev}}\n\nRound 1: read the plan, split it into tasks with a one-line definition of done each, then dispatch with request_agent in ONE reply. Round 2+: judge what came back on evidence and re-dispatch what failed. When every task is done emit exactly DONE, otherwise emit one line."}
+        "message": "Job: {{topic}}\n\nYour board line from the last round:\n{{board.prev}}\n\nRound 1: read the plan, split it into tasks with a one-line definition of done each, then dispatch with request_agent in ONE reply. Round 2+: judge what came back on evidence and re-dispatch what failed. When every task is done make the finishing call: set finish=true and put the full record in summary; otherwise emit one line."}
      ]}
   ],
   "on_converge": [
@@ -362,7 +366,8 @@ The lead's prompt must say, in as many words: **if you finish by narrating inste
 {"name": "emit",
  "description": "Report one line of state to the board.",
  "parameters": [
-   {"name": "summary", "type": "string", "description": "one line, or exactly DONE", "required": true}
+   {"name": "summary", "type": "string", "description": "one line, or the full record when finish=true", "required": true},
+   {"name": "finish", "type": "boolean", "description": "true only on the call that ends the job", "required": false}
  ]}
 ```
 
@@ -395,7 +400,7 @@ The lead's prompt must say, in as many words: **if you finish by narrating inste
 - [ ] `when` values are only `""`, `round==1`, `round>1`.
 - [ ] Every `{{...}}` in every message names a real slot, a built-in, or a `var`.
 - [ ] The closing action tells the agent to write the file with `md_file` and read the tail back.
-- [ ] A `stop_when` value is a token the driver is told to emit verbatim (`DONE`).
+- [ ] A `stop_when` flag is a boolean parameter the verb declares and the driver is told to set on the finishing call.
 - [ ] If `dynamic_dispatch` is on, the driver prompt says "always call the verb".
 - [ ] A scripted unit test exists and is registered in `tests/CMakeLists.txt`.
 - [ ] You ran it once on a throwaway topic and watched the sidebar agents light up as expected.

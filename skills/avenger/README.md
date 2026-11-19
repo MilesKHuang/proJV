@@ -33,7 +33,7 @@ unclosed gap between two actors is worth chasing. Blind spots go back out with a
 sharper question. Every round Stark emits one line opening with the coverage
 count, `COVER 5/8 OPEN: q3,q7` - answered questions out of the key questions in
 the reconnaissance map. When every question is answered or marked
-`unanswerable online`, Stark emits exactly `DONE` and the final step merges
+`unanswerable online`, Stark makes the finishing call (`finish=true`) and the final step merges
 everything into `docs/sop/avenger-<slug>.md`.
 
 ## What lands on disk
@@ -79,7 +79,7 @@ request per URL with OK / BLOCKED / DEAD classes.
 | `submit_reserve` | 2 | warns the agent to stop exploring and submit |
 | `max_parallel` | 6 | aud runs alone in round 1; the dispatch round wakes 3-7 lines at once |
 | `max_rounds` | 8 | recon + one dispatch round + a few review rounds |
-| `stop_when` | `judgment == DONE` | Stark's own coverage line is the stop signal |
+| `stop_when` | `{"flag":"finish"}` -- Stark's finishing `emit` call ends the run and carries the document |
 | leaf `thinking` | off | many parallel reasoners is expensive for little gain |
 
 Output goes to the workspace (`docs/sop/`), not to the proJV repo.
