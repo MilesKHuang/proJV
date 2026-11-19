@@ -48,7 +48,11 @@ Linux：先 `sudo apt-get install -y libcurl4-openssl-dev`。
   （见 `src/platform/iprocess_runner.h`）。
 - 插件注册表、包管理器，或任何被二进制加载的代码。MCP server 不属于这类：
   它是 `projv_files/mcp.json` 里声明的外部进程，通过 stdio 对话。
-- 在主题系统之外写死颜色。
+- 在主题系统之外写死颜色。前端只能读 `ThemeColors`（`src/tui/theme_colors.h`）或
+  `projv_files/theme/` 里的主题 JSON，各自负责自己的转换；新增视觉元素要加主题字段，
+  不许写字面 RGB。
+- 在 AGENTS.md 的「Vendored dependencies」表里没有对应行的情况下，新增或改动
+  `external/` 下的目录。vendored 代码只读：修复往上游提，不改副本。
 - 让技能删除它自行判定为死代码的东西。死代码只报告，不删除。（技能可以写工具根内的
   文件 —— workspace 与 `projv_files` —— 但必须报告改了什么；`projv_files/sessions` 和
   `projv_files/logs` 对所有人只读。）

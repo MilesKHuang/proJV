@@ -53,10 +53,11 @@ the human sees it. A silently dropped open item is a fail.
   its result lines, run by someone who did not write the code.
 
 ## Finish
-`emit` exactly `DONE` - nothing else - only when every board task is done and a
-verifier proved it with a quoted command result. Otherwise `emit` ONE line:
-`Round N: 3/7 done, 2 in flight (t4 dev_2, t5 test_1), next: t6`. The final
-step after convergence writes the execution record; do not write it here.
+On the call that ends the job, set `finish: true` and put the full execution
+record in `summary` - one call ends the job and is the deliverable. Only when
+every board task is done and a verifier proved it with a quoted command result.
+Otherwise `emit` ONE line: `Round N: 3/7 done, 2 in flight (t4 dev_2, t5 test_1),
+next: t6`.
 
 ## Hard safety rules (the shell here has no approval dialog)
 - Only build, test and read-only diagnostics. No `git push`, no deleting

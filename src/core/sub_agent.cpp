@@ -2,6 +2,7 @@
 // BigbangParticipant (roundtable.cpp): same tool_choice force/auto fallback,
 // same reasoning_content echo, same file-request round cap. Made generic.
 #include "sub_agent.h"
+#include "core/skill_text.h"
 #include "tools/file_tool.h"
 #include "json.hpp"
 #include "debug_log.h"
@@ -357,7 +358,25 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
         if (finalize) {
             lastIters_ = r + 1;
             lastMarker_ = false;
-            return calls[verbIdx].arguments;
+            const std::string& args = calls[verbIdx].arguments;
+            // The finish signal is a PARAMETER of the verb call, not a magic word in
+            // the payload: one call carries both the report and "the job is done", so
+            // completion can never contradict the report.
+            lastFinishFlag_ = false;
+            if (!finishFlag_.empty()) {
+                try {
+                    auto j = nlohmann::json::parse(args);
+                    if (j.is_object() && j.contains(finishFlag_) && j[finishFlag_].is_boolean())
+                        lastFinishFlag_ = j[finishFlag_].get<bool>();
+                } catch (...) {
+                }
+            }
+            // Keep the report the model already wrote: when this call carries nothing
+            // but a stop-word ("DONE") and the turn produced real prose, the prose is
+            // the deliverable. Only the stop-word list counts -- a short verdict like
+            // "ship it" is a real answer and stays as it is.
+            if (skill_text::isSubstantive(narr) && skill_text::payloadIsTrivial(args)) return narr;
+            return args;
         }
     }
     lastIters_ = maxToolIters_;

@@ -351,6 +351,8 @@ void Agent::run() {
                             if (hasImages) failMsg += IMAGE_400_HINT;
                         }
                         addPersistedMessage(Message::Assistant(failMsg));
+                        turnFailed_ = true;
+                        turnError_ = failMsg;
                         setPhase(AgentPhase::Idle);
                         break;
                     }
@@ -361,6 +363,8 @@ void Agent::run() {
                         std::lock_guard<std::mutex> lk(snapshotMutex_);
                         status_.errorMessage = err;
                     }
+                    turnFailed_ = true;
+                    turnError_ = err;
                     setPhase(AgentPhase::Error);
                     break;
                 }
@@ -649,6 +653,8 @@ void Agent::cancel() {
 void Agent::newTurn() {
     cancelRequested_.store(false, std::memory_order_release);
     toolRegistry.resetCancel();
+    turnFailed_ = false;
+    turnError_.clear();
     // Defensive: a turn-end request raised by a tool must never leak into the
     // next turn (e.g. the turn was cancelled before it could be honoured).
     (void)toolRegistry.consumeTurnEndRequest();
@@ -1136,6 +1142,9 @@ ChatRequest Agent::buildChatRequest() const {
                                 std::make_move_iterator(inj.end()));
         }
     }
+    // --dump-request seam (design 08). Serialized here, not in the client, so the
+    // bytes are exactly what this request will send.
+    if (onRequestBody) onRequestBody(client.buildRequestBody(req));
     return req;
 }
 

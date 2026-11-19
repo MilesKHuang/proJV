@@ -38,7 +38,10 @@ Linux (needs `libcurl4-openssl-dev`):
   stdio JSON-RPC -- never loaded as code, never registered through a plugin registry, never
   installed through a package manager. Do not add a plugin registry, a package manager, or
   anything the binary loads as code.
-- Do not introduce colors outside the theme system (`src/tui/theme_*`).
+- Do not introduce colors outside the theme system. A front-end may only read
+  `ThemeColors` (`src/tui/theme_colors.h`) or the theme JSON in `projv_files/theme/`;
+  each front-end owns its own conversion (`theme_map.cpp` for FTXUI, the studio's own
+  for ImGuiCol). A new visual element needs a theme field, never a hardcoded RGB.
 - Do not let a skill write outside the tool roots. Skills may write the workspace and
   `projv_files` (prompts, skills, theme, pytool, `mcp.json`) -- the same roots as the main
   agent, enforced by `ToolPaths` -- but must report which files they changed, and never touch
@@ -49,7 +52,20 @@ Linux (needs `libcurl4-openssl-dev`):
   re-add a tool inventory to `prompts/*.md`, and never let the seed contain the allowlist
   trigger literally (`parseAvailableTools` would read the prose as a tool list).
 - Do not change the version anywhere except `project(proJV VERSION ...)` in `CMakeLists.txt`.
-- Do not modify `external/` (vendored third-party code).
+- Do not modify `external/` (vendored third-party code). A new vendored directory is
+  allowed only by adding a row to the "Vendored dependencies" table below; once it
+  lands it is read-only -- local fixes go upstream, not into the copy.
+
+## Vendored dependencies
+
+One row per directory in `external/`: version, license, and the target that needs it.
+A directory without a row is a review rejection.
+
+| Directory | Version | License | Used by |
+|---|---|---|---|
+| `FTXUI-7.0.3` | 7.0.3 | MIT | `proJV_tui` |
+| `SQLiteCpp-3.3.3` | 3.3.3 | MIT | `proJV_lib` |
+| `curl-8.21.0` | 8.21.0 | curl | `proJV_lib` (Windows only) |
 
 ## Docs and commits
 

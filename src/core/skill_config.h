@@ -62,6 +62,11 @@ struct SkillConfig {
         "verb";               // "verb" (force the action tool) | "auto" (model may use any tool)
     std::string stopWhenSlot; // optional: stop the round loop when stopWhenSlot == stopWhenValue
     std::string stopWhenValue;
+    // Optional: stop the round loop when a verb call carries this boolean
+    // parameter set to true -- "stop_when": {"flag": "finish"}. The signal is a
+    // parameter, not a magic word in the payload: the same call can carry the
+    // final report, so completion and delivery never conflict.
+    std::string stopWhenFlag;
     std::vector<SkillStep> roundSteps;
     std::vector<SkillStep> onConverge;
 

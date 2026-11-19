@@ -127,4 +127,32 @@ reject.
 
 ---
 
+## Headless: `projv run`
+
+One prompt, no TUI, one event per line. Same agent as the interface, so a script
+gets exactly what you would have seen.
+
+```
+projv run -p "say hi" [--jsonl] [--no-ts] [--max-turns N]
+                       [--session PATH] [--approve ask|never|always]
+                       [--dump-request] [--schema]
+```
+
+| Flag | Meaning |
+|---|---|
+| `-p, --prompt` | the line to send (required unless `--schema`) |
+| `--jsonl` | emit the event stream (one JSON object per line) instead of text |
+| `--no-ts` | drop timestamps, so two runs of the same prompt are byte-identical |
+| `--max-turns` | how many user submissions to allow (default 1) |
+| `--session` | open an existing session database instead of a new one |
+| `--approve` | `ask` (default; refused here, there is no dialog), `never`, `always` |
+| `--dump-request` | print the first request body to stderr, for diffing |
+| `--schema` | print the event schema and exit |
+
+Exit codes: `0` ok, `1` error, `2` cancelled, `3` an approval was needed but
+`--approve never` refused it. `projv run --schema` lists every event and its
+fields; `projv run -p "..." --jsonl` is what a CI job parses.
+
+---
+
 Next -> back to [the guide](README.md) | Want to change it -> [dev guide](../dev-guide/README.md)

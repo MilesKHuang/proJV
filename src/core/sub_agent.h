@@ -45,9 +45,20 @@ class SubAgent {
     // Keep the last N iterations of a turn free for the submission tool.
     // 0 == off (default), which is exactly the behaviour before this knob.
     void setSubmitReserve(int n) { submitReserve_ = n < 0 ? 0 : n; }
+    // Name of the boolean verb parameter that means "this call ends the job"
+    // ("finish"). Empty == the skill does not use the flag.
+    void setFinishFlagName(const std::string& name) { finishFlag_ = name; }
+
     // Run one interaction: returns the verb tool's raw args JSON, a plain-text
     // fallback, an "[error] ..." string, or "" (no tool call and no text).
     std::string turn(const std::string& message, const std::string& verb, bool force);
+
+    // Append a user message to this agent's conversation without asking the model.
+    // The converge retry uses it: an identical retry cannot succeed, a corrected
+    // one can.
+    void addUserNudge(const std::string& text) {
+        session_.addMessage(Message::User(text));
+    }
 
     // First registered tool name (used as the default verb for request_agent
     // targets that have no explicit action in the program).
@@ -68,6 +79,8 @@ class SubAgent {
     // Last turn's cost, for the skill metrics log (see skill_runner.cpp).
     int lastIterations() const { return lastIters_; }
     bool lastWasReport() const { return !lastMarker_; }
+    // Did the last turn's verb call carry the finish flag set to true?
+    bool lastFinishFlag() const { return lastFinishFlag_; }
 
   private:
     std::vector<ToolCall> doRequest(const std::string& verb, bool force, std::string& outText);
@@ -76,6 +89,8 @@ class SubAgent {
     std::string dispatchSide(const ToolCall& tc);
 
     std::string name_;
+    std::string finishFlag_;      // "finish" when the skill uses the flag
+    bool lastFinishFlag_ = false; // set by the verb call of the last turn
     std::string systemPrompt_;
     AppConfig cfg_;
     ToolRegistry* tools_ = nullptr;

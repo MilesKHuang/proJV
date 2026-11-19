@@ -92,6 +92,17 @@ class Agent {
     // Called on the agent thread when the user clicked ALWAYS, so the TUI can write
     // the grant into config.toml. Persistence lives in the TUI: core has no config.
     std::function<void(const std::string&)> onGrantPersist;
+    // Debug seam for the headless `run --dump-request` (design 08): when set, the
+    // serialized request body of every model call is handed over before it is sent.
+    // Null in every normal run; the caller decides how many to print.
+    std::function<void(const std::string&)> onRequestBody;
+
+    // Did the last completed turn fail without producing an answer? True for the
+    // two paths that otherwise leave only a persisted "[HTTP retry failed]" row or
+    // an error phase. The headless front-end needs it for its exit code; the TUI
+    // ignores it, because the failure is already a bubble. Cleared by newTurn().
+    bool turnFailed() const { return turnFailed_; }
+    const std::string& turnError() const { return turnError_; }
     // Would this command text reach the approval dialog right now? The turn loop
     // and the tests both go through this, so the rule has exactly one home.
     bool policyNeedsApproval(const std::string& command) const;
@@ -249,6 +260,8 @@ class Agent {
     bool streamError_ = false;
     std::string streamErrorMsg_;
     std::string lastFinishReason_;
+    bool turnFailed_ = false;
+    std::string turnError_;
     int reasoningLengthRetries_ = 0;
     int streamPromptTokens_ = 0;
     int streamCompletionTokens_ = 0;

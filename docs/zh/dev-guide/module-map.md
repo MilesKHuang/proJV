@@ -157,4 +157,32 @@
 
 ---
 
+## 11. 无头运行时、事件流与 `run`
+
+- **职责。** 不挂任何界面跑完一轮用户请求，并把过程描述成一串事件。GUI、CI、
+  盒子都只跟这一个接口说话，没有第二套。
+- **入口。** `src/core/session_runtime.{h,cpp}`。三个入口 —— `submit(text)`
+  （所有斜杠命令、`@图片` 标记、技能触发的解析都在这里；返回"有回合待跑"）、
+  `run()`（阻塞）或 `startAsync()`、`cancel()`。一个出口 ——
+  `std::function<void(const events::Event&)> onEvent`。
+- **事件契约。** `src/core/events.h` 是 header-only 且逐字节确定的：一行一个 JSON
+  对象，`t` 是事件名，空字段不写，`toLine(e, withTimestamp=false)` 去掉时间戳，
+  所以两次运行可以直接比对。schema 版本只写在 `turn_start` 里，`run --schema`
+  打印整张表。
+- **所有权。** 运行时持有唯一一份 `AppConfig`、`Agent`、工具注册表、`ToolPaths`、
+  MCP 进程池、存储、后台任务注册表、技能引擎、待处理队列与能力图。`TuiApp` 只是
+  视图：气泡、滚动位置、主题与弹窗，其余全部转发。
+- **线程。** `run()` 与 `startAsync()` 用同一个 `busy_` latch，永远不会重叠。回调在
+  跑回合的线程上触发；前端只能排队重绘，不能在回调里碰控件。`TuiApp::onNotice` 把
+  系统消息压进一把互斥量保护的队列，由每帧的 sync 在 TUI 线程上排空。
+- **`run` 子命令。** `src/platform/cli_args.{h,cpp}` 解析，`src/tui/main_tui.cpp`
+  的 `runHeadless` 在 `initTerminal()` **之前**执行，所以不会进备用屏幕，也不会把
+  OSC 字节混进被重定向的 stdout。退出码：0 正常、1 出错、2 被取消、3 需要审批但
+  `--approve never` 拒绝了。没有对话框时由一条监督线程替人回答每一次审批
+  （默认拒绝，`--approve always` 时放行）。
+- **测试。** `tests/unit/test_session_runtime.cpp`（事件契约）与
+  `tests/e2e/run_e2e.ps1`（真实 `TuiApp` 跑在运行时之上，对接假 API）。
+
+---
+
 返回 -> [开发指南](README.md) | 改动配方 -> [recipes](recipes.md)

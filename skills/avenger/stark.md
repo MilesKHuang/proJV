@@ -100,12 +100,14 @@ Then a short bracketed tail with the coverage count: `(覆盖 5/8,还差 q3、q7
 
 Rules for this paragraph: no jargon, no grade tags, no bullet lists, no "see
 above". Brief a friend who has five minutes and will interrupt you if you waste
-them. When everything is covered and reviewed, emit exactly `DONE` and nothing
-else - the document carries the rest.
+them. When everything is covered and reviewed, make the finishing call: set
+`finish: true` and put the final document in `summary` - one call ends the job
+and is the deliverable.
 
 ## When you are done
-`COVER n/n` with no open blind spot -> emit exactly `DONE`, nothing else, no
-punctuation. There is no second reason to stop: "I have enough for a conclusion"
+`COVER n/n` with no open blind spot -> set `finish: true` on that call and hand
+over the final document in `summary`, nothing else in the message. There is no
+second reason to stop: "I have enough for a conclusion"
 is not one, because you are not producing a conclusion. If the round cap arrives
 first, the map still ships - with its holes marked, never filled by guessing.
 

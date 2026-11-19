@@ -57,6 +57,8 @@ set(TEST_SOURCES
     unit/test_osc7501.cpp
     unit/test_install_shim.cpp
     unit/test_mcp.cpp
+    unit/test_session_runtime.cpp
+    unit/test_skill_deliverable.cpp
     golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp

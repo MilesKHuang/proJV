@@ -56,7 +56,11 @@ Checklist in [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md
 - A plugin registry, a package manager, or anything the binary loads as code. MCP
   servers are none of those: they are external processes declared in
   `projv_files/mcp.json` and spoken to over stdio.
-- Hardcoding colours outside the theme system.
+- Hardcoding colours outside the theme system. A front-end reads `ThemeColors`
+  (`src/tui/theme_colors.h`) or the theme JSON in `projv_files/theme/`, and owns its
+  own conversion; a new visual element needs a theme field, never a literal RGB.
+- Adding or editing a directory in `external/` without a row in AGENTS.md's
+  "Vendored dependencies" table. Vendored code is read-only: fixes go upstream.
 - A skill that deletes code it decided was dead. Dead code is reported, never
   removed. (Skills may write files inside the tool roots -- workspace and
   `projv_files` -- but must report what they changed; `projv_files/sessions` and

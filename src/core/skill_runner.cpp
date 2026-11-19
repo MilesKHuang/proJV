@@ -1,5 +1,6 @@
 // SKILL_ENGINE -- SkillRunner implementation (see SKILL_ENGINE.md v1.1).
 #include "skill_runner.h"
+#include "core/skill_text.h"
 #include "core/sub_agent.h"
 #include "core/config.h"
 #include "json.hpp"
@@ -170,6 +171,7 @@ bool SkillConfig::loadFromJson(const std::string& path, SkillConfig& out, std::s
         if (j.contains("stop_when") && j["stop_when"].is_object()) {
             out.stopWhenSlot = j["stop_when"].value("slot", std::string(""));
             out.stopWhenValue = j["stop_when"].value("equals", std::string(""));
+            out.stopWhenFlag = j["stop_when"].value("flag", std::string(""));
         }
         if (j.contains("tools") && j["tools"].is_array())
             for (const auto& t : j["tools"])
@@ -398,6 +400,7 @@ void SkillRunner::loadAgents() {
         sa->configure(cfg_, tools_, skillTools, config_.maxToolIters, thinkingOn);
         sa->setMaxParallel(config_.maxParallel);
         sa->setSubmitReserve(config_.submitReserve);
+        sa->setFinishFlagName(config_.stopWhenFlag);
         sa->seedSharedContext(sharedContext_);
         {
             auto rit = responders_.find(ag.id);
@@ -456,27 +459,17 @@ namespace {
 // mistaken for an empty deliverable, and every skill that ends with a one-line answer
 // would have been retried otherwise.
 bool isTrivialDeliverableImpl(const std::string& s) {
-    std::string t;
-    for (char c : s) {
-        if (std::isalnum(static_cast<unsigned char>(c)))
-            t.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-    }
-    if (t.empty()) return true; // nothing at all
-    static const char* kStop[] = {"DONE", "OK",      "FINISHED", "COMPLETE",    "END",
-                                  "NONE", "DONEALL", "ALLDONE",  "DONEALLFILES"};
-    for (const char* k : kStop)
-        if (t == k) return true;
-    return false;
+    return skill_text::isTrivialDeliverable(s);
 }
-std::string firstLineImpl(const std::string& s) {
-    const size_t e = s.find_first_of("\r\n");
-    const std::string line = (e == std::string::npos) ? s : s.substr(0, e);
-    return line.size() > 40 ? line.substr(0, 40) + "..." : line;
-}
+std::string firstLineImpl(const std::string& s) { return skill_text::firstLine(s); }
 } // namespace
 
 void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     topic_ = topic;
+    // A runner must behave the same on its first and only run: a leftover finish
+    // flag from an earlier run would stop this one in round 1.
+    stopRequested_ = false;
+    finishDeliverable_.clear();
     auto isTrivialDeliverable = [](const std::string& s) { return isTrivialDeliverableImpl(s); };
     auto firstLine = [](const std::string& s) { return firstLineImpl(s); };
     // A stale cancel flag is the one failure that used to be completely silent: the
@@ -546,15 +539,33 @@ void SkillRunner::run(const std::string& skillName, const std::string& topic) {
     // there as well (it was just told to stop), which leaves the user with no report
     // at all -- monica did exactly that. One retry with a blunt instruction, then say
     // so instead of returning silently.
-    if (!config_.onConverge.empty()) {
+    // A finishing call that already carried a real report IS the deliverable: there
+    // is nothing left for on_converge to write, so skip it (one model call saved,
+    // and the report is the one the model wrote in the call that ended the job).
+    if (!finishDeliverable_.empty()) slots_["report"] = finishDeliverable_;
+
+    if (!config_.onConverge.empty() && finishDeliverable_.empty()) {
         executeSteps(config_.onConverge, lastRounds_);
         if (isTrivialDeliverable(slots_.count("report") ? slots_["report"] : lastDoc_)) {
             debugLogWarnf("[Skill] on_converge produced no deliverable; retrying once");
+            const std::string prev = slots_.count("report") ? slots_["report"] : lastDoc_;
             if (cbs_.onEvent)
                 cbs_.onEvent("system", "system",
-                             "[skill] the final step replied '" +
-                                 firstLine(slots_.count("report") ? slots_["report"] : lastDoc_) +
+                             "[skill] the final step replied '" + firstLine(prev) +
                                  "' instead of a report -- retrying once.");
+            // An identical retry cannot succeed: the model sees the same prompt and
+            // answers the same way. Tell it what was wrong with the last answer.
+            for (const auto& st : config_.onConverge) {
+                for (const auto& act : st.actions) {
+                    if (SubAgent* ag = agentById(act.agent))
+                        ag->addUserNudge(
+                            "Your last submission was '" + firstLine(prev) +
+                            "'. That is the completion signal, not a report. Write the report "
+                            "now: put the whole text in the '" +
+                            (act.capture.empty() ? std::string("summary") : act.capture) +
+                            "' argument, and do not answer with a single word.");
+                }
+            }
             slots_.erase("report");
             executeSteps(config_.onConverge, lastRounds_);
         }
@@ -581,6 +592,9 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
         // (needed for capability tools). dynamic_dispatch always implies auto.
         const bool force = (config_.toolMode != "auto") && !config_.dynamicDispatch;
         std::vector<std::string> results(st.actions.size());
+        // char, not bool: vector<bool> packs bits, so two action threads writing
+        // different indices would race on the same word.
+        std::vector<char> finished(st.actions.size(), 0);
         if (st.parallel && st.actions.size() > 1) {
             std::vector<std::thread> th;
             th.reserve(st.actions.size());
@@ -591,6 +605,7 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                     try {
                         if (SubAgent* ag = agentById(a.agent)) {
                             results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                            finished[i] = ag->lastFinishFlag() ? 1 : 0;
                             appendSkillMetric(a.agent, a.tool, ag->lastIterations(),
                                               results[i].size(), ag->lastWasReport());
                         }
@@ -609,6 +624,7 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
                 try {
                     if (SubAgent* ag = agentById(a.agent)) {
                         results[i] = ag->turn(fill(a.message, round, a.vars), a.tool, force);
+                        finished[i] = ag->lastFinishFlag() ? 1 : 0;
                         appendSkillMetric(a.agent, a.tool, ag->lastIterations(), results[i].size(),
                                           ag->lastWasReport());
                     }
@@ -621,11 +637,12 @@ void SkillRunner::executeSteps(const std::vector<SkillStep>& steps, int round) {
         }
         if (cancelRequested_.load()) return;
         for (size_t i = 0; i < st.actions.size(); ++i)
-            mergeAction(st.actions[i], results[i], round);
+            mergeAction(st.actions[i], results[i], round, finished[i] != 0);
     }
 }
 
-void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int round) {
+void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int round,
+                              bool finishFlag) {
     (void)round;
     if (a.shape == "vote") {
         VoteResult vr;
@@ -658,19 +675,27 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
     std::string s;
     if (!r.empty()) {
         bool got = false;
-        if (!a.capture.empty()) {
-            try {
-                auto j = nlohmann::json::parse(r);
-                if (j.is_object() && j.contains(a.capture) && j[a.capture].is_string()) {
-                    s = j[a.capture].get<std::string>();
-                    got = true;
-                }
-            } catch (...) {
-            }
+        nlohmann::json j;
+        bool parsed = false;
+        try {
+            j = nlohmann::json::parse(r);
+            parsed = j.is_object();
+        } catch (...) {
+        }
+        if (!a.capture.empty() && parsed && j.contains(a.capture) && j[a.capture].is_string()) {
+            s = j[a.capture].get<std::string>();
+            got = true;
         }
         if (!got) s = r; // fallback: raw text (narration / non-JSON reply)
     }
     slots_[a.into] = s;
+    // The finish flag rides on the same call as the payload, so a call can both end
+    // the job and carry the report. When the payload is a real report it IS the
+    // deliverable; when it is a bare "DONE" the converge step still runs.
+    if (finishFlag) {
+        stopRequested_ = true;
+        if (skill_text::isSubstantive(s)) finishDeliverable_ = s;
+    }
     if (a.emit == "document") lastDoc_ = s; // independent of callback presence
     if (!s.empty()) ++contentEvents_;
     if (!s.empty() && cbs_.onEvent) {
@@ -683,6 +708,8 @@ void SkillRunner::mergeAction(const SkillAction& a, const std::string& r, int ro
 
 // ---- stop rule / when ----------------------------------------------------
 bool SkillRunner::stopRule(int round) const {
+    // A verb call this round carried the finish flag: the job is done.
+    if (stopRequested_) return true;
     if (!config_.stopWhenSlot.empty()) {
         auto it = slots_.find(config_.stopWhenSlot);
         if (it != slots_.end() && it->second == config_.stopWhenValue) return true;

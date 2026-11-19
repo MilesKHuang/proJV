@@ -45,13 +45,14 @@ batches are small - see below.
 
 ## Finish
 Every file must have been reported at least once (even as `no change`). When
-that is true and nothing failed, set your summary to exactly `DONE` and nothing
-else. That is the stop signal. The consolidated final report is a separate
-final step after that; it is the deliverable.
+that is true and nothing failed, your next `emit` call is the finishing call:
+set `finish: true` and put the consolidated report -- the whole thing, grouped by
+file -- in `summary`. That one call ends the job AND hands over the deliverable;
+there is no separate step after it.
 
-**Do not claim DONE while any dispatched file has no report.** If a file kept
-failing, report it as `UNRESOLVED: <file> - <reason>` and finish - that is
-honest and useful; silently counting it as done is not.
+**Do not set `finish: true` while any dispatched file has no report.** If a file
+kept failing, report it as `UNRESOLVED: <file> - <reason>` and finish anyway -
+that is honest and useful; silently counting it as done is not.
 
 ## How to call a worker
 ```
@@ -81,5 +82,5 @@ Report: emit(summary) as described in worker.md.
 - **You cannot see what a worker actually changed** - you only have its report.
   So never invent a change count: summarise what the reports say, and say
   "reported by workers" rather than "verified".
-- Round summaries are ONE line; the completion summary is exactly `DONE`.
+- Round summaries are ONE line; the finishing call's `summary` is the full report.
 - ASCII / English in your summaries.

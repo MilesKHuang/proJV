@@ -304,7 +304,7 @@ TEST_CASE("sop: avenger dispatches the core three in one reply, then stops") {
             }
             return out;
         }
-        out.push_back(makeCall("emit", nlohmann::json{{"summary", "DONE"}}));
+        out.push_back(makeCall("emit", nlohmann::json{{"summary", "DONE"}, {"finish", true}}));
         return out;
     });
     for (const char* id : {"research_mkt", "research_user", "research_oss"}) {
@@ -361,7 +361,7 @@ TEST_CASE("sop: musk pairs a task - dev, then an independent test, then stops") 
                 "request_agent",
                 nlohmann::json{{"agent_id", "test_1"}, {"message", "verify: cli prints 3 rows"}}));
         else
-            out.push_back(makeCall("emit", nlohmann::json{{"summary", "DONE"}}));
+            out.push_back(makeCall("emit", nlohmann::json{{"summary", "DONE"}, {"finish", true}}));
         return out;
     });
     sr.setResponder("dev_1", [&rec](const std::string&, const std::vector<Message>& m) {

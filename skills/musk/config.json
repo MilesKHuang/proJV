@@ -11,7 +11,7 @@
   "max_parallel": 4,
   "max_rounds": 10,
   "converge": "none",
-  "stop_when": {"slot": "kanban", "equals": "DONE"},
+  "stop_when": {"flag": "finish"},
   "agents": [
     {"id": "musk",   "display_name": "Musk (Lead)",   "prompt": "musk.md", "thinking": "on"},
     {"id": "dev_1",  "display_name": "Dev 1",         "prompt": "dev.md",  "thinking": "off"},
@@ -22,7 +22,7 @@
   "round_steps": [
     {"progress": "Round {{round}}/{{max_rounds}} - Musk: kanban, dispatch, judge", "actions": [
       {"agent": "musk", "tool": "emit", "capture": "summary", "into": "kanban", "emit": "message",
-       "message": "Job: {{topic}}\n\nBoard line you left last round (empty in round 1):\n{{kanban.prev}}\n\nRun the board this round. Round 1: read the design plan (docs/sop/steve_<slug>.md -- if the job names a different plan, use that), write the board to docs/sop/musk_<slug>.md, then start the first wave. Every dispatch carries a one-line DoD. Pair every task: dev implements, then an independent test verifies against the DoD. Judge on evidence only. When every task is done and verified, emit exactly DONE; otherwise emit ONE line (done/total, what is in flight, what you will do next)."}
+       "message": "Job: {{topic}}\n\nBoard line you left last round (empty in round 1):\n{{kanban.prev}}\n\nRun the board this round. Round 1: read the design plan (docs/sop/steve_<slug>.md -- if the job names a different plan, use that), write the board to docs/sop/musk_<slug>.md, then start the first wave. Every dispatch carries a one-line DoD. Pair every task: dev implements, then an independent test verifies against the DoD. Judge on evidence only. When every task is done and verified, make the finishing call: set finish=true and put the full execution record in summary; otherwise emit ONE line (done/total, what is in flight, what you will do next)."}
     ]}
   ],
   "on_converge": [

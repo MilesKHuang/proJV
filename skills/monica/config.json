@@ -11,7 +11,7 @@
   "max_parallel": 16,
   "max_rounds": 10,
   "converge": "none",
-  "stop_when": {"slot": "supervisor", "equals": "DONE"},
+  "stop_when": {"flag": "finish"},
   "agents": [
     {"id": "supervisor", "display_name": "Supervisor", "prompt": "supervisor.md", "thinking": "on"},
     {"id": "worker_1",   "display_name": "Worker 1",   "prompt": "worker.md", "thinking": "off"},

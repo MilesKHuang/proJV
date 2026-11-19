@@ -23,7 +23,9 @@
 #include "platform/cli_args.h"
 #include "platform/log_files.h"
 #include "core/config.h"
+#include "core/events.h"
 #include "core/help_text.h"
+#include "core/session_runtime.h"
 #include "core/terminal_status.h"
 
 #include <ftxui/component/component.hpp>
@@ -466,6 +468,114 @@ static int runMcpCheck(int argc, char** argv) {
     return rc;
 }
 
+// ---- `run`: the headless front-end (design 08) --------------------------
+//
+// No terminal is touched: no initTerminal, no FTXUI, no OSC 7501. Everything it
+// does goes through SessionRuntime, so this function is a printer, nothing else.
+namespace {
+
+int runHeadless(const cli_args::RunOptions& o, IProcessRunner* runner) {
+    if (o.schema) {
+        std::fputs(events::schemaText().c_str(), stdout);
+        return 0;
+    }
+
+    SessionRuntime rt;
+    rt.setProcessRunner(runner);
+    rt.setTerminalStatusEnabled(false); // OSC bytes would land inside the stream
+
+    // Output: JSONL when asked, else a readable transcript. One flush per event --
+    // a CI job that sees nothing until the end cannot watch progress.
+    std::mutex outMutex;
+    auto writeLine = [&](const std::string& s) {
+        std::lock_guard<std::mutex> lk(outMutex);
+        std::fwrite(s.data(), 1, s.size(), stdout);
+        std::fflush(stdout);
+    };
+    rt.onEvent = [&](const events::Event& e) {
+        if (o.jsonl) {
+            writeLine(events::toLine(e, !o.noTs));
+            return;
+        }
+        switch (e.kind) {
+        case events::Kind::TextDelta:
+        case events::Kind::ThinkingDelta:
+            writeLine(e.text);
+            break;
+        case events::Kind::ToolCall:
+            writeLine("\n[tool] " + e.name + " " + e.text + "\n");
+            break;
+        case events::Kind::ToolResult:
+            writeLine(std::string("[") + (e.ok ? "ok" : "error") + "] " + e.name + "\n");
+            break;
+        case events::Kind::Notice:
+            writeLine(e.text + "\n");
+            break;
+        case events::Kind::Error:
+            writeLine("[error] " + e.text + "\n");
+            break;
+        case events::Kind::TurnStart:
+            writeLine("\n=== turn " + e.turn + " ===\n");
+            break;
+        default:
+            break;
+        }
+    };
+
+    if (!rt.initialize()) return 1;
+    if (!rt.agent()) return 1;
+
+    // There is no dialog here, so the dial is set before the first tool runs.
+    // "always" == Loose: destructive commands run (the red line is still refused).
+    const bool allow = (o.approve == "always");
+    if (allow) rt.agent()->setApprovalMode(ApprovalMode::Loose);
+
+    // --approve never / ask-without-a-terminal: answer every dialog the moment it
+    // appears, from a second thread -- exactly what the TUI's button does. Without
+    // this the agent thread would wait on a condition variable forever.
+    std::atomic<bool> stopWatch{false};
+    std::atomic<bool> refusedAny{false};
+    std::thread watch;
+    if (!allow) {
+        watch = std::thread([&] {
+            while (!stopWatch.load(std::memory_order_relaxed)) {
+                if (rt.agent()->pendingApproval()) {
+                    refusedAny.store(true, std::memory_order_relaxed);
+                    rt.agent()->approveTool(0); // deny
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        });
+    }
+
+    if (o.dumpRequest) {
+        auto dumped = std::make_shared<std::atomic<bool>>(false);
+        rt.agent()->onRequestBody = [dumped](const std::string& body) {
+            if (dumped->exchange(true)) return; // first request of the run only
+            std::fprintf(stderr, "%s\n", body.c_str());
+            std::fflush(stderr);
+        };
+    }
+
+    int result = 0;
+    if (rt.submit(o.prompt)) {
+        int turns = 0;
+        do {
+            rt.run();
+            ++turns;
+        } while (turns < o.maxTurns && rt.pendingCount() > 0);
+        if (rt.phase() == AgentPhase::Error) result = 1;
+        if (rt.agent()->turnFailed()) result = 1;
+    }
+
+    stopWatch.store(true);
+    if (watch.joinable()) watch.join();
+    if (result == 0 && refusedAny.load() && !allow) result = 3;
+    return result;
+}
+
+} // namespace
+
 int main(int argc, char** argv) {
     // Meta commands first. --help / --version must not be swallowed by the
     // install branch below (it only looks for its own flags), and they must not
@@ -502,7 +612,6 @@ int main(int argc, char** argv) {
     const int mcpExit = runMcpCheck(argc, argv);
     if (mcpExit >= 0) return mcpExit;
 
-    tui::initTerminal();
     IProcessRunner* procRunner = CreateProcessRunner();
 
     // Logging: one file per day under projv_files/logs, 7 days kept.
@@ -526,6 +635,26 @@ int main(int argc, char** argv) {
         loguru::add_file(logPath.c_str(), loguru::Append, fileLevel);
         debugLogInfof("[main] log file: %s (level %d)", logPath.c_str(), (int)fileLevel);
     }
+
+    // `run`: the headless front-end (design 08). Handled after the platform layer
+    // (it resolves projv_files and the workspace) and before initTerminal(): no
+    // alternate screen, no raw mode, nothing that would corrupt a JSONL stream.
+    {
+        std::vector<std::string> args;
+        for (int i = 1; i < argc; ++i)
+            args.emplace_back(argv[i]);
+        if (cli_args::isRunCommand(args)) {
+            std::string err;
+            const auto opt = cli_args::parseRun(args, err);
+            if (!opt) {
+                std::fputs((err + "\n").c_str(), stderr);
+                return 1;
+            }
+            return runHeadless(*opt, procRunner);
+        }
+    }
+
+    tui::initTerminal();
 
     TuiApp app;
     app.initialize(procRunner);

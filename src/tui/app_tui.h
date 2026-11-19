@@ -1,18 +1,18 @@
-// proJV TUI -- application shell (backend wiring, mirroring legacy App without ImGui).
+// proJV TUI -- the view shell (design 08).
+//
+// The orchestration is gone: it lives in core/SessionRuntime now. This class owns
+// the bubbles on screen, the scroll position, the models list for the F10 dialog
+// and the theme, and it forwards every action to the runtime. It never calls
+// Agent or SkillRunner internals.
+//
+// Threading: the runtime calls onNotice / onTurnComplete / onStreamingTick from
+// its worker thread. Those only wake the render loop or push into a mutex-guarded
+// notice queue; the widget tree is touched on the TUI thread only.
 #pragma once
 
 #include "models.h"
 #include "core/config.h"
-#include "core/storage.h"
-#include "client/deepseek.h"
-#include "core/agent.h"
-#include "core/mcp_manager.h"
-#include "core/skill_runner.h"
-#include "core/task_registry.h"
-#include "core/turn_requests.h"
-#include "tools/registry.h"
-#include "tools/tool_paths.h"
-#include "tools/python_tool_manager.h"
+#include "core/session_runtime.h"
 #include "tui/bubble_model.h"
 #include "tui/status_bar.h"
 
@@ -20,13 +20,12 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <set>
 #include <string>
-#include <thread>
 #include <vector>
 
 class IProcessRunner;
+class ToolRegistry;
 
 class TuiApp {
   public:
@@ -34,59 +33,52 @@ class TuiApp {
     ~TuiApp();
 
     bool initialize(IProcessRunner* procRunner);
-    bool hasApiKey() const { return config.loaded && !config.apiKey.empty(); }
+    bool hasApiKey() const {
+        return runtime_ && runtime_->config().loaded && !runtime_->config().apiKey.empty();
+    }
 
-    Agent* getAgent() { return agent; }
+    Agent* getAgent() { return runtime_ ? runtime_->agent() : nullptr; }
+    mcp::Manager* mcpManager() { return runtime_ ? runtime_->mcpManager() : nullptr; }
+    SessionRuntime* runtime() { return runtime_.get(); }
 
     // Live agent status / phase (forwarded for streaming rendering).
-    AgentStatus getStatus() const { return agent ? agent->getStatus() : AgentStatus{}; }
-    AgentPhase getPhase() const { return agent ? agent->getPhase() : AgentPhase::Idle; }
+    AgentStatus getStatus() const { return runtime_ ? runtime_->status() : AgentStatus{}; }
+    AgentPhase getPhase() const { return runtime_ ? runtime_->phase() : AgentPhase::Idle; }
 
     // Snapshot of the status-bar inputs.
     status_bar::Data getStatusBarData() const;
 
     // TODO panel data.
-    TodoData copyTodoData() const { return agent ? agent->copyTodoData() : TodoData{}; }
+    TodoData copyTodoData() const { return runtime_ ? runtime_->copyTodoData() : TodoData{}; }
 
     // Config access / persistence / approval.
-    const AppConfig& getConfig() const { return config; }
+    const AppConfig& getConfig() const;
     void saveApiKeyAndConnect(const std::string& apiKey);
     void saveFullConfig(const AppConfig& next);
-    void approveTool(int action) {
-        if (agent) agent->approveTool(action);
-    }
+    void approveTool(int action);
 
-    // System prompt role switching (assistant.md, plus any user-written role).
-    const std::vector<std::string>& promptFiles() const { return promptFiles_; }
-    int activePromptIndex() const { return activePromptIndex_; }
+    // System prompt role switching.
+    const std::vector<std::string>& promptFiles() const;
+    int activePromptIndex() const;
     void switchPrompt(int index);
 
-    // Switch the model (persists to config and resets context auto-detect).
     void setModel(const std::string& model);
 
-    // Session management (new chat / switch dialog / save copy).
+    // Session management (new chat / switch dialog).
     void newChat();
     void switchToDialog(const std::string& dbPath);
     std::vector<std::string> listSessions() const;
 
-    // Toggle the global reasoning expanded/collapsed state (all history).
     void toggleReasoning();
     bool reasoningExpanded() const { return reasoningExpanded_; }
 
-    // Best-effort shutdown for exit signals: cancel agent, close DB quickly
-    // without joining the models thread (which never touches the DB).
     void emergencyShutdown();
 
     // Keyboard scroll for the chat area (row-granular, real rendered rows).
-    // delta > 0 scrolls up (toward older content); delta < 0 scrolls down.
     void scrollChat(int delta);
     void resetChatScroll();
-    // Called by the renderer after layout with the chat's real rendered row count.
     void setChatContentRows(int rows) { chatContentRows_ = rows; }
-    // Called by the renderer after layout with the chat's visible (viewport) rows.
     void setChatViewportRows(int rows) { chatViewportRows_ = rows; }
-    // Called by the renderer after layout with the chat column's width in cells.
-    // Diff bubbles split into two panes only when this is wide enough.
     void setChatContentWidth(int cols) { chatContentWidth_ = cols; }
     int chatContentWidth() const { return chatContentWidth_; }
     int chatFocusRow() const;
@@ -96,183 +88,55 @@ class TuiApp {
 
     const std::vector<bubble_model::Bubble>& bubbles() const { return chatHistory; }
 
-    // Queue a user message and start an agent turn on a background thread.
+    // Queue a user message and start a turn on a background thread.
     void sendMessage(const std::string& text);
-    bool isBusy() const { return agentThreadRunning_.load(); }
+    bool isBusy() const { return runtime_ && runtime_->isBusy(); }
     void cancelTurn();
 
-    // Run a JSON-configured skill workflow on a background thread.
-    // `rawInput` is the exact user line (e.g. "/monica D:\dir"); it is what gets
-    // persisted so history replays match what the user typed. Empty -> the old
-    // "/skill <name> <topic>" form is synthesized.
     void startSkill(const std::string& name, const std::string& topic,
                     const std::string& rawInput = std::string());
     std::string getSkillStatus() const;
-    // Snapshot of the live skill agent pool for the sidebar (see START/agents).
     std::vector<SkillRunner::AgentSnapshot> skillAgentStatuses() const;
-    size_t pendingCount() const { return pendingQueue_.size(); }
-
-    // For the "/" completion menu: the installed skill folders and where their
-    // config.json files live. Read-only, cheap (a directory listing).
+    size_t pendingCount() const;
     std::vector<std::string> installedSkills() const;
-    std::string skillsDir() const { return skillsDir_; }
+    std::string skillsDir() const;
 
-    // Background tasks (exec_shell background:true). The dock reads snapshots; the
-    // turn loop takes the finished ones and reports them to the model.
     std::vector<bg_task::Snapshot> taskSnapshots() const;
 
-    // Invoked on the agent thread when a turn completes (used to trigger a redraw).
+    // Invoked on the turn thread when a turn completes (used to trigger a redraw).
     std::function<void()> onTurnComplete;
-
-    // Invoked on the agent thread on every streamed token update.
     std::function<void()> onStreamingTick;
-
-    // Invoked when the theme changes (used to trigger a redraw).
     std::function<void()> onThemeChanged;
-
-    // Model list (fetched from the API on a background thread).
-    void refreshModels();
-    std::vector<ModelInfo> getAvailableModels() const;
-    bool modelsLoading() const { return modelsLoading_.load(); }
     std::function<void()> onModelsUpdated;
 
-    // Cancel agent + join threads (call before exit).
+    void refreshModels();
+    std::vector<ModelInfo> getAvailableModels() const;
+    bool modelsLoading() const { return runtime_ && runtime_->modelsLoading(); }
+
     void shutdown();
 
-    // --- MCP (F5) -------------------------------------------------------
-    // Null before initialize() and after shutdown().
-    mcp::Manager* mcpManager() { return mcpManager_.get(); }
-    // Flip `enabled` in mcp.json and start/stop the server to match.
-    // Idle only: a process change must never interleave with a running turn,
-    // and the tool table is only ever written at a turn boundary.
+    // MCP (F5). Idle only: a process change must never interleave with a turn.
     void setMcpEnabled(const std::string& name, bool enabled);
 
   private:
-    void setupTools();
     void harvestSpeakers();
-    // Content of the active role prompt; empty when the role list is empty or the
-    // selected file vanished (never an out-of-range read).
-    std::string activePromptContent() const;
     void buildBubblesFromMessages();
-    // Write the fixed system messages of a conversation: P1 [ENVIRONMENT] and P2
-    // [PROJECT] (tree + AGENTS.md in one message). Both are always written, even
-    // when their content is empty, so the prefix stays exactly three messages
-    // (P0 is written by the caller). Called on startup, F3 and "/clear".
-    void injectFixedBlocks();
-    // Rewrite P1 in place after a config save changed a toolchain path. P1 is
-    // persisted, so without this the paths would stay stale until the next F3.
-    void refreshEnvironmentBlock();
-    // Build P3 (the capability map) and hand it to the Agent. Runs at a turn
-    // boundary on the agent thread: the MCP tool table is only settled after
-    // McpManager::syncTools(), which happens there.
-    void refreshCapabilitiesBlock();
-    // Push the saved config into the Agent (paths, model, params). Separate from
-    // saveFullConfig so it can be deferred to a turn boundary when a turn is
-    // running -- those setters touch Agent state the agent thread reads.
-    void applyConfigToAgent();
-    // Body shared by newChat() and "/clear": cancel the turn, wipe the session,
-    // then re-inject the system prompt plus the workspace context. keepStorage
-    // false also drops the session database and starts a new one (F3); "/clear"
-    // keeps the same session file, so history rows stay where they are.
-    void reinitConversation(bool keepStorage);
+    void drainNotices();
 
-    // Agent thread body: one user turn, then -- if run_skill asked for it -- the
-    // skill phase, then a follow-up turn so the model can report the result.
-    void runAgentTurnLoop();
-
-    // Runs one installed skill to completion on the calling thread. Narration and
-    // the final document are persisted as assistant messages, which is exactly
-    // what an explicit "/<skill> <topic>" trigger does: both go through here.
-    // `rawInput` is the user line persisted for replay; empty means the run was
-    // requested by the agent (run_skill) and no user bubble is invented.
-    bool runSkillBlocking(const std::string& name, const std::string& topic,
-                          const std::string& rawInput);
-
-    void launchAgentThread();
-    void joinAgentThread();
-    void joinModelsThread();
-    void joinSkillThread();
-    void drainPendingQueue();
-
-    // Skill helpers. buildSharedContext() renders a DIGEST of the main session (see
-    // Agent::summarizeConversationForSharing) -- not the raw transcript, which used
-    // to make every sub-agent carry the whole conversation.
-    std::string buildSharedContext();
-
-    AppConfig config;
-    DeepSeekClient client;
-    ToolRegistry tools;
-    // Every filesystem root this session may touch, and which are writable.
-    // Built once per setupTools() from (workspace, projv_files).
-    ToolPaths paths_;
-    std::optional<PythonToolManager> pytoolMgr_;
-    // Resident MCP server pool. Declared after `tools` on purpose: it is
-    // destroyed first, so the executors it registered can never outlive it.
-    std::unique_ptr<mcp::Manager> mcpManager_;
-    // Set when a config save (F2) lands while a turn is running. The tool-table
-    // rebuild is deferred to the next turn boundary: ToolRegistry's maps are a
-    // bare unordered_map and the Agent thread iterates them while building a
-    // request, so re-registering mid-turn is a data race (the pre-MCP bug).
-    std::atomic<bool> toolsReloadRequested_{false};
-    Storage storage;
-    Agent* agent = nullptr;
-    IProcessRunner* procRunner_ = nullptr;
-    // Detached children. Declared after `tools` so its executor lambdas (which hold
-    // a pointer to it) can never outlive it.
-    TaskRegistry taskRegistry_;
+    std::unique_ptr<SessionRuntime> runtime_;
 
     std::vector<bubble_model::Bubble> chatHistory;
     int64_t lastMessageId_ = 0;
-    // Registry of active skill role display names. bubble_model::deriveBubbles
-    // tags a "**[<name>]** " prefix as a speaker only when <name> is in here.
     std::set<std::string> knownSpeakers_;
-    int chatScrollRow_ = 0;        // real rendered-row target (0 = top)
-    bool chatFollowBottom_ = true; // stick to the newest content
-    int chatContentRows_ = 0;      // real rendered rows from the last layout
-    int chatViewportRows_ = 0;     // visible rows from the last layout
-    int chatContentWidth_ = 0;     // chat column width (cells) from the last layout
-    std::string sessionsDir_;
-    std::vector<std::string> promptFiles_;
-    int activePromptIndex_ = 0;
+    int chatScrollRow_ = 0;
+    bool chatFollowBottom_ = true;
+    int chatContentRows_ = 0;
+    int chatViewportRows_ = 0;
+    int chatContentWidth_ = 0;
+    bool reasoningExpanded_ = false;
 
-    std::vector<std::string> pendingQueue_;
-    bool reasoningExpanded_ = false; // global chain-of-thought collapse state (default collapsed)
-
-    std::vector<ModelInfo> availableModels_;
-    mutable std::mutex modelsMutex_;
-    std::atomic<bool> modelsLoading_{false};
-    std::thread modelsThread_;
-
-    std::thread agentThread_;
-    std::atomic<bool> agentThreadRunning_{false};
-
-    // Skill requested by the run_skill tool during the current turn. Written by
-    // the executor (agent thread), taken by runAgentTurnLoop (same thread) and
-    // dropped by cancelTurn (TUI thread) -- all under skillMutex_.
-    struct PendingSkill {
-        std::string name;
-        std::string topic;
-    };
-    std::optional<PendingSkill> pendingSkill_;
-    // Image round requested by the view_image tool. Same lifecycle and the same
-    // mutex as pendingSkill_. turnRequest_ is a queue now, so a skill and an image
-    // round can both be pending in one tool round; the image is pushed to the
-    // front and is consumed first, the skill follows in the next pass.
-    struct PendingImages {
-        std::vector<ImageAttachment> images;
-    };
-    std::optional<PendingImages> pendingImages_;
-    turn_requests::State turnRequest_;
-    int skillCallsThisTurn_ = 0; // hard cap per user turn (run_skill loop guard)
-    // Last skill that already ran in this user turn. Re-running it is refused:
-    // the model may read the produced files, but not redo the whole workflow.
-    std::string lastSkillThisTurn_;
-
-    std::unique_ptr<SkillRunner> skillRunner_;
-    std::string skillsDir_;
-    std::thread skillThread_;
-    std::string skillStatus_;
-    mutable std::mutex skillMutex_;
-    std::atomic<int> totalPromptTokens_{0};
-    std::atomic<int> totalCompletionTokens_{0};
+    // System lines produced on the turn thread. Drained on the TUI thread by
+    // syncChatFromAgent, so chatHistory is only ever written from one thread.
+    mutable std::mutex noticeMutex_;
+    std::vector<std::string> pendingNotices_;
 };

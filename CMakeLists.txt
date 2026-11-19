@@ -117,6 +117,9 @@ set(COMMON_SOURCES
     ${SRC_DIR}/core/prompts_loader.cpp
     ${SRC_DIR}/core/project_context.cpp
     ${SRC_DIR}/core/context_assembler.cpp
+    # SessionRuntime: the whole orchestration with no view attached (design 08).
+    # The TUI and the `run` subcommand both drive it through submit/run/cancel.
+    ${SRC_DIR}/core/session_runtime.cpp
     # The one command table (/help, the "/" menu, F1). In the lib so the unit test
     # can link it without pulling in the TUI.
     ${SRC_DIR}/core/help_text.cpp
@@ -178,6 +181,12 @@ set(HEADERS
     ${SRC_DIR}/core/task_registry.h
     ${SRC_DIR}/core/wish.h
     ${SRC_DIR}/tools/wish_tool.h
+    # Headless event stream + the runtime that emits it (design 08). Header-only, so
+    # they need no COMMON_SOURCES entry; listed for the IDE view.
+    ${SRC_DIR}/core/events.h
+    ${SRC_DIR}/core/session_runtime.h
+    # Deliverable text rules shared by SkillRunner and SubAgent.
+    ${SRC_DIR}/core/skill_text.h
 )
 
 # --- Platform-specific sources -------------------------------------------

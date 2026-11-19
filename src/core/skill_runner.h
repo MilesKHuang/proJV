@@ -87,7 +87,8 @@ class SkillRunner {
   private:
     void loadAgents();
     void executeSteps(const std::vector<SkillStep>& steps, int round);
-    void mergeAction(const SkillAction& a, const std::string& result, int round);
+    void mergeAction(const SkillAction& a, const std::string& result, int round,
+                     bool finishFlag);
     bool stopRule(int round) const;
     bool whenMatches(const std::string& when, int round) const;
     std::string fill(const std::string& tmpl, int round,
@@ -127,7 +128,13 @@ class SkillRunner {
     bool converged_ = false;
     int lastRounds_ = 0;
     std::string lastDoc_;
-    // Content events (message/document/vote) emitted so far. A round that adds none
+    // A verb call carried the finish flag ("finish": true). Set in mergeAction,
+    // read by stopRule().
+    bool stopRequested_ = false;
+    // The finishing call's payload when it was a real report: on_converge then has
+    // nothing left to produce and is skipped -- the deliverable is the text the
+    // model wrote in the call that also ended the job.
+    std::string finishDeliverable_;    // Content events (message/document/vote) emitted so far. A round that adds none
     // gets a synthetic "round N completed without narration" line, so the chat shows
     // the real round count instead of one line for ten rounds.
     size_t contentEvents_ = 0;

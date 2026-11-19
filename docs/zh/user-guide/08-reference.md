@@ -121,4 +121,30 @@
 
 ---
 
+## 无头模式：`projv run`
+
+一句话、不开 TUI、一行一个事件。跑的是同一个 agent，脚本拿到的就是你本该看到的。
+
+```
+projv run -p "say hi" [--jsonl] [--no-ts] [--max-turns N]
+                       [--session PATH] [--approve ask|never|always]
+                       [--dump-request] [--schema]
+```
+
+| 参数 | 含义 |
+|---|---|
+| `-p, --prompt` | 要发送的那一行（`--schema` 时不需要） |
+| `--jsonl` | 输出事件流（一行一个 JSON 对象）而不是纯文本 |
+| `--no-ts` | 不写时间戳，同一 prompt 两次运行逐字节相同 |
+| `--max-turns` | 允许几次用户提交（默认 1） |
+| `--session` | 打开已有会话库，而不是新建 |
+| `--approve` | `ask`（默认；这里没有对话框，等同拒绝）、`never`、`always` |
+| `--dump-request` | 把第一条请求体打到 stderr，用于比对 |
+| `--schema` | 打印事件表并退出 |
+
+退出码：`0` 正常、`1` 出错、`2` 被取消、`3` 需要审批但 `--approve never` 拒绝了。
+`projv run --schema` 列出全部事件与字段；CI 解析的是 `projv run -p "..." --jsonl`。
+
+---
+
 下一篇 -> 回到[目录](README.md) | 想改它 -> [开发指南](../dev-guide/README.md)

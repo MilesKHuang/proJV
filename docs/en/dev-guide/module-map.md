@@ -200,4 +200,36 @@ the code disagree, the code wins.
 
 ---
 
+## 11. Headless runtime, the event stream and `run`
+
+- **Responsibility.** Run one user turn with no view attached, and describe what
+  happened as a stream of events. This is what a GUI, a CI job or a box talks to;
+  there is no second interface.
+- **Entry.** `src/core/session_runtime.{h,cpp}`. Three ways in -- `submit(text)`
+  (dispatch every slash command, the `@image` markers and the skill trigger;
+  returns "a turn is pending"), `run()` (blocking) or `startAsync()`, `cancel()`.
+  One way out -- `std::function<void(const events::Event&)> onEvent`.
+- **Event contract.** `src/core/events.h` is header-only and byte-deterministic:
+  one JSON object per line, `t` is the event name, empty fields are omitted, and
+  `toLine(e, withTimestamp=false)` drops timestamps so two runs compare equal.
+  The schema version lives in `turn_start` only. `run --schema` prints the table.
+- **Ownership.** The runtime owns the one `AppConfig`, the `Agent`, the tool
+  registry, `ToolPaths`, the MCP pool, storage, the background-task registry, the
+  skill runner, the pending queues and the capability map. `TuiApp` is a view: it
+  holds the bubbles, the scroll position, the theme and the dialogs, and forwards.
+- **Threading.** `run()` and `startAsync()` latch on one `busy_` flag, so they never
+  overlap. Callbacks fire on the turn thread; a front-end queues a redraw instead
+  of touching its widget tree. `TuiApp::onNotice` pushes into a mutex-guarded
+  queue that the per-frame sync drains on the TUI thread.
+- **`run` subcommand.** `src/platform/cli_args.{h,cpp}` parses it,
+  `src/tui/main_tui.cpp` (`runHeadless`) executes it before `initTerminal()`, so no
+  alternate screen and no OSC bytes reach a redirected stdout. Exit codes:
+  0 ok, 1 error, 2 cancelled, 3 an approval was needed but `--approve never`
+  refused it. With no dialog available, a supervisor thread answers every
+  approval request (deny, or allow under `--approve always`).
+- **Tests.** `tests/unit/test_session_runtime.cpp` (event contract) and
+  `tests/e2e/run_e2e.ps1` (the real `TuiApp` over the runtime, against a fake API).
+
+---
+
 Back -> [dev guide](README.md) | Recipes -> [recipes](recipes.md)
