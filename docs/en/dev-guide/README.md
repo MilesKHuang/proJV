@@ -21,7 +21,7 @@ Agent turn loop  -- approve? -> ToolRegistry::execute -> tool result
 ChatView / bubbles (src/tui/*)  <-- onEvent / onProgress
 ```
 
-A skill is its own phase: after the tool phase ends, `TuiApp::runSkillBlocking`
+A skill is its own phase: after the tool phase ends, `SessionRuntime::runSkillBlocking`
 constructs a `SkillRunner`, which owns a pool of `SubAgent`s. Each `SubAgent`
 runs its own LLM loop; the runner interprets `config.json` (rounds, actions,
 slots, votes) and emits `[Role]` messages into the same chat.
@@ -52,7 +52,7 @@ src/
 ├── tools/      registry + one file per built-in tool, web tools, pytool manager
 └── platform/   process runner and system utilities (Windows / Linux)
 tests/          doctest unit tests + golden render tests
-skills/         example skills (bigbang, monica) deployed next to the binary
+skills/         example skills (avenger, bigbang, monica, musk, steve) deployed next to the binary
 projv_files/    runtime data: theme, pytool, skills (config/prompts/
                 sessions are created at first launch and never packaged)
 external/       vendored deps: FTXUI, SQLiteCpp, curl, json, toml++, loguru, doctest

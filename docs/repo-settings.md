@@ -8,13 +8,13 @@ no code changes.
 English (<= 120 chars):
 
 ```
-Native C++ terminal AI agent for DeepSeek: multi-agent skills, ~3.4 MB, zero package managers.
+Native C++ terminal AI agent for DeepSeek: multi-agent skills, ~4 MB, zero package managers.
 ```
 
 Chinese (<= 120 chars):
 
 ```
-原生 C++ 终端 AI agent（DeepSeek）：多 Agent 技能、约 3.4 MB、零包管理器。
+原生 C++ 终端 AI agent（DeepSeek）：多 Agent 技能、约 4 MB、零包管理器。
 ```
 
 ## Topics

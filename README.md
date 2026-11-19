@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/github/license/MilesKHuang/proJV" alt="License"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
   <img src="https://img.shields.io/badge/C%2B%2B-20-blue" alt="C++20"/>
-  <img src="https://img.shields.io/badge/binary-~3.4%20MB-green" alt="Binary"/>
+  <img src="https://img.shields.io/badge/binary-~4%20MB-green" alt="Binary"/>
 </p>
 
 <p align="center">

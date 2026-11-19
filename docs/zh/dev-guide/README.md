@@ -22,7 +22,7 @@ Agent 回合循环  —— 审批？-> ToolRegistry::execute -> 工具结果
 ChatView / 气泡（src/tui/*）  <-- onEvent / onProgress
 ```
 
-技能是一个独立阶段：工具阶段结束后，`TuiApp::runSkillBlocking` 创建 `SkillRunner`，
+技能是一个独立阶段：工具阶段结束后，`SessionRuntime::runSkillBlocking` 创建 `SkillRunner`，
 它持有一组 `SubAgent`。每个 `SubAgent` 跑自己的 LLM 循环；runner 解释
 `config.json`（轮次、动作、槽位、投票），把 `[角色]` 消息发进同一个聊天区。
 
@@ -51,7 +51,7 @@ src/
 ├── tools/      注册表 + 每个内置工具一个文件、web 工具、pytool 管理
 └── platform/   进程 runner 与系统工具（Windows / Linux）
 tests/          doctest 单测 + golden 渲染测试
-skills/         示例技能（bigbang、monica），构建时部署到可执行文件旁
+skills/         示例技能（avenger、bigbang、monica、musk、steve），构建时部署到可执行文件旁
 projv_files/    运行时数据：theme、pytool、skills（config/prompts/
                 sessions 首次启动时生成，永不打包）
 external/       内置依赖：FTXUI、SQLiteCpp、curl、json、toml++、loguru、doctest

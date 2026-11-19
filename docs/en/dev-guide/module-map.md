@@ -10,7 +10,8 @@ the code disagree, the code wins.
 
 - **Responsibility.** Own the terminal, the app state machine and the event loop.
 - **Entry.** `src/tui/main_tui.cpp` -> `TuiApp::setup()` and `run()` in
-  `src/tui/app_tui.cpp`. `setupTools()` is where every tool gets registered.
+  `src/tui/app_tui.cpp`. `setupTools()` is where every tool gets registered
+  (`src/core/session_runtime.cpp`, moved out of the TUI in design 08).
 - **Data flow.** key event -> `TuiApp` -> agent or skill; agent callbacks ->
   `ChatView` bubbles + status bar.
 - **Fixed context injection.** The directory tree and `AGENTS.md` both come from
@@ -120,7 +121,7 @@ the code disagree, the code wins.
   root refuses `write_file` / `edit_file` / `md_file` / `format_file` with the same
   `__WORKSPACE_VIOLATION__:` marker `Agent::run()` matches, and the message lists
   every root so a retry goes somewhere legal.
-- **Wiring.** `TuiApp::setupTools()` builds one `ToolPaths::forSession(workspace,
+- **Wiring.** `SessionRuntime::setupTools()` (moved out of the TUI in design 08) builds one `ToolPaths::forSession(workspace,
   projv_files)` and hands it to all six path-taking register functions. Tests pass
   `ToolPaths(root)` (implicit single writable root).
 - **Diff capture.** The four writing tools snapshot the file around their own

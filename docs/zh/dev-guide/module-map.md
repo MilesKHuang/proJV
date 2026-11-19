@@ -91,7 +91,7 @@
   只读根会拒掉 `write_file` / `edit_file` / `md_file` / `format_file`，用的是
   `Agent::run()` 匹配的 `__WORKSPACE_VIOLATION__:` 标记，并且错误文案会列出全部 root，
   这样模型重试才会换个合法路径。
-- **接法。** `TuiApp::setupTools()` 用一次
+- **接法。** `SessionRuntime::setupTools()`（design 08 从 TUI 搬来）用一次
   `ToolPaths::forSession(workspace, projv_files)` 建好，交给六个带路径的注册函数。
   测试里写 `ToolPaths(root)`（隐式单可写根）。
 - **diff 捕获。** 四个写文件的工具在自己的写入前后各拍一次快照，交给
