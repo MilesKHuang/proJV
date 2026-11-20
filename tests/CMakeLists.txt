@@ -59,25 +59,26 @@ set(TEST_SOURCES
     unit/test_mcp.cpp
     unit/test_session_runtime.cpp
     unit/test_skill_deliverable.cpp
-    golden/test_tui_smoke.cpp
+    # The whole-screen view model (design 08.5, D4): derivation + TUI parity.
+    unit/test_view_model.cpp    golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
     golden/test_markdown_render.cpp
     golden/test_theme_editor.cpp
-    ${SRC_DIR}/tui/bubble_model.cpp
-    ${SRC_DIR}/tui/slash_menu.cpp
+    # The studio's design system (tokens / layout / text fitting) is plain C++ with
+    # no ImGui include, so the geometry the window is built from is pinned here
+    # without a GPU, a window or a frame.
+    unit/test_studio_design.cpp
+    unit/test_worker_wait.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/tokens.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/layout.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/fit.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp
-    ${SRC_DIR}/tui/markdown_text.cpp
     ${SRC_DIR}/tui/markdown_view.cpp
-    ${SRC_DIR}/tui/status_line.cpp
-    ${SRC_DIR}/tui/status_bar.cpp
     ${SRC_DIR}/tui/todo_view.cpp
-    ${SRC_DIR}/tui/approval_logic.cpp
     ${SRC_DIR}/tui/theme_map.cpp
-    ${SRC_DIR}/tui/theme_colors.cpp
-    ${SRC_DIR}/tui/theme_manager.cpp
     ${SRC_DIR}/tui/theme_editor_view.cpp
 )
 
@@ -109,6 +110,7 @@ target_include_directories(proJV_tests PRIVATE
     ${EXTERNAL_DIR}/FTXUI-7.0.3/include
     ${SRC_DIR}
     ${SRC_DIR}/client
+    ${CMAKE_SOURCE_DIR}/studio
 )
 
 target_link_libraries(proJV_tests PRIVATE proJV_lib ftxui::dom ftxui::component)

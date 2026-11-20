@@ -286,6 +286,11 @@ SkillRunner::~SkillRunner() = default;
 
 void SkillRunner::cancel() {
     cancelRequested_.store(true);
+    // The lock is held on purpose. SubAgent::cancel() only raises flags (its own
+    // atomic plus the HTTP client's, which libcurl's write/progress callback reads),
+    // so it never waits on the network: the critical section stays short. Copying the
+    // pointers out to cancel them lock-free would instead risk calling into an agent
+    // the run had already released.
     std::lock_guard<std::mutex> lk(snapMutex_);
     for (auto& kv : agents_)
         if (kv.second) kv.second->cancel();

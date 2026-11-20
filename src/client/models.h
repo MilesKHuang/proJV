@@ -343,6 +343,11 @@ struct AgentStatus {
     std::string errorMessage;
     std::string statusMessage; // "Working...", "Thinking...", etc.
 
+    // The user asked for the turn to stop and the worker has not finished unwinding
+    // yet. Both front-ends show it (status_line renders "Stopping..."), so pressing
+    // Esc has a visible effect on the very next frame instead of looking ignored.
+    bool cancelling = false;
+
     // Tool execution progress (updated per-tool during ExecutingTool)
     int toolProgressCurrent = 0; // index of the tool currently executing (1-based)
     int toolProgressTotal = 0;   // total tools in this round

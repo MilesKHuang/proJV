@@ -597,10 +597,14 @@ void SessionRuntime::run() {
 void SessionRuntime::startAsync() {
     if (busy_.exchange(true)) return;
     joinAgentThread();
+    agentLatch_.reset();
     agentThread_ = std::thread([this] {
         doWork();
         busy_.store(false);
         if (onTurnComplete) onTurnComplete();
+        // Last statement of the worker: an exit waiting on this latch now knows the
+        // turn really finished instead of guessing with a timeout.
+        agentLatch_.signal();
     });
 }
 
@@ -883,7 +887,7 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
     };
 
     auto runner =
-        std::make_unique<SkillRunner>(config_, &tools_, cbs, buildSharedContext(), skillsDir_);
+        std::make_shared<SkillRunner>(config_, &tools_, cbs, buildSharedContext(), skillsDir_);
     runner->setCancelProbe([this]() { return tools_.isCancelled(); });
 
     SkillRunner* r = runner.get();
@@ -944,6 +948,7 @@ void SessionRuntime::startSkill(const std::string& name, const std::string& topi
 }
 
 void SessionRuntime::cancel() {
+    std::shared_ptr<SkillRunner> runner;
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         pendingQueue_.clear();
@@ -951,8 +956,12 @@ void SessionRuntime::cancel() {
         pendingImages_.reset();
         pendingSkillRun_.reset();
         turnRequest_.release();
-        if (skillRunner_) skillRunner_->cancel();
+        // Take a reference, cancel OUTSIDE the lock: cancel() reaches into every
+        // sub-agent's HTTP call, and holding skillMutex_ while doing that is how an
+        // ESC on the UI thread ended up waiting behind a status publish.
+        runner = skillRunner_;
     }
+    if (runner) runner->cancel();
     pendingTurn_.reset();
     if (agent_) agent_->cancel();
 }
@@ -1268,13 +1277,30 @@ void SessionRuntime::joinAgentThread() {
     }
 }
 
+bool SessionRuntime::stopAgentThread() {
+    // No deadline. Either the worker has finished (then it is joined and the caller
+    // may clean up), or it has not -- and then the caller must skip every cleanup
+    // step, because the thread may still be writing the session database. Walking
+    // away is safe; closing the database under a live writer is not.
+    const bool finished = worker_wait::tryJoin(agentThread_, agentLatch_);
+    if (!finished) debugLogWarn("[runtime] worker still running at exit; leaving without cleanup");
+    return finished;
+}
+
 void SessionRuntime::shutdown() {
+    std::shared_ptr<SkillRunner> runner;
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
-        if (skillRunner_) skillRunner_->cancel();
+        runner = skillRunner_;
     }
+    if (runner) runner->cancel();
     if (agent_) agent_->cancel();
-    joinAgentThread();
+    // ONE question, no deadline: has the worker finished? If it has, everything
+    // below is safe. If it has not, NONE of it is safe -- the thread may be writing
+    // the session database, and deleting the agent or closing the DB under it is a
+    // use-after-free. So: leave the process to the OS, which reclaims the address
+    // space atomically, and let SQLite replay its write-ahead log next start.
+    if (!stopAgentThread()) return;
     joinModelsThread();    // Detached children: kill them and join their monitor thread. A background build
     // that outlives the process would keep writing to a file nobody reads. The Job
     // Object (KILL_ON_JOB_CLOSE) is the second line of defence for a hard crash.
@@ -1291,16 +1317,19 @@ void SessionRuntime::shutdown() {
 }
 
 void SessionRuntime::emergencyShutdown() {
+    std::shared_ptr<SkillRunner> runner;
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
-        if (skillRunner_) skillRunner_->cancel();
+        runner = skillRunner_;
     }
+    if (runner) runner->cancel();
     if (agent_) agent_->cancel();
-    joinAgentThread();
-    // Do not join the models thread: it never touches the DB and might be
-    // blocked on the network. Close the DB now; the OS reclaims the rest.
+    // Closing the window is a request to leave, not to wait. If the worker is still
+    // unwinding there is nothing safe to do except go: no DB close, no agent delete.
+    if (!stopAgentThread()) return;
+    // It DID finish, so the clean path is available (and free): checkpoint the WAL
+    // and leave `error` as the last record instead of a silent clear, so an
+    // interrupted run stays visible in the host's list.
     storage_.closeDatabase();
-    // Ctrl-C / window close: leave `error` as the last record instead of a
-    // silent clear, so an interrupted run is visible in the host's list.
     if (terminalStatusEnabled_) terminal_status::abandon("interrupted");
 }

@@ -11,6 +11,26 @@ TEST_CASE("status_line: idle") {
     CHECK(status_line::render(st).text == "Idle");
 }
 
+TEST_CASE("status_line: a cancel request wins over every running state") {
+    // Esc must be visible on the next frame, whatever the turn was doing: this is
+    // the line the user reads to know the request landed. Both front-ends render it
+    // through this function, so one case covers the TUI and the window.
+    for (AgentState state : {AgentState::Thinking, AgentState::ExecutingTool,
+                             AgentState::AwaitingApproval}) {
+        AgentStatus st;
+        st.state = state;
+        st.streamingText = "some text";
+        st.currentToolName = "exec_shell";
+        st.cancelling = true;
+        CHECK(status_line::render(st).text == "Stopping...");
+    }
+    // An idle agent that was cancelled in the past is still just idle: the flag is
+    // read together with the state, not on its own.
+    AgentStatus idle;
+    idle.cancelling = true;
+    CHECK(status_line::render(idle).text == "Idle");
+}
+
 TEST_CASE("status_line: thinking reasoning only") {
     AgentStatus st;
     st.state = AgentState::Thinking;

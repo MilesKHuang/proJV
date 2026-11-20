@@ -51,7 +51,9 @@ class Agent {
     std::optional<ToolCall> pendingApproval() const;
     void cancel();
     AgentStatus getStatus() const;
-    AgentPhase getPhase() const { return phase_.load(); }
+    // True between Agent::cancel() and the next turn start. The status line reads
+    // it through AgentStatus::cancelling so both front-ends can show "Stopping...".
+    bool isCancelling() const;    AgentPhase getPhase() const { return phase_.load(); }
     const Session& getSession() const { return session; }
     void clearSession();
     void newTurn();

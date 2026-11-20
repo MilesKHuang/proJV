@@ -651,8 +651,7 @@ void Agent::cancel() {
 }
 
 void Agent::newTurn() {
-    cancelRequested_.store(false, std::memory_order_release);
-    toolRegistry.resetCancel();
+    cancelRequested_.store(false, std::memory_order_release);    toolRegistry.resetCancel();
     turnFailed_ = false;
     turnError_.clear();
     // Defensive: a turn-end request raised by a tool must never leak into the
@@ -670,9 +669,16 @@ void Agent::newTurn() {
     currentReasoning_.clear();
 }
 
-AgentStatus Agent::getStatus() const {
-    std::lock_guard<std::mutex> lk(snapshotMutex_);
-    return status_;
+bool Agent::isCancelling() const {
+    return cancelRequested_.load(std::memory_order_acquire);
+}
+
+AgentStatus Agent::getStatus() const {    std::lock_guard<std::mutex> lk(snapshotMutex_);
+    AgentStatus out = status_;
+    // Read outside the snapshot lock's scope in spirit: the flag is atomic and the
+    // status line wants the freshest value, not the one from the last update.
+    out.cancelling = cancelRequested_.load(std::memory_order_acquire);
+    return out;
 }
 
 void Agent::clearSession() {

@@ -6,6 +6,11 @@
 namespace status_line {
 
 Line render(const AgentStatus& status) {
+    // Stopping comes first: once the user has asked to stop, that request is the
+    // most important thing on the line. Without it, Esc during a long skill looked
+    // like it did nothing at all until the turn finally ended.
+    if (status.cancelling && status.state != AgentState::Idle)
+        return {"Stopping...", &ThemeColors::phaseAwaitApproval};
     switch (status.state) {
     case AgentState::Thinking: {
         bool hasReasoning = !status.reasoningText.empty();

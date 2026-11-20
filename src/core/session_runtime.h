@@ -27,11 +27,13 @@
 #include "skill_runner.h"
 #include "task_registry.h"
 #include "turn_requests.h"
+#include "worker_wait.h"
 #include "tools/registry.h"
 #include "tools/tool_paths.h"
 #include "tools/python_tool_manager.h"
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -148,6 +150,9 @@ class SessionRuntime {
                           const std::string& rawInput);
     void joinAgentThread();
     void joinModelsThread();
+    // Exit decision, not a deadline: join the worker when it has already finished,
+    // otherwise detach it and return false -- the caller then cleans up NOTHING.
+    bool stopAgentThread();
     std::string buildSharedContext();
 
     // Event + notice plumbing. notice() is what the old code did with a
@@ -188,6 +193,9 @@ class SessionRuntime {
 
     std::vector<std::string> pendingQueue_;
     std::thread agentThread_;
+    // Signalled by the worker as its last statement, so an exit can tell "finished"
+    // from "stuck" instead of blocking in join() forever.
+    worker_wait::Latch agentLatch_;
     std::atomic<bool> busy_{false};
     std::atomic<bool> terminalStatusEnabled_{true};
 
@@ -205,7 +213,7 @@ class SessionRuntime {
     int skillCallsThisTurn_ = 0;
     std::string lastSkillThisTurn_;
 
-    std::unique_ptr<SkillRunner> skillRunner_;
+    std::shared_ptr<SkillRunner> skillRunner_;
     std::string skillStatus_;
     mutable std::mutex skillMutex_;
 
