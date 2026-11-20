@@ -45,8 +45,10 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 src/
 ├── tui/        入口、应用状态、聊天视图、Markdown、主题、状态栏、TODO
+├── studio/     GUI 前端（Dear ImGui）：窗口、主界面、模态
 ├── core/       agent、session、config、storage、prompts、项目上下文、
-│               技能引擎（skill_runner / sub_agent / skill_config）
+│               技能引擎（skill_runner / sub_agent / skill_config）、
+│               SessionRuntime 与整屏视图模型
 ├── client/     DeepSeek 客户端、请求/响应模型
 ├── tools/      注册表 + 每个内置工具一个文件、web 工具、pytool 管理
 └── platform/   进程 runner 与系统工具（Windows / Linux）
@@ -54,7 +56,8 @@ tests/          doctest 单测 + golden 渲染测试
 skills/         示例技能（avenger、bigbang、monica、musk、steve），构建时部署到可执行文件旁
 projv_files/    运行时数据：theme、pytool、skills（config/prompts/
                 sessions 首次启动时生成，永不打包）
-external/       内置依赖：FTXUI、SQLiteCpp、curl、json、toml++、loguru、doctest
+external/       内置依赖：FTXUI、imgui（docking）、SQLiteCpp、curl、
+                json、toml++、loguru、doctest
 ```
 
 ## 依赖
@@ -62,6 +65,8 @@ external/       内置依赖：FTXUI、SQLiteCpp、curl、json、toml++、loguru
 | 库 | 用途 | 位置 |
 |----|------|------|
 | FTXUI 7.0.3 | 终端界面 | `external/` |
+| Dear ImGui 1.93.0（docking） | studio 图形界面 | `external/` |
+| SDL2 | Linux 上 studio 的窗口（输入法） | 系统库 |
 | SQLiteCpp 3.3.3 | 会话存储 | `external/` |
 | libcurl 8.21.0 | HTTP | Windows 在 `external/`，Linux 用系统库 |
 | nlohmann/json | JSON | 单头文件 |
@@ -91,6 +96,6 @@ external/       内置依赖：FTXUI、SQLiteCpp、curl、json、toml++、loguru
 
 接着读 -> [模块地图](module-map.md) | 改动配方 -> [recipes](recipes.md)
 
-编写 skill -> [skill 编写指南](../user-guide/09-skills-authoring.md)：不看源码也能搭出 sub-agent 编排（配置全表、模板陷阱、两种模式、两个可复制例子、起飞前清单）
+那个窗口 -> [studio](studio-gui.md)：同一引擎的 Dear ImGui 前端，以及让它与 TUI 保持一致的那份视图模型。编写 skill -> [skill 编写指南](../user-guide/09-skills-authoring.md)：不看源码也能搭出 sub-agent 编排（配置全表、模板陷阱、两种模式、两个可复制例子、起飞前清单）
 
 安全边界 -> [安全边界](security-model.md)：哪些路径有检查、哪些没有、为什么不做沙箱

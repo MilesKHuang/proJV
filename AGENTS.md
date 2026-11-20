@@ -13,7 +13,7 @@ Windows (MSVC 2019 or newer, plain cmd prompt):
     cmake --build build --config Release --parallel
     ctest --test-dir build -C Release --output-on-failure
 
-Linux (needs `libcurl4-openssl-dev`):
+Linux (needs `libcurl4-openssl-dev` and, for the GUI, `libsdl2-dev`):
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
     cmake --build build --parallel
@@ -42,6 +42,11 @@ Linux (needs `libcurl4-openssl-dev`):
   `ThemeColors` (`src/tui/theme_colors.h`) or the theme JSON in `projv_files/theme/`;
   each front-end owns its own conversion (`theme_map.cpp` for FTXUI, the studio's own
   for ImGuiCol). A new visual element needs a theme field, never a hardcoded RGB.
+- The two front-ends must not diverge. Anything the user reads -- a label, a colour
+  reference, a derived summary, a row order -- comes from `src/core/view_model.h`,
+  not from the front-end's own copy. `proJV_lib` stays front-end neutral: no FTXUI
+  and no ImGui type in it, and imgui/SDL2 only appear in `studio/`. A change that
+  alters what is on screen needs `tests/unit/test_view_model.cpp` to agree.
 - Do not let a skill write outside the tool roots. Skills may write the workspace and
   `projv_files` (prompts, skills, theme, pytool, `mcp.json`) -- the same roots as the main
   agent, enforced by `ToolPaths` -- but must report which files they changed, and never touch
@@ -64,8 +69,12 @@ A directory without a row is a review rejection.
 | Directory | Version | License | Used by |
 |---|---|---|---|
 | `FTXUI-7.0.3` | 7.0.3 | MIT | `proJV_tui` |
+| `imgui-1.93.0-docking` | 1.93.0 (docking branch) | MIT | `proJV_studio` |
 | `SQLiteCpp-3.3.3` | 3.3.3 | MIT | `proJV_lib` |
 | `curl-8.21.0` | 8.21.0 | curl | `proJV_lib` (Windows only) |
+
+`proJV_studio`'s Linux half links the SYSTEM SDL2 (`libsdl2-dev`), the same
+treatment libcurl gets there, so SDL2 is not a vendored directory.
 
 ## Docs and commits
 

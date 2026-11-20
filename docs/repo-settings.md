@@ -59,7 +59,7 @@ https://github.com/MilesKHuang/proJV/releases
 3. Paste `RELEASE_NOTES_<tag>.md` into the Release body (the workflow generates
    notes from commits; the curated file is better), and add:
    - Windows: unsigned binary, SmartScreen -> "More info" -> "Run anyway".
-   - Linux: `sudo apt-get install -y libcurl4-openssl-dev` if libcurl is missing.
+   - Linux: `sudo apt-get install -y libcurl4-openssl-dev libsdl2-dev` if libcurl or SDL2 is missing.
 
 ## Branch protection (recommended)
 

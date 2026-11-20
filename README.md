@@ -34,8 +34,9 @@
 
 ## Three things that make it different
 
-- **Native C++, ~4 MB, zero package managers.** FTXUI + libcurl + SQLite, all
-  vendored. One `cmake --build` and you have a single binary you can scp.
+- **Native C++, ~4 MB, zero package managers.** FTXUI + Dear ImGui + libcurl +
+  SQLite, all vendored. One `cmake --build` and you have two binaries you can scp:
+  the terminal one and the window one (4.02 MB / 4.00 MB, Release).
 - **Multi-agent skills are data, not code.** A skill is a folder:
   `config.json` + one `.md` per role + verb tool schemas. Copy it in — it runs.
   A supervisor can fan one reply out to ten workers that execute concurrently.
@@ -49,14 +50,18 @@
 
 1. **Download** the release for your platform from
    [Releases](https://github.com/MilesKHuang/proJV/releases) and unpack it
-   (`proJV_tui` + `projv_files/` must stay together).
+   (`proJV_tui` / `proJV_studio` + `projv_files/` must stay together).
 2. **Paste your DeepSeek API key** into the config dialog on first launch
    ([get one](https://platform.deepseek.com/api_keys)).
 3. **Type a message.** Ask it to read a file, fix a bug, or run
    `/monica D:\path\to\project`.
 
+Two front-ends, one engine: `proJV_tui` (terminal) and `proJV_studio` (window) do
+the same thing, with the same keys; see [the studio](docs/en/dev-guide/studio-gui.md).
+
 Windows may warn about the unsigned binary (SmartScreen -> "More info" ->
-"Run anyway"). Linux needs `libcurl4-openssl-dev` if you build from source.
+"Run anyway"). Linux needs `libcurl4-openssl-dev` and `libsdl2-dev` if you build
+from source.
 
 Prefer to build? -> [install guide](docs/en/user-guide/01-install.md)
 

@@ -24,7 +24,7 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Windows: run it from an x64 Native Tools prompt (Visual Studio 2019+).
-Linux: `sudo apt-get install -y libcurl4-openssl-dev` first.
+Linux: `sudo apt-get install -y libcurl4-openssl-dev libsdl2-dev` first.
 
 A PR is only mergeable when the full `proJV_tests` suite passes. New behaviour
 needs a new test; a bug fix needs a test that fails before it.

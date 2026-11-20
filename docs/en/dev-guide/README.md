@@ -46,8 +46,10 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 src/
 ├── tui/        entry point, app state, chat view, markdown, theme, status, todo
+├── studio/     the GUI front-end (Dear ImGui): window, main screen, modals
 ├── core/       agent, session, config, storage, prompts, project context,
-│               skill engine (skill_runner / sub_agent / skill_config)
+│               skill engine (skill_runner / sub_agent / skill_config),
+│               SessionRuntime + the whole-screen view model
 ├── client/     DeepSeek API client, request/response models
 ├── tools/      registry + one file per built-in tool, web tools, pytool manager
 └── platform/   process runner and system utilities (Windows / Linux)
@@ -55,7 +57,8 @@ tests/          doctest unit tests + golden render tests
 skills/         example skills (avenger, bigbang, monica, musk, steve) deployed next to the binary
 projv_files/    runtime data: theme, pytool, skills (config/prompts/
                 sessions are created at first launch and never packaged)
-external/       vendored deps: FTXUI, SQLiteCpp, curl, json, toml++, loguru, doctest
+external/       vendored deps: FTXUI, imgui (docking), SQLiteCpp, curl,
+                json, toml++, loguru, doctest
 ```
 
 ## Dependencies
@@ -63,6 +66,8 @@ external/       vendored deps: FTXUI, SQLiteCpp, curl, json, toml++, loguru, doc
 | Library | Purpose | Where |
 |---------|---------|-------|
 | FTXUI 7.0.3 | TUI | `external/` |
+| Dear ImGui 1.93.0 (docking) | studio GUI | `external/` |
+| SDL2 | studio window on Linux (IME) | system library |
 | SQLiteCpp 3.3.3 | sessions | `external/` |
 | libcurl 8.21.0 | HTTP | `external/` on Windows, system on Linux |
 | nlohmann/json | JSON | single header |
@@ -95,5 +100,7 @@ No vcpkg / conan / npm / pip.
 ---
 
 Read next -> [module map](module-map.md) | Recipes -> [recipes](recipes.md) | Authoring a skill -> [skills authoring](../user-guide/09-skills-authoring.md)
+
+The window -> [studio](studio-gui.md): the same engine behind Dear ImGui, and the view model that keeps it identical to the TUI.
 
 Security boundary -> [security model](security-model.md): what is checked, what is not, and why there is no sandbox.
