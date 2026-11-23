@@ -368,6 +368,7 @@ set(STUDIO_SOURCES
     ${STUDIO_DIR}/design/tokens.cpp
     ${STUDIO_DIR}/design/layout.cpp
     ${STUDIO_DIR}/design/fit.cpp
+    ${STUDIO_DIR}/design/actions.cpp
     ${STUDIO_DIR}/ui/ui.cpp
 )
 set(STUDIO_BACKEND_SOURCES

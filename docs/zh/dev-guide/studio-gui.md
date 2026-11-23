@@ -64,10 +64,10 @@ build/proJV_studio
 | 右 dock 36 列：TODO + 后台任务 | 同样的切分与宽度 |
 | 状态行 + 转轮 + `[skill]` | 相同；转轮是同样四帧字形 |
 | 输入框上方的 `/` 菜单 | 同样的行、同样的 10 行窗口 |
-| 输入行 | 单行 ImGui 输入框，带输入法 |
+| 输入行 | **可换行的多行输入框**：Enter 发送，Shift+Enter（或 Ctrl+Enter）换行，框随文字一行行长高，最多七行 |
 | `Queued: N message(s)` | 同一行、同一颜色 |
-| 状态栏分段 + 角色胶囊 | 同样的分段与颜色 |
-| 键帽提示 F1..Esc | **不再有键帽条**：右上角按钮各自带快捷键（悬停显示），完整清单在帮助对话框里。同一张键位表写两遍，只会像没做完 |
+| 状态栏分段 + 角色胶囊 | 同样的分段与颜色，且都在 Body 档 |
+| 键帽提示 F1..Esc | **不再有键帽条**：每个键都是右上角的一个按钮（悬停显示快捷键），两边不可能再各说各话（`studio/design/actions.h`）。同一张键位表写两遍，只会像没做完 |
 
 ## 按键
 
@@ -77,7 +77,14 @@ Tab 切角色、Up/Down/PgUp/PgDn 滚动、Enter 发送、Esc＝取消／清空�
 Ctrl+C 永不退出。
 
 应用自己的按键表在**任何控件提交之前**运行（`App::handleKey`），所以获得焦点的
-输入框吞不掉 Tab 与 F 键。输入行有焦点时方向键滚动聊天，在多行框里则是移动光标。
+输入框吞不掉 Tab 与 F 键。十一个键在右上角各有一个按钮，顺序按"用得多"排而不是
+按键号：角色（Tab）、新建（F3）、会话（F4）、模型（F10）、思考（F8）、dock（F9）、
+主题（F6）、配色（F7）、MCP（F5）、配置（F2）、帮助（F1）。这张表就是
+`studio/design/actions.h`：窗口变窄时它换到第二行，绝不丢按钮。
+Enter/Shift+Enter 是 studio 唯一多出来的键——终端里输入行只有一行，窗口里的输入框
+会折行；Shift+Enter 与 Ctrl+Enter 换行，Enter 校验发送
+（`ImGuiInputTextFlags_CtrlEnterForNewLine`）。输入行只有一行时方向键滚动聊天；
+一旦输入框有两行以上，Up/Down 归光标——一次按键同时滚聊天和移光标是两件事在动。
 
 ## 模态
 
@@ -96,7 +103,8 @@ Esc 关闭除审批以外的全部——破坏性命令要一个明确答复。�
 - 输入法候选窗通过 `ImGui::GetPlatformIO().Platform_SetImeDataFn` 跟随光标
   （见 `studio/main_studio.cpp` 的 `setImeData`）。imgui_impl_win32 1.93 不带
   这个回调，缺了它候选窗会停在屏幕角落。
-- 粘贴与 TUI 同样处理：制表符与换行变成空格，超长截断，粘进来的块不会自己发出去。
+- 粘贴与 TUI 同样处理：制表符变成空格、超长截断；但换行符在多行框里保留下来——
+  Enter 是发送键而不是粘贴里的一个字符，粘进来的块不会自己发出去。
 
 ## 设计系统（重建后的界面）
 
@@ -120,16 +128,24 @@ Esc 关闭除审批以外的全部——破坏性命令要一个明确答复。�
 
 ```
 window
-├── header    标题、阶段徽章、模型/会话/配置/帮助按钮
+├── header    标题、阶段徽章、十一个动作按钮（放不下就换行）
 ├── body      Row [ 聊天区(Grow) | dock(Fixed) ]   dock 可用 F9 关闭
-├── composer  输入卡片，与聊天列的左边缘对齐
-├── footer    状态行、排队行、服务栏、键帽栏
+├── composer  输入框，与聊天列左边缘对齐，文字几行就几行高
+├── footer    状态行、排队行、服务栏
 └── slash     锚在输入框上方的 "/" 菜单浮层
 ```
 
-高度全部由本帧内容量出来：键帽换几行、dock 开不开、有没有排队行，都会改变结果。
-这就是窗口缩放不再"慢一帧"、也不再需要 `static float bottomHeight` 的原因——
-那类上一帧残留状态在这个文件里已经一个不剩。
+高度全部由本帧内容量出来：动作按钮换几行、dock 开不开、有没有排队行、输入框里有几
+行字，都会改变结果。这就是窗口缩放不再"慢一帧"、也不再需要 `static float
+bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经一个不剩。
+
+### 头部是一张表，不是手写清单
+
+按钮曾经是绘制点上写死的六个字面量，而"响应式"那一段会把放不下的直接**丢掉**：
+"按钮和 TUI 能做的事对不上"是字面意义上的事实，窗口越窄越对不上。现在
+`studio/design/actions.h` 里是"每个文档化的键一行"，`actions::pack` 放不下就换行
+而不是隐藏，区块高度随行数长。`tests/unit/test_studio_design.cpp` 断言表里的快捷键
+集合等于参考手册的键位表：给产品加了键却忘了按钮，失败的是测试，而不是用户的期待。
 
 ## 一致性测试
 
@@ -138,7 +154,9 @@ window
   气泡的输出里。
 - `tests/unit/test_studio_design.cpp` 钉住几何：字号阶梯单调、缩放被夹住、
   行/列/Percent/Grow/min-max 的矩形、CJK 算两列、省略号不切断码点、
-  `bestTier` 选最大能放下的档位。三个模块都不含 ImGui，所以不需要 GPU 也能测。
+  `bestTier` 选最大能放下的档位、多行输入框需要几行（换行符／折行／末尾换行符），
+  以及头部那张表：每个文档化的键恰好一条、开关与角色胶囊的标签跟随状态、
+  `actions::pack` 只换行不丢按钮。这些模块都不含 ImGui，所以不需要 GPU 也能测。
 - `tests/unit/test_worker_wait.cpp` 钉住退出语义：干完的线程会被 join（可以安全清理），
   没干完的线程被 detach 且调用立刻返回（`src/core/worker_wait.h`）。没有"等 N 秒"这种判据。
 - `tests/unit/test_status_line.cpp` 钉住 `Stopping...`：取消请求压过所有运行中的状态，
@@ -179,6 +197,14 @@ window
   一条 hairline 边框、token 圆角与内边距，并把 `ImGuiCol_NavCursor` 推成透明；
   键盘焦点只取一次（每帧抢焦点会让窗口里其他控件都按不下去）。
   之前是卡片 + ImGui 焦点高亮，两圈必然对不齐。
+- **输入框是多行的。** 换行由 `ImGuiInputTextFlags_WordWrap` 负责，高度由这一帧先量
+  好的行数决定（最多七行，再多就在框里滚动）——所以输入框长高的同时，聊天区就少
+  同样的高度，不需要等下一帧。
+- **页脚在 Body 档。** 状态行与服务栏原来是 Small（13.5px），"字太小"报过两次；
+  终端只有一个字号，窗口的页脚现在也跟聊天正文一样大，只有徽章还小一号。
+- **多行粘贴保留换行。** 单行输入框当年必须把它们压成空格（以免粘进来就自己发出去）；
+  现在 Enter 才是发送键、Shift+Enter 是换行，粘贴的块不会自己发出去。制表符仍变空格，
+  截断上限沿用 TUI 的。
 
 ## 不靠人眼测试这个窗口
 
@@ -199,13 +225,14 @@ window
 | `studio/main_studio.cpp` | Windows：WGL 上下文、输入法钩子、主循环 |
 | `studio/main_studio_sdl.cpp` | Linux：同一套循环，走 SDL2 |
 | `studio/studio_app.{h,cpp}` | 状态、动作、按键表、填充 `Source` |
-| `studio/studio_ui.cpp` | 主界面：聊天、dock、状态、输入、键帽 |
+| `studio/studio_ui.cpp` | 主界面：聊天、dock、状态、会换行的头部、输入 |
 | `studio/studio_modals.cpp` | 十个模态 |
 | `studio/studio_markdown.cpp` | `markdown_text` 行 -> ImGui 绘制 |
 | `studio/studio_theme.cpp` | `ThemeColors` -> ImU32（studio 唯一的颜色转换）、字体 |
+| `studio/design/actions.{h,cpp}` | 头部按钮表：每个文档化的键一行，外加换行打包 |
 | `studio/design/tokens.{h,cpp}` | 尺寸阶梯（字号/间距/圆角）与 `Metrics` |
 | `studio/design/layout.{h,cpp}` | Flexbox 子集求解器，纯算术 |
-| `studio/design/fit.{h,cpp}` | 量宽、省略号、按档位自适应，量测函数外部注入 |
+| `studio/design/fit.{h,cpp}` | 量宽、省略号、按档位自适应、折行行数，量测函数外部注入 |
 | `studio/ui/ui.{h,cpp}` | 调色板 + 控件工具箱（按钮/勾选/单选/分段/输入/列表行/滚动区） |
 | `src/core/view_model.{h,cpp}` | 上面的契约 |
 | `src/core/speaker_slots.{h,cpp}` | 两端共用的角色配色槽 |

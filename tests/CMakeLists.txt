@@ -60,19 +60,21 @@ set(TEST_SOURCES
     unit/test_session_runtime.cpp
     unit/test_skill_deliverable.cpp
     # The whole-screen view model (design 08.5, D4): derivation + TUI parity.
-    unit/test_view_model.cpp    golden/test_tui_smoke.cpp
+    unit/test_view_model.cpp
+    golden/test_tui_smoke.cpp
     golden/test_chat_render.cpp
     golden/test_todo_render.cpp
     golden/test_markdown_render.cpp
     golden/test_theme_editor.cpp
-    # The studio's design system (tokens / layout / text fitting) is plain C++ with
-    # no ImGui include, so the geometry the window is built from is pinned here
-    # without a GPU, a window or a frame.
+    # The studio's design system (tokens / layout / text fitting / the header's
+    # button table) is plain C++ with no ImGui include, so the geometry the window
+    # is built from is pinned here without a GPU, a window or a frame.
     unit/test_studio_design.cpp
     unit/test_worker_wait.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/tokens.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/layout.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/fit.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/actions.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp

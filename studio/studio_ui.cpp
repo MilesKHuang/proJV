@@ -22,6 +22,7 @@
 
 #include "core/diff_rows.h"
 #include "core/speaker_slots.h"
+#include "design/actions.h"
 #include "design/fit.h"
 #include "design/layout.h"
 #include "design/tokens.h"
@@ -484,6 +485,101 @@ void drawAgentUnit(const Metrics& m, const layout::Rect& box, const view_model::
     }
 }
 
+// ---- header actions ------------------------------------------------------
+
+// The header's buttons, planned ONCE per frame. The same widths size the band
+// (computeFrame) and draw the buttons (drawHeader), so a wrap can never disagree
+// with the space that was reserved for it -- the class of bug that made every
+// previous "the layout is a frame behind" report.
+struct HeaderPlan {
+    std::vector<std::string> labels;
+    std::vector<std::string> tooltips;
+    std::vector<float> widths;
+    std::vector<std::vector<int>> rows;
+    float gap = 0.0f;
+    float rowH = 0.0f;
+    float height = 0.0f;
+    float firstRowW = 0.0f;
+};
+
+HeaderPlan g_headerPlan;
+
+GKey keyFor(actions::Id id) {
+    switch (id) {
+    case actions::Id::Role:
+        return GKey::Tab;
+    case actions::Id::NewChat:
+        return GKey::F3;
+    case actions::Id::Sessions:
+        return GKey::F4;
+    case actions::Id::Model:
+        return GKey::F10;
+    case actions::Id::Reasoning:
+        return GKey::F8;
+    case actions::Id::Dock:
+        return GKey::F9;
+    case actions::Id::Theme:
+        return GKey::F6;
+    case actions::Id::ThemeEditor:
+        return GKey::F7;
+    case actions::Id::Mcp:
+        return GKey::F5;
+    case actions::Id::Config:
+        return GKey::F2;
+    case actions::Id::Help:
+        return GKey::F1;
+    }
+    return GKey::None;
+}
+
+// The header's buttons are Ghost: the strip and a Secondary button share one
+// surface colour, so eleven filled buttons read as eleven floating words. Hover
+// is where the fill and the shortcut appear anyway.
+const ui::Btn kHeaderButton = ui::Btn::Ghost;
+
+actions::State headerState(const App& app) {
+    const view_model::Screen& s = app.screen();
+    actions::State st;
+    st.dock = s.dock;
+    st.reasoning = app.source().reasoningExpanded;
+    st.role = s.roleName;
+    st.promptFiles = s.promptFiles;
+    return st;
+}
+
+float rowWidth(const std::vector<float>& widths, const std::vector<int>& row, float gap) {
+    float w = 0.0f;
+    for (size_t i = 0; i < row.size(); ++i) {
+        w += widths[static_cast<size_t>(row[i])] + (i == 0 ? 0.0f : gap);
+    }
+    return w;
+}
+
+HeaderPlan planHeaderActions(const App& app, const Metrics& m, float rowW) {
+    HeaderPlan plan;
+    const std::vector<actions::Item>& items = actions::header();
+    const actions::State st = headerState(app);
+    plan.gap = tokens::spacePx(m, Space::Sm);
+    plan.rowH = m.controlH;
+    for (const actions::Item& it : items) {
+        plan.labels.push_back(actions::label(it.id, st));
+        plan.tooltips.push_back(actions::tooltip(it.id, st));
+    }
+    for (size_t i = 0; i < plan.labels.size() && i < items.size(); ++i) {
+        const float w = ui::buttonWidth(m, plan.labels[i], kHeaderButton);
+        plan.widths.push_back(std::min(std::max(1.0f, rowW), w));
+    }
+    // The wordmark keeps its room; the pills and the spinner give way first, and
+    // the buttons never do. Row 0 fits next to the title, later rows get the width.
+    const float reserve =
+        ui::measure(m, "proJV", Type::Title, false) + tokens::spacePx(m, Space::Lg);
+    plan.rows = actions::pack(plan.widths, plan.gap, std::max(0.0f, rowW - reserve), rowW);
+    if (!plan.rows.empty()) plan.firstRowW = rowWidth(plan.widths, plan.rows[0], plan.gap);
+    const float n = static_cast<float>(plan.rows.size());
+    plan.height = n > 0.0f ? n * plan.rowH + (n - 1.0f) * plan.gap : 0.0f;
+    return plan;
+}
+
 void drawHeader(App& app, const Frame& f) {
     const Metrics& m = f.metrics;
     const Palette p = ui::palette();
@@ -498,45 +594,34 @@ void drawHeader(App& app, const Frame& f) {
     const layout::Rect row = f.header.inset(pad, tokens::spacePx(m, Space::Sm), pad,
                                             tokens::spacePx(m, Space::Sm));
     const float titleH = tokens::linePx(m, Type::Title);
+    const float row0H = std::max(titleH, m.controlH);
+    const HeaderPlan& plan = g_headerPlan;
+    const std::vector<actions::Item>& items = actions::header();
 
-    // The actions are measured FIRST, so the title knows exactly what it has left.
-    // This is the responsive part: as the window narrows, the least important
-    // action drops out instead of the header overflowing its band.
-    struct Action {
-        std::string label;
-        GKey key;
-        ui::Btn kind;
-        const char* hint; // the shortcut, shown on hover instead of in a keycap bar
-    };
-    std::vector<Action> wanted;
-    wanted.push_back({"Model", GKey::F10, ui::Btn::Secondary, "F10  -  switch model"});
-    wanted.push_back({"Sessions", GKey::F4, ui::Btn::Secondary, "F4  -  open a saved session"});
-    wanted.push_back({"Config", GKey::F2, ui::Btn::Secondary, "F2  -  configuration"});
-    wanted.push_back({"MCP", GKey::F5, ui::Btn::Secondary, "F5  -  MCP servers"});
-    wanted.push_back({s.dock ? "Dock on" : "Dock off", GKey::F9, ui::Btn::Ghost,
-                      "F9  -  show or hide the TODO dock"});
-    wanted.push_back({"Help", GKey::F1, ui::Btn::Secondary, "F1  -  every key and command"});
-
-    const float gap = tokens::spacePx(m, Space::Sm);
-    std::vector<Action> shown;
-    float actionsW = 0.0f;
-    const float maxActions = row.w * 0.62f;
-    for (const auto& a : wanted) {
-        const float w = ui::buttonWidth(m, a.label, a.kind);
-        if (actionsW + w + gap > maxActions) break;
-        shown.push_back(a);
-        actionsW += w + gap;
+    // Every key the product documents is a button (design/actions.h), right
+    // aligned, wrapping into another row when the window is narrow. Nothing is
+    // dropped: a hidden action is a function the user cannot find.
+    for (size_t r = 0; r < plan.rows.size(); ++r) {
+        const std::vector<int>& idxs = plan.rows[r];
+        float x = row.right() - rowWidth(plan.widths, idxs, plan.gap);
+        const float y = row.y + (row0H - plan.rowH) * 0.5f +
+                        static_cast<float>(r) * (plan.rowH + plan.gap);
+        for (int idx : idxs) {
+            if (idx < 0 || idx >= static_cast<int>(items.size())) continue;
+            const size_t i = static_cast<size_t>(idx);
+            const actions::Item& item = items[i];
+            const layout::Rect box{x, y, plan.widths[i], plan.rowH};
+            const std::string shown =
+                ui::fitLine(m, plan.labels[i], plan.widths[i] - 2.0f * tokens::spacePx(m, Space::Md),
+                            Type::Body, false);
+            if (ui::buttonAt(m, box, shown, kHeaderButton, plan.tooltips[i].c_str())) {
+                app.handleKey(keyFor(item.id));
+            }
+            x += plan.widths[i] + plan.gap;
+        }
     }
-    if (!shown.empty()) actionsW -= gap;
-
-    float right = row.right();
-    for (auto it = shown.rbegin(); it != shown.rend(); ++it) {
-        const float w = ui::buttonWidth(m, it->label, it->kind);
-        const layout::Rect box{right - w, row.y + (titleH - m.controlH) * 0.5f, w, m.controlH};
-        if (ui::buttonAt(m, box, it->label, it->kind, it->hint)) app.handleKey(it->key);
-        right -= w + gap;
-    }
-    const float leftW = std::max(0.0f, (shown.empty() ? row.w : right - row.x) - gap);
+    const float leftW =
+        std::max(0.0f, row.w - (plan.firstRowW > 0.0f ? plan.firstRowW + plan.gap : 0.0f));
 
     // Title: the largest tier that fits the space that is left, MEASURED so the
     // pills can follow the text instead of floating at the right edge of a box
@@ -566,14 +651,14 @@ void drawHeader(App& app, const Frame& f) {
     titleW = std::min(titleW, std::max(minTitleW, budget));
 
     const bool showPills = budget >= minTitleW;
-    const layout::Rect titleBox{row.x, row.y, titleW, titleH};
+    const layout::Rect titleBox{row.x, row.y + (row0H - titleH) * 0.5f, titleW, titleH};
     ui::textAt(m, titleBox, ui::fitLine(m, titleText, titleW, titleTier, false), p.text,
                titleTier, false, 0.0f, 0.5f);
     if (showPills) {
         float x = titleBox.right() + tokens::spacePx(m, Space::Lg);
         const float pillH =
             tokens::linePx(m, Type::Caption) + 2.0f * tokens::spacePx(m, Space::Xs);
-        const float pillY = row.y + (titleH - pillH) * 0.5f;
+        const float pillY = row.y + (row0H - pillH) * 0.5f;
         ui::badge(m, layout::Rect{x, pillY, tagW, pillH}, tag, p.textDim, p.surface);
         x += tagW + tokens::spacePx(m, Space::Lg);
         const ImU32 phaseBg = fld(s.phaseColor);
@@ -621,7 +706,7 @@ void drawStatusLine(App& app, const Frame& f) {
     if (s.statusSpinner) {
         const float w = tokens::spacePx(m, Space::Md);
         ui::textAt(m, layout::Rect{box.x, box.y, w, box.h}, kSpin[spinPhase()], p.accent,
-                   Type::Small, true, 0.0f);
+                   Type::Body, true, 0.0f);
         box.x += w + tokens::spacePx(m, Space::Xs);
         box.w -= w + tokens::spacePx(m, Space::Xs);
     }
@@ -637,7 +722,9 @@ void drawStatusLine(App& app, const Frame& f) {
                   ui::contrastOn(p.warning), p.warning);
         box.w -= w + tokens::spacePx(m, Space::Sm);
     }
-    const Type tiers[2] = {Type::Small, Type::Caption};
+    // Body, with Small only as the fallback for a line too long to fit: the footer
+    // is read at a glance, and 13.5 px of grey was reported as too small twice.
+    const Type tiers[2] = {Type::Body, Type::Small};
     ui::fittedText(m, box, s.statusText, fld(s.statusColor), tiers, 2, false, 0.0f);
 }
 
@@ -647,7 +734,7 @@ void drawQueued(App& app, const Frame& f) {
     const view_model::Screen& s = app.screen();
     const std::string text =
         "Queued: " + std::to_string(s.queued) + " message(s) - sends after current turn";
-    ui::textAt(m, f.queued, text, studio_theme::field(&ThemeColors::todoTitle), Type::Small, false,
+    ui::textAt(m, f.queued, text, studio_theme::field(&ThemeColors::todoTitle), Type::Body, false,
                0.0f);
 }
 
@@ -656,22 +743,25 @@ void drawStatusBar(App& app, const Frame& f) {
     const Palette p = ui::palette();
     const view_model::Screen& s = app.screen();
     ui::fill(f.statusBar, p.surfaceAlt);
+    // The service bar is reference data (tokens, context, cost), not a footnote:
+    // at Body it reads at arm's length, at Small it read as a caption.
+    const Type tier = Type::Body;
     const float gap = tokens::spacePx(m, Space::Sm);
-    float x = f.statusBar.x + tokens::spacePx(m, Space::Sm);
-    const float limit = f.statusBar.right() - tokens::spacePx(m, Space::Sm);
+    float x = f.statusBar.x + tokens::spacePx(m, Space::Md);
+    const float limit = f.statusBar.right() - tokens::spacePx(m, Space::Md);
     for (size_t i = 0; i < s.statusBar.size(); ++i) {
         const view_model::Segment& seg = s.statusBar[i];
-        const float w = ui::measure(m, seg.text, Type::Small, false);
+        const float w = ui::measure(m, seg.text, tier, false);
         if (x + w > limit) break;
         if (i > 0) {
-            const float sepW = ui::measure(m, "  |  ", Type::Small, false);
+            const float sepW = ui::measure(m, "  |  ", tier, false);
             if (x + sepW + w > limit) break;
             ui::textAt(m, layout::Rect{x, f.statusBar.y, sepW, f.statusBar.h}, "  |  ", p.divider,
-                       Type::Small, false, 0.0f);
+                       tier, false, 0.0f);
             x += sepW;
         }
         ui::textAt(m, layout::Rect{x, f.statusBar.y, w, f.statusBar.h}, seg.text, fld(seg.color),
-                   Type::Small, false, 0.0f);
+                   tier, false, 0.0f);
         x += w + gap * 0.5f;
     }
 }
@@ -747,6 +837,22 @@ std::vector<std::vector<int>> packAgents(const Metrics& m,
     return rows;
 }
 
+// Visual rows the prompt needs for `text`, clamped to what the window may give up
+// to a composer before the conversation disappears. The field is monospaced, so
+// one row is one type tier and the count is a division, not a guess.
+constexpr int kComposerMaxRows = 7;
+
+int composerRowCount(const std::string& text, const Metrics& m, float composerW) {
+    if (text.empty()) return 1;
+    const float innerW =
+        std::max(1.0f, composerW - 2.0f * tokens::spacePx(m, Space::Md) - m.scrollbar);
+    const fit::Measure measure = [&m](const std::string& s) {
+        return ui::measure(m, s, Type::Mono, true);
+    };
+    const int rows = fit::wrappedRowCount(text, innerW, measure);
+    return std::min(kComposerMaxRows, std::max(1, rows));
+}
+
 Frame computeFrame(App& app, const Metrics& m) {
     Frame f;
     f.metrics = m;
@@ -761,23 +867,37 @@ Frame computeFrame(App& app, const Metrics& m) {
 
     // --- measured content -------------------------------------------------
     const float titleH = tokens::linePx(m, Type::Title);
+    // Row 0 holds the wordmark AND as many buttons as fit beside it; the rest wrap
+    // into further rows, and the band grows by exactly what they need. The width is
+    // the header's inner width (what drawHeader gets after its own inset), so the
+    // packing and the drawing can never disagree about how much room there is.
+    const float row0H = std::max(titleH, m.controlH);
+    const float headerPad = tokens::spacePx(m, Space::Lg);
+    g_headerPlan = planHeaderActions(app, m, std::max(1.0f, contentW - 2.0f * headerPad));
+    const float extraActionRows = std::max(0.0f, g_headerPlan.height - m.controlH);
+
     float agentRowH = 0.0f;
     if (!s.agentsEmpty) f.headerAgentRows = packAgents(m, s.agents, contentW, &agentRowH);
     f.headerAgentRowH = agentRowH;
     const float agentH =
         f.headerAgentRows.empty() ? 0.0f : static_cast<float>(f.headerAgentRows.size()) * agentRowH;
-    const float headerH = 2.0f * gap + titleH + (agentH > 0.0f ? gap + agentH : 0.0f);
+    const float headerH = 2.0f * gap + row0H + extraActionRows + (agentH > 0.0f ? gap + agentH : 0.0f);
 
-    const float statusLineH = tokens::linePx(m, Type::Small) + tokens::spacePx(m, Space::Xs);
+    const float statusLineH = tokens::linePx(m, Type::Body) + tokens::spacePx(m, Space::Xs);
     const float queuedH = s.queued > 0 ? statusLineH : 0.0f;
-    // The prompt is one control, not a card with a field inside: its height is the
-    // token control height, and the frame draws the only border it has.
-    const float composerH = std::max(m.controlH, tokens::linePx(m, Type::Mono) +
-                                                    2.0f * tokens::spacePx(m, Space::Md));
-    // The service bar is reference data, not a footnote: it reads at the Small tier,
-    // not at Caption. "The status bar text is too small" was the report, and it was
-    // right -- 12.5 px of grey is a caption, not a status.
-    const float statusBarH = tokens::linePx(m, Type::Small) + 2.0f * tokens::spacePx(m, Space::Xs);
+    // The prompt is one control, not a card with a field inside, and it is
+    // multi-line: its height is the number of rows the text needs (wrap plus the
+    // newlines typed with Shift+Enter), measured before anything is drawn so the
+    // chat column gives up exactly that height on this frame.
+    const float dockActual = f.dockOpen ? std::max(m.dockW, 220.0f * m.factor) : 0.0f;
+    const float chatW = std::max(1.0f, contentW - (f.dockOpen ? m.gutter + dockActual : 0.0f));
+    f.composerRows = composerRowCount(app.inputText(), m, chatW);
+    const float promptRowH = tokens::typePx(m, Type::Mono);
+    const float composerH = std::max(m.controlH, static_cast<float>(f.composerRows) * promptRowH +
+                                                     2.0f * tokens::spacePx(m, Space::Sm));
+    // The footer is read at arm's length: the status line and the service bar both
+    // sit on the Body tier. They were Small (13.5 px), which reads as a caption.
+    const float statusBarH = tokens::linePx(m, Type::Body) + 2.0f * tokens::spacePx(m, Space::Xs);
     // One rhythm for the whole footer: status line, prompt, service bar, all separated
     // by the same step, so the three surfaces read as one stack instead of three boxes
     // that happen to be nearby.
@@ -836,7 +956,7 @@ Frame computeFrame(App& app, const Metrics& m) {
         // is the surface it belongs to, so the two outlines share one line.
         f.slash = layout::Rect{f.composer.x, f.composer.y - gap - slashH, slashW, slashH};
     }
-    f.headerAgentRowsY = f.header.y + gap + titleH + gap;
+    f.headerAgentRowsY = f.header.y + gap + row0H + extraActionRows + gap;
     return f;
 }
 

@@ -59,5 +59,13 @@ std::string prefixThatFits(const std::string& text, float width, const Measure& 
 int bestTier(const std::string& text, float width, const float* sizes, int count,
              const UnitMeasure& unitWidth);
 
+// How many visual rows `text` needs in a box `width` pixels wide, the way the
+// prompt field wraps it: every '\n' starts a new row, and a row that overflows
+// continues on the next one. Always at least 1, so an empty line still counts as
+// a row. This is what lets the composer grow BEFORE it is drawn -- the window
+// cannot ask ImGui how tall a multiline field wants to be and then use that
+// height on the same frame.
+int wrappedRowCount(const std::string& text, float width, const Measure& measure);
+
 } // namespace fit
 } // namespace studio

@@ -67,10 +67,10 @@ it is wrong in both windows, which is the point.
 | right dock 36 cells: TODO + background tasks | same split, same width |
 | status line + spinner + `[skill]` | same, spinner is the same four quadrant glyphs |
 | `/` menu above the input | same rows, same 10-row window |
-| input line | single-line ImGui input with IME |
+| input line | one WRAPPING multi-line field: Enter sends, Shift+Enter (or Ctrl+Enter) starts a new line, and the box grows one row at a time up to seven |
 | `Queued: N message(s)` | same line, same colour |
-| status bar segments + role pill | same segments, same colours |
-| keycap hints F1..Esc | NO keycap bar: the header buttons carry their own shortcut (hover shows it), and the whole list lives in the Help dialog. Two places listing the same keys read as one unfinished feature |
+| status bar segments + role pill | same segments, same colours, on the Body tier |
+| keycap hints F1..Esc | NO keycap bar: EVERY key is a button in the top-right corner (hover shows its shortcut), so the two can never disagree (`studio/design/actions.h`). Two places listing the same keys read as one unfinished feature |
 
 ## Keys
 
@@ -79,10 +79,22 @@ F4 open session, F5 MCP, F6 theme, F7 theme editor, F8 reveal reasoning, F9 dock
 F10 model, Tab next role, Up/Down/PgUp/PgDn scroll, Enter send, Esc = cancel /
 clear / ask to quit, Ctrl+C never quits.
 
+Every one of those eleven keys is also a button in the header, in the order the
+actions are reached for rather than the order of the key numbers: Role (Tab), New
+(F3), Sessions (F4), Model (F10), Reasoning (F8), Dock (F9), Theme (F6), Colors
+(F7), MCP (F5), Config (F2), Help (F1). The table is `studio/design/actions.h`;
+the header wraps it into extra rows when the window is narrow and never drops an
+entry.
+
+Enter/Shift+Enter is the one place the studio adds a key the TUI cannot have: a
+terminal prompt is one line, a window prompt wraps. Shift+Enter and Ctrl+Enter
+insert a newline, Enter validates (`ImGuiInputTextFlags_CtrlEnterForNewLine`).
+
 The app's own key map runs **before** any widget is submitted (`App::handleKey`),
 so a focused text field cannot swallow Tab or the F-keys. Arrows scroll the chat
-while the prompt line has the keyboard; inside a multi-line field they move the
-caret instead.
+while the prompt holds one row; once the prompt is two rows tall or more, Up/Down
+belong to the caret instead (a field that scrolls the transcript *and* moves the
+caret with one keypress is two things moving at once).
 
 ## Modals
 
@@ -103,8 +115,10 @@ page exits (there is nothing to type into yet).
   `ImGui::GetPlatformIO().Platform_SetImeDataFn` (see `setImeData` in
   `studio/main_studio.cpp`). imgui_impl_win32 1.93 does not install one, and
   without it the candidate window sits in a corner.
-- A paste is flattened the way the TUI flattens it: tabs and line breaks become
-  spaces, and the buffer is capped, so a pasted block never sends itself.
+- A paste is flattened the way the TUI flattens it -- tabs become spaces and the
+  buffer is capped -- except for the line breaks, which a multi-line field keeps: a
+  pasted block can no longer send itself because Enter is the send key, not a
+  character in the paste.
 
 ## The design system
 
@@ -132,17 +146,29 @@ Three rules follow from that:
 
 ```
 window
-|- header     title, phase pill, model/sessions/config/help actions
+|- header     title, phase pill, the eleven action buttons (they wrap)
 |- body       Row [ chat (Grow) | dock (Fixed) ]     dock toggles with F9
-|- composer   the prompt card, sharing the chat column's left edge
-|- footer     status line, queued line, service bar, keycap bar
+|- composer   the prompt, sharing the chat column's left edge, one row per line of text
+|- footer     status line, queued line, service bar
 \- slash      the "/" menu, floating above the composer
 ```
 
-Every height comes from this frame's own measurements: how many rows the keycaps
-wrap into, whether the dock is open, whether there is a queued line. That is why a
-resize lands on the frame it happens, and why there is no `static float
-bottomHeight` left anywhere in the shell.
+Every height comes from this frame's own measurements: how many rows the action
+buttons wrap into, whether the dock is open, whether there is a queued line, how
+many visual rows the prompt holds. That is why a resize lands on the frame it
+happens, and why there is no `static float bottomHeight` left anywhere in the
+shell.
+
+### The header is a table, not a hand-written list
+
+The buttons used to be six literals at the draw call, and the responsive pass
+DROPPED the ones that did not fit: "the buttons do not correspond to what the TUI
+can do" was literally true, and it got worse the narrower the window was. Now
+`studio/design/actions.h` holds one row per documented key, `actions::pack` wraps
+them into rows instead of hiding them, and the frame grows by exactly the rows it
+needs. `tests/unit/test_studio_design.cpp` asserts that the set of shortcuts in
+that table equals the reference manual's key map, so a key added to the product
+without a button fails the test run instead of the user's expectation.
 
 ## Parity testing
 
@@ -151,9 +177,12 @@ bottomHeight` left anywhere in the shell.
   verbatim in `chat_view::renderBubbles`'s output for the same bubbles.
 - `tests/unit/test_studio_design.cpp` pins the geometry: a monotonic type ladder,
   clamped scaling, row/column/percent/grow/min-max rectangles, CJK counted as two
-  columns, ellipsis that never splits a code point, and `bestTier` choosing the
-  largest tier that fits. None of the three modules includes ImGui, so they test
-  without a GPU or a window.
+  columns, ellipsis that never splits a code point, `bestTier` choosing the largest
+  tier that fits, `wrappedRowCount` counting the rows a multi-line prompt needs (a
+  newline, a wrap, a trailing newline), and the header's table: one entry per
+  documented key, the toggle and role-chip labels following their state, and
+  `actions::pack` wrapping instead of dropping. None of those modules includes
+  ImGui, so they test without a GPU or a window.
 - `tests/unit/test_worker_wait.cpp` pins the exit rule: a finished worker is joined
   (cleanup is then safe), an unfinished one is detached and the call returns at once
   (`src/core/worker_wait.h`). There is no "wait N seconds" judgement anywhere.
@@ -200,10 +229,20 @@ bottomHeight` left anywhere in the shell.
   tool slot used to be a `cv_.wait` that never looked at the cancel flag, so a worker
   parked there could not be woken; it now waits on "a slot is free **or** cancelled"
   (`src/core/sub_agent.cpp`). Same shape as the approval wait, which already did this.
-- **The prompt is one control, not a card with a field inside.** The input frame is
-  the box: theme surface fill, one hairline border, token rounding and padding, and
-  `ImGuiCol_NavCursor` pushed transparent. A card behind it plus ImGui's focus
-  highlight is what produced two outlines that could never align.
+- **The prompt is one control, not a card with a field inside, and it is multi-line.**
+  The input frame is the box: theme surface fill, one hairline border, token rounding
+  and padding, and `ImGuiCol_NavCursor` pushed transparent. A card behind it plus
+  ImGui's focus highlight is what produced two outlines that could never align. The
+  field wraps (`ImGuiInputTextFlags_WordWrap`), holds line breaks, and the frame
+  sizes it from the text before drawing it -- up to seven rows, then it scrolls.
+- **The footer sits on the Body tier.** The status line and the service bar were Small
+  (13.5 px), twice reported as too small to read; a terminal has one text size, so the
+  GUI's footer now matches the size the chat is read at, and only the badges stay
+  small.
+- **A multi-line paste keeps its line breaks.** The single-line field had to flatten
+  them away (a pasted block could send itself); with Enter as the send key and
+  Shift+Enter as the newline, a pasted block can no longer send anything. Tabs still
+  become spaces, and the paste cap is the TUI's.
 - **Layout is cached per row**, so a long conversation is not re-parsed every frame
   (that quadratic cost was what made the window stop responding during a skill run).
 - **No `imgui.ini`.** The layout is fixed, so there is no state file to drift.
@@ -229,13 +268,14 @@ bottomHeight` left anywhere in the shell.
 | `studio/main_studio.cpp` | Windows: WGL context, IME hook, main loop |
 | `studio/main_studio_sdl.cpp` | Linux: the same loop over SDL2 |
 | `studio/studio_app.{h,cpp}` | state, actions, key map, `Source` filling |
-| `studio/studio_ui.cpp` | the main screen: chat, dock, status, input, keycaps |
+| `studio/studio_ui.cpp` | the main screen: chat, dock, status, the wrapping header, input |
 | `studio/studio_modals.cpp` | the ten modals |
 | `studio/studio_markdown.cpp` | `markdown_text` lines -> ImGui draw calls |
 | `studio/studio_theme.cpp` | `ThemeColors` -> ImU32 (the studio's only colour conversion), fonts |
+| `studio/design/actions.{h,cpp}` | the header's button table: one row per documented key, plus the wrap packing |
 | `studio/design/tokens.{h,cpp}` | the size ladder (type / space / radius) and `Metrics` |
 | `studio/design/layout.{h,cpp}` | the flexbox-subset solver, pure arithmetic |
-| `studio/design/fit.{h,cpp}` | measuring, ellipsis, tier fitting, measurer injected |
+| `studio/design/fit.{h,cpp}` | measuring, ellipsis, tier fitting, row counting, measurer injected |
 | `studio/ui/ui.{h,cpp}` | the palette and the widget kit (button/check/radio/segmented/field/row/scroll) |
 | `src/core/view_model.{h,cpp}` | the contract above |
 | `src/core/speaker_slots.{h,cpp}` | the role palette both front-ends use |

@@ -248,7 +248,7 @@ void App::fillSource() {
 
     s.input.text = input_;
     s.input.cursor = static_cast<int>(input_.size());
-    s.input.placeholder = "type a message (Enter=send, Esc=quit?, F2=config)";
+    s.input.placeholder = "type a message - Enter sends, Shift+Enter starts a new line";
 
     fillModalSource(s);
     source_ = std::move(s);
@@ -433,32 +433,30 @@ void App::setInputText(const std::string& s) {
 
 void App::commitInput(const char* text) {
     if (!text) return;
-    std::string next = text;
-    // The TUI flattens a paste: line breaks and tabs become spaces (a pasted
-    // block must never send itself) and an absurd paste is capped. ImGui already
-    // strips newlines from a single-line field; tabs and the cap are ours.
-    bool changed = false;
-    for (char& c : next) {
-        if (c == '\t' || c == '\r' || c == '\n') {
-            c = ' ';
-            changed = true;
-        }
+    // The field is multi-line, so a line break is something the user asked for with
+    // Shift+Enter and it stays (the single-line field had to flatten it away). A
+    // tab becomes a space -- a tab in a buffer that is sent to a model renders as
+    // nothing in the transcript -- a pasted CRLF pair contributes one newline, and
+    // an absurd paste is capped, exactly like the TUI's paste_flatten.
+    std::string next;
+    for (const char* p = text; *p; ++p) {
+        if (*p == '\r') continue;
+        next.push_back(*p == '\t' ? ' ' : *p);
     }
     if (next.size() > paste_flatten::kMaxFlattenChars) {
         next.resize(paste_flatten::kMaxFlattenChars);
-        changed = true;
     }
-    (void)changed;
     if (next == input_) return;
     input_ = std::move(next);
     onInputEdited();
 }
 
 void App::onInputEdited() {
-    // Only a leading "/" with no space yet can be a command name. Typing the
+    // Only a leading "/" with no separator yet can be a command name. Typing the
     // first character of the arguments ("/wish a...") closes the menu, which is
-    // exactly what the user means.
-    const size_t sp = input_.find_first_of(" \t");
+    // exactly what the user means -- and a newline after the name counts as that
+    // separator, or the menu would hang over the composer for good.
+    const size_t sp = input_.find_first_of(" \t\n");
     const bool bare = !input_.empty() && input_[0] == '/' && sp == std::string::npos;
     if (!bare) {
         slashOpen_ = false;
@@ -951,21 +949,31 @@ bool App::handleKey(GKey key) {
         }
         return true;
     case GKey::Up:
-        if (slashOpen_)
+        if (slashOpen_) {
             slashMove(-1);
-        else
-            scrollChat(1);
+            return true;
+        }
+        // A prompt taller than one row owns its arrow keys: inside a multiline
+        // field Up/Down move the caret, and scrolling the chat at the same time
+        // would move two things with one key. Single-row prompts keep the TUI's
+        // meaning (the arrow scrolls the transcript).
+        if (promptRows_ > 1) return false;
+        scrollChat(1);
         return true;
     case GKey::Down:
-        if (slashOpen_)
+        if (slashOpen_) {
             slashMove(1);
-        else
-            scrollChat(-1);
+            return true;
+        }
+        if (promptRows_ > 1) return false;
+        scrollChat(-1);
         return true;
     case GKey::PageUp:
+        if (promptRows_ > 1) return false;
         scrollChat(10);
         return true;
     case GKey::PageDown:
+        if (promptRows_ > 1) return false;
         scrollChat(-10);
         return true;
     case GKey::None:

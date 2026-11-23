@@ -117,6 +117,31 @@ std::string ellipsize(const std::string& text, float width, const Measure& measu
     return head + marker;
 }
 
+int wrappedRowCount(const std::string& text, float width, const Measure& measure) {
+    // One row per explicit line is the floor; a wide line adds rows on top of it.
+    // A non-positive width (a window still 0 px wide on its first frame) counts
+    // every line as one row instead of dividing by zero.
+    int rows = 0;
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t nl = text.find('\n', start);
+        const std::string line =
+            (nl == std::string::npos) ? text.substr(start) : text.substr(start, nl - start);
+        int lineRows = 1;
+        if (width > 0.0f && measure && !line.empty()) {
+            const float used = measure(line);
+            // ceil(used / width), and a character wider than the box still takes
+            // one row: a field cannot render a half row.
+            lineRows = static_cast<int>((used - 0.001f) / width) + 1;
+            if (lineRows < 1) lineRows = 1;
+        }
+        rows += lineRows;
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return rows < 1 ? 1 : rows;
+}
+
 int bestTier(const std::string& text, float width, const float* sizes, int count,
              const UnitMeasure& unitWidth) {
     if (count <= 0 || sizes == nullptr) return 0;

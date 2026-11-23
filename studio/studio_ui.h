@@ -49,6 +49,12 @@ struct Frame {
     bool dockOpen = false;
     tokens::Metrics metrics;
 
+    // Visual rows the prompt field needs for the text it holds (wrap + explicit
+    // newlines, clamped). The composer is multi-line, so its band is sized from
+    // the text before anything is drawn; the field itself reads this to know how
+    // much of the box it may scroll inside.
+    int composerRows = 1;
+
     // The agent strip wraps, so it is packed during the measuring pass: one entry
     // per row, holding the indices of the units that landed on it. Packing once
     // means the height used for the layout and the drawing cannot disagree.

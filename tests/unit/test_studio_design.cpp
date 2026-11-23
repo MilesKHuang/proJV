@@ -6,10 +6,13 @@
 // characters wide") was a geometry bug; this file is what stops those coming back.
 #include "doctest.h"
 
+#include "design/actions.h"
 #include "design/fit.h"
 #include "design/layout.h"
 #include "design/tokens.h"
 
+#include <algorithm>
+#include <set>
 #include <string>
 
 using studio::fit::Measure;
@@ -262,4 +265,112 @@ TEST_CASE("fit: bestTier picks the largest tier that fits") {
     CHECK(studio::fit::bestTier("abcd", 10.0f, sizes, 3, unit) == 2);
     // Nothing fits: the smallest tier is still the answer, never an out-of-range one.
     CHECK(studio::fit::bestTier("abcd", 1.0f, sizes, 3, unit) == 2);
+}
+
+// ---- the multi-line composer --------------------------------------------
+
+TEST_CASE("fit: wrappedRowCount counts the rows a multiline field needs") {
+    // The fake face is 8 px per column at 16 px, so a 64 px box holds 8 columns.
+    CHECK(studio::fit::wrappedRowCount("", 64.0f, measurer()) == 1);
+    CHECK(studio::fit::wrappedRowCount("abcd", 64.0f, measurer()) == 1);
+    // Exactly at the edge is still one row, never a phantom second one.
+    CHECK(studio::fit::wrappedRowCount("abcdefgh", 64.0f, measurer()) == 1);
+    CHECK(studio::fit::wrappedRowCount("abcdefghi", 64.0f, measurer()) == 2);
+    CHECK(studio::fit::wrappedRowCount("abcdefghijklmnopq", 64.0f, measurer()) == 3);
+    // Every explicit newline starts a row, including a trailing one (the caret is
+    // on that row: a composer that hides it swallows the next character).
+    CHECK(studio::fit::wrappedRowCount("a\nb", 64.0f, measurer()) == 2);
+    CHECK(studio::fit::wrappedRowCount("a\n", 64.0f, measurer()) == 2);
+    CHECK(studio::fit::wrappedRowCount("\n\n", 64.0f, measurer()) == 3);
+    // A row that wraps AND a newline: 9 columns = 2 rows, then one more line.
+    CHECK(studio::fit::wrappedRowCount("abcdefghi\nz", 64.0f, measurer()) == 3);
+    // An unmeasured box (0 px wide on the first frame) is one row per line, and a
+    // character wider than the box still needs a whole row.
+    CHECK(studio::fit::wrappedRowCount("abc\ndef", 0.0f, measurer()) == 2);
+    CHECK(studio::fit::wrappedRowCount("ab", 8.0f, measurer()) == 2);
+    // CJK counts as two columns here too: 4 wide glyphs = 64 px = one row.
+    CHECK(studio::fit::wrappedRowCount("\xe4\xbd\xa0\xe5\xa5\xbd\xe4\xb8\x96\xe7\x95\x8c", 64.0f,
+                                       measurer()) == 1);
+}
+
+// ---- the header's button table ------------------------------------------
+
+TEST_CASE("actions: every documented key has exactly one header button") {
+    // The reference manual's key table (docs/*/user-guide/08-reference.md) and the
+    // buttons must be the same set: a key the product answers to but the header
+    // cannot show is the report this table was written for.
+    std::set<std::string> documented = {"F1", "F2", "F3", "F4", "F5",
+                                       "F6", "F7", "F8", "F9", "F10", "Tab"};
+    std::set<std::string> shown;
+    for (const auto& item : studio::actions::header()) {
+        shown.insert(item.shortcut);
+        CHECK(item.label != nullptr);
+        CHECK(std::string(item.label).size() > 0);
+    }
+    CHECK(shown.size() == studio::actions::header().size()); // no key documented twice
+    CHECK(shown == documented);
+}
+
+TEST_CASE("actions: a toggle and the role chip say what state they are in") {
+    using studio::actions::Id;
+    studio::actions::State st;
+    st.dock = true;
+    st.reasoning = false;
+    st.role = "monica";
+    st.promptFiles = 3;
+    CHECK(studio::actions::label(Id::Dock, st) == "Dock on");
+    CHECK(studio::actions::label(Id::Reasoning, st) == "Reasoning off");
+    CHECK(studio::actions::label(Id::Role, st) == "Role: monica");
+    // No prompt file installed: the chip still has to be clickable and named.
+    studio::actions::State empty;
+    empty.role.clear();
+    empty.promptFiles = 0;
+    CHECK(studio::actions::label(Id::Role, empty) == "Role");
+    st.dock = false;
+    st.reasoning = true;
+    CHECK(studio::actions::label(Id::Dock, st) == "Dock off");
+    CHECK(studio::actions::label(Id::Reasoning, st) == "Reasoning on");
+    // Static labels come from the table, so the header cannot invent a second word.
+    CHECK(studio::actions::label(Id::Sessions, st) == "Sessions");
+    // A tooltip leads with the shortcut the button stands for.
+    CHECK(studio::actions::tooltip(Id::Dock, st).rfind("F9", 0) == 0);
+    CHECK(studio::actions::tooltip(Id::Role, st).rfind("Tab", 0) == 0);
+}
+
+TEST_CASE("actions: pack wraps instead of dropping a button") {
+    // Five 100 px controls, 8 px gaps: two fit in 250 px, the rest follow.
+    const std::vector<float> widths = {100.0f, 100.0f, 100.0f, 100.0f, 100.0f};
+    const auto rows = studio::actions::pack(widths, 8.0f, 250.0f, 250.0f);
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].size() == 2); // 100 + 8 + 100 = 208 <= 250, a third would not fit
+    CHECK(rows[1].size() == 2);
+    CHECK(rows[2].size() == 1);
+    // Every control is used exactly once, in order: nothing lost, nothing moved.
+    size_t seen = 0;
+    for (const auto& row : rows) {
+        for (int idx : row) CHECK(idx == static_cast<int>(seen++));
+    }
+    CHECK(seen == widths.size());
+}
+
+TEST_CASE("actions: row 0 is narrower than the rows under it") {
+    const std::vector<float> widths = {100.0f, 100.0f, 100.0f};
+    // The title shares row 0, so only one control fits there; the rest use the
+    // full width below it.
+    const auto rows = studio::actions::pack(widths, 8.0f, 120.0f, 250.0f);
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].size() == 1);
+    CHECK(rows[1].size() == 2);
+}
+
+TEST_CASE("actions: a control wider than the window still gets a row") {
+    const std::vector<float> widths = {400.0f, 50.0f};
+    const auto rows = studio::actions::pack(widths, 8.0f, 100.0f, 100.0f);
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].size() == 1);
+    CHECK(rows[0][0] == 0);
+    CHECK(rows[1].size() == 1);
+    CHECK(rows[1][0] == 1);
+    // No controls at all is a valid answer, not a crash.
+    CHECK(studio::actions::pack({}, 8.0f, 100.0f, 100.0f).empty());
 }

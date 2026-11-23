@@ -103,6 +103,11 @@ class App {
     // --- input line -------------------------------------------------------
     const std::string& inputText() const { return input_; }
     void setInputText(const std::string& s);
+    // Visual rows the composer is holding this frame (set by the prompt widget).
+    // The key map asks: while the prompt is more than one row tall, Up/Down move
+    // the caret inside it instead of scrolling the chat.
+    void setPromptRows(int rows) { promptRows_ = rows > 0 ? rows : 1; }
+    int promptRows() const { return promptRows_; }
     // Called once per frame with the edited widget buffer.
     void commitInput(const char* text);
     // Re-open / re-filter the "/" menu after an edit.
@@ -204,6 +209,7 @@ class App {
     view_model::Screen screen_;
 
     std::string input_;
+    int promptRows_ = 1;
     std::string modal_ = "none";
     bool slashOpen_ = false;
     int slashSelected_ = 0;
