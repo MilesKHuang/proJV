@@ -171,11 +171,11 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 - **工作目录按 pane，不按进程。** `SessionRuntime::setWorkspace` 在 `initialize()` 之前存下它，`session_runtime.cpp` 里 7 处 `getWorkspaceDir()` 改读这个成员；默认值仍是启动目录，所以 TUI 与 `projv run` 行为不变。任何地方都不调 `chdir`：一个 pane 改进程目录，会把别的 pane 的工具和它的快照库一起挪走。
 - **忙着的 pane 拒绝关闭。** `closePane` 回一句先按 Esc 停，而不是销毁一个工作线程还在写库的 `SessionRuntime`。
 
-开会话没有对话框：从文件树落点——工具栏上的 `+`、文件夹右键Start a session here、或 Sessions 面板的 `+ New`（用树当前目录）。想换目录就在树顶那行路径里输。
+开会话没有对话框：从文件树落点——工具栏上的 `+`、文件夹右键的 "Start a session here"、或 Sessions 面板的 `+ New`（用树当前目录）。想换目录就在树顶那行路径里输。
 
-- **点下 `+` 立刻有反应。** 卡片和 `starting...` 在点击那一帧就出现，真正那 3-5 秒的 `initialize()`（会话库 + MCP 服务）在下一帧、仍然在 UI 线程上做。把它挪到后台线程试过，会在 `SessionRuntime::initialize()` 里崩，所以工作留在安全的地方，只有反馈是异步的。
+- **开一个会话的代价是一帧 + 约 40 ms。** 按阶段计时实测过：卡片和 `starting...` 在点击那一帧出现，`SessionRuntime::initialize()`（配置、工具、agent、提示词、固定上下文块、MCP 起进程）约 40 ms，整次点击不到 100 ms。所以引擎工作留在 UI 线程；挪到后台线程试过，会在 `initialize()` 里崩，而且没有值得挪的东西。之前感觉到的 3-5 秒是同一条路径上的**崩溃**（`newPane` 里移动后使用了空 `unique_ptr`），不是这个调用。
 - **同目录的第二张卡片带序号**（proJV @ Release (2)），两张卡不会读起来一样。
-- **每张卡先 `Dummy()` 占位再画**：卡片和树行都是绝对矩形绘制，不先占位 ImGui 就会报 "SetCursorScreenPos() to extend window boundaries 并把整块面板描成纯红；右键菜单由行打开、但只在循环外画一次，否则同名弹窗每行查一次就是 id 冲突（多 pane 右键出错就是它）。
+- **每张卡先 `Dummy()` 占位再画**：卡片和树行都是绝对矩形绘制，不先占位 ImGui 就会报 "SetCursorScreenPos() to extend window boundaries" 并把整块面板描成纯红；右键菜单由行打开、但只在循环外画一次，否则同名弹窗每行查一次就是 id 冲突（多 pane 右键出错就是它）。
 
 ## 一致性测试
 
@@ -195,6 +195,13 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 - `proJV_studio --dump-view-model screen.json` 写窗口快照；
   `proJV_tui run --jsonl` 写同一会话的事件流。两者对照，就是"不靠人眼看屏幕"
   找行为差异的方法。
+
+## 每个会话的数字能说什么、不能说什么
+
+`ISystemStats` 每个会话喂一组 pid，所以卡片上的 CPU/MEM/GPU 属于这个会话自己的子进程：它的后台任务（`bg_task::Snapshot::pid`）、它的 MCP 服务（`mcp::Manager::serverPids`），以及只有一个会话在跑工具时 runner 当前持有的那个子进程（`IProcessRunner::CurrentPid`）。两条限制写明：
+
+- **工具子进程只在恰好一个会话在跑时归属。** `IProcessRunner` 按设计一次一个子进程（`src/platform/iprocess_runner.h`）；两个会话排队时，正在跑的那个属于执行它的会话。
+- **Linux 上 GPU 是 `-`。** 内核只暴露整卡占用（amdgpu 的 `gpu_busy_percent`），没有按进程的；从整卡数字里分一份给会话，是把猜测包装成测量。Windows 的 PDH 实例名带 `pid_<n>`，那里的数字是真的。
 
 ## 有意保留的差异
 

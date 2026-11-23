@@ -25,6 +25,8 @@
 #include "debug_log.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -306,7 +308,6 @@ bool SessionRuntime::initialize() {
     agent_->setContextWindow(config_.contextWindow);
 
     // Prompt files from projv_files/prompts/.
-    promptFiles_ = ensureDefaultPrompts();
     // compactor.md is the /compress prompt, not a role. Every other file here is
     // a role, whatever it is called -- no name is reserved.
     promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
@@ -315,7 +316,6 @@ bool SessionRuntime::initialize() {
     agent_->setSystemPrompt(activePromptContent());
 
     // Sessions dir (lazy-create DB on first message).
-    sessionsDir_ = getSessionsDir();
     std::error_code ec;
     fs::create_directories(sessionsDir_, ec);
     if (ec) {
@@ -347,7 +347,6 @@ bool SessionRuntime::initialize() {
     };
 
     // Inject system prompt as first session message.
-    agent_->addPersistedMessage(Message::System(activePromptContent()));
 
     // Fixed prefix: P1 [ENVIRONMENT] + P2 [PROJECT] right after the role prompt.
     // Same call the F3 and "/clear" paths use, so a conversation always starts

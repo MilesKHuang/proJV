@@ -206,11 +206,14 @@ pane. Five panes, the reference window's own limit. Consequences worth stating:
   the process would move every other pane's tools and its snapshot store with it.
 - **A busy pane refuses to close.** `closePane` answers "Esc stops it first" instead
   of destroying a `SessionRuntime` whose worker thread is still writing.
-- **Starting a pane answers immediately, then the window is busy.** The card and its
-  `starting...` state appear on the click frame; the 3-5 s `initialize()` (session
-  database, MCP servers) runs on the next frame, on the UI thread. A worker thread
-  for it was tried and crashed inside `SessionRuntime::initialize()`, so the work
-  stays where it is safe and only the feedback is asynchronous.
+- **Starting a pane costs one frame, then ~40 ms.** Measured with per-stage timers on
+  the click path: the card and its `starting...` state appear on the click frame, and
+  `SessionRuntime::initialize()` (config, tools, agent, prompts, the fixed context
+  blocks, MCP spawn) takes about 40 ms -- the whole click is under 100 ms. The engine
+  work therefore stays on the UI thread; a worker thread for it was tried and crashes
+  inside `initialize()`, and there is nothing worth moving anyway.
+  What used to feel like three to five seconds was a *crash* on the same path (see the
+  moved-from `unique_ptr` in `newPane`), not this call.
 - **A pane created in the same folder as another gets a suffix** ("proJV @ Release
   (2)"), so two cards never read identically.
 - There is no launcher dialog: a pane starts from the tree (`+` in its toolbar, a
@@ -254,6 +257,13 @@ without a button fails the test run instead of the user's expectation.
 - `proJV_studio --dump-view-model screen.json` writes the live window's snapshot;
   `proJV_tui run --jsonl` writes the same session's event stream. Diffing the two
   is how a behaviour difference is found without a human watching.
+
+## What the per-session numbers can and cannot say
+
+ISystemStats is fed one group of pids per session, so a card's CPU/MEM/GPU belong to that session's own child processes: its background tasks (bg_task::Snapshot::pid), its MCP servers (mcp::Manager::serverPids) and, when exactly one session is running a tool, the single child the runner holds right now (IProcessRunner::CurrentPid). Two limits are stated rather than hidden:
+
+- **The tool child is attributed only while one session is busy.** IProcessRunner is one child at a time by design (src/platform/iprocess_runner.h); with two sessions queued for it, the running child belongs to the one whose turn executes it.
+- **GPU is - on Linux.** The kernel exposes per-card utilisation (amdgpu's gpu_busy_percent), not per-process; claiming a session's share out of a card number would be a guess dressed as a measurement. On Windows the PDH instance names carry pid_<n>, so the figure is real there.
 
 ## What is deliberately different
 

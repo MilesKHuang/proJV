@@ -46,6 +46,7 @@ double doubleOr(const std::string& s, double fallback) {
     }
 }
 
+
 long long monotonicMs() {
     using namespace std::chrono;
     return static_cast<long long>(
@@ -180,10 +181,10 @@ bool App::newPane(const std::string& workspace, std::string* why, bool syncNow) 
 }
 
 void App::refreshPaneTitles() {
-    // Two panes in folders whose last component is the same ("…\Release") would read
+    // Two panes in folders whose last component is the same ("...\\\\Release") would read
     // identically in the list. The first keeps the plain name, the rest get " (2)",
-    // " (3)", … in list order — recomputed after every add or close, so the numbers
-    // never have a gap.
+    // " (3)", and so on, in list order -- recomputed after every add or close, so the
+    // numbers never have a gap.
     std::map<std::string, int> seen;
     for (auto& owned : panes_) {
         Pane& pane = *owned;
@@ -1239,7 +1240,6 @@ void App::tick() {
                 if (!ok) pane.error = "initialize failed (see projv_files/logs)";
                 pane.started.store(true);
                 bindActive();
-                if (ok) adoptFinishedPanes();
             }
         }
     }
