@@ -75,6 +75,10 @@ set(TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/studio/design/layout.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/fit.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/actions.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/file_tree.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/path_text.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/gauges.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/work_clock.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp

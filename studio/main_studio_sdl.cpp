@@ -129,6 +129,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // Resource sampling: the window owns it, the headless paths never start it.
+    app.startSampling();
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         std::fprintf(stderr, "proJV studio: SDL_Init: %s\n", SDL_GetError());
         app.shutdown();

@@ -8,10 +8,19 @@
 
 #include "design/actions.h"
 #include "design/fit.h"
+#include "design/file_tree.h"
+#include "design/gauges.h"
 #include "design/layout.h"
+#include "design/path_text.h"
 #include "design/tokens.h"
+#include "design/work_clock.h"
+#include "platform/isystem_stats.h"
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -373,4 +382,223 @@ TEST_CASE("actions: a control wider than the window still gets a row") {
     CHECK(rows[1][0] == 1);
     // No controls at all is a valid answer, not a crash.
     CHECK(studio::actions::pack({}, 8.0f, 100.0f, 100.0f).empty());
+}
+
+// ---- the file tree's model ----------------------------------------------
+
+namespace {
+
+studio::ftree::Entry ent(const std::string& name, bool isDir) {
+    studio::ftree::Entry e;
+    e.name = name;
+    e.path = "C:/x/" + name;
+    e.isDir = isDir;
+    return e;
+}
+
+std::vector<std::string> namesOf(std::vector<studio::ftree::Entry> entries) {
+    studio::ftree::sortEntries(entries);
+    std::vector<std::string> out;
+    for (const auto& e : entries) out.push_back(e.name);
+    return out;
+}
+
+// A scratch directory that cleans itself up, so the test exercises the real
+// directory reader without inheriting state from a previous run.
+struct Scratch {
+    std::filesystem::path dir;
+    Scratch() {
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        dir = std::filesystem::temp_directory_path() /
+              ("projv_ftree_" + std::to_string(static_cast<long long>(stamp)));
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+    }
+    ~Scratch() {
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
+};
+
+} // namespace
+
+TEST_CASE("ftree: Explorer order is folders first, then numbers by value") {
+    // The defect this rule exists to remove: plain dictionary order puts b10
+    // before b2, and strands folders between files.
+    const std::vector<std::string> got =
+        namesOf({ent("b10.txt", false), ent("b2.txt", false), ent("README.md", false),
+                 ent("sub", true), ent("Alpha", false)});
+    const std::vector<std::string> want = {"sub", "Alpha", "b2.txt", "b10.txt", "README.md"};
+    CHECK(got == want);
+}
+
+TEST_CASE("ftree: a number run compares as a number, not as text") {
+    // "v2" < "v10" though '1' < '2' as text, and text sorts before a number run at
+    // the same position ("a" < "a1").
+    const std::vector<std::string> got =
+        namesOf({ent("v10", false), ent("v2", false), ent("a1", false), ent("a", false)});
+    CHECK(got == std::vector<std::string>{"a", "a1", "v2", "v10"});
+}
+
+TEST_CASE("ftree: listDirectory reads a real directory in the same order") {
+    Scratch scratch;
+    REQUIRE(!scratch.dir.empty());
+    std::error_code ec;
+    std::filesystem::create_directories(scratch.dir / "zeta", ec);
+    for (const char* name : {"b10.txt", "b2.txt", "a.md"}) {
+        std::ofstream(scratch.dir / name) << "x";
+    }
+    std::string err;
+    const auto entries = studio::ftree::listDirectory(scratch.dir.string(), &err);
+    CHECK(err.empty());
+    REQUIRE(entries.size() == 4);
+    CHECK(entries[0].name == "zeta");
+    CHECK(entries[0].isDir);
+    CHECK(entries[1].name == "a.md");
+    CHECK(entries[2].name == "b2.txt");
+    CHECK(entries[3].name == "b10.txt");
+    // A path that is not a directory is an error string, never a crash and never
+    // an exception.
+    std::string missing;
+    const auto none = studio::ftree::listDirectory((scratch.dir / "nope").string(), &missing);
+    CHECK(none.empty());
+    CHECK(!missing.empty());
+}
+
+TEST_CASE("ftree: expanding a folder adds rows at depth 1, collapsing removes them") {
+    Scratch scratch;
+    std::error_code ec;
+    std::filesystem::create_directories(scratch.dir / "sub", ec);
+    std::ofstream(scratch.dir / "sub" / "inner.txt") << "x";
+    std::ofstream(scratch.dir / "top.txt") << "x";
+
+    studio::ftree::Tree tree;
+    std::string err;
+    REQUIRE(tree.setRoot(scratch.dir.string(), &err));
+    CHECK(err.empty());
+    CHECK(tree.rows().size() == 2); // sub/ + top.txt, in that order
+    CHECK(tree.rows()[0].isDir);
+
+    tree.expand((scratch.dir / "sub").string());
+    const auto rows = tree.rows();
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].name == "sub");
+    CHECK(rows[0].expanded);
+    CHECK(rows[1].name == "inner.txt");
+    CHECK(rows[1].depth == 1);
+    CHECK(rows[2].depth == 0);
+
+    tree.collapse((scratch.dir / "sub").string());
+    CHECK(tree.rows().size() == 2);
+    // Toggling twice is the same as not touching it.
+    tree.toggle((scratch.dir / "sub").string());
+    CHECK(tree.rows().size() == 3);
+    tree.toggle((scratch.dir / "sub").string());
+    CHECK(tree.rows().size() == 2);
+}
+
+TEST_CASE("ftree: a root that is not a directory is refused with a reason") {
+    studio::ftree::Tree tree;
+    std::string err;
+    CHECK_FALSE(tree.setRoot("", &err));
+    CHECK_FALSE(err.empty());
+    err.clear();
+    CHECK_FALSE(tree.setRoot("C:/definitely/not/here/at/all", &err));
+    CHECK(!err.empty());
+    CHECK(tree.rows().empty());
+}
+
+// ---- the injection text --------------------------------------------------
+
+TEST_CASE("path_text: only what would be ambiguous gets quotes") {
+    CHECK(studio::path_text::payload("D:\\ws\\projV\\src\\main.py", false) ==
+          "D:\\ws\\projV\\src\\main.py");
+    CHECK(studio::path_text::payload("D:\\ws\\my project\\a b.md", false) ==
+          "\"D:\\ws\\my project\\a b.md\"");
+    // The `@` prefix goes OUTSIDE the quotes; inside them it would be part of the
+    // file name the agent tries to open.
+    CHECK(studio::path_text::payload("D:\\ws\\my project\\a b.md", true) ==
+          "@\"D:\\ws\\my project\\a b.md\"");
+    // A trailing backslash doubles: an unescaped one would eat the closing quote.
+    CHECK(studio::path_text::quotePath("D:\\") == "\"D:\\\\\"");
+    CHECK(studio::path_text::needsQuotes("D:\\") == true);
+    CHECK(studio::path_text::needsQuotes("C:\\plain") == false);
+    // Shell punctuation counts as unsafe too.
+    CHECK(studio::path_text::needsQuotes("C:\\a&b") == true);
+    CHECK(studio::path_text::needsQuotes("C:\\a)b") == true);
+    CHECK(studio::path_text::payload("", false).empty());
+    CHECK(studio::path_text::payload("", true).empty());
+}
+
+// ---- gauges --------------------------------------------------------------
+
+TEST_CASE("gauges: sizes use binary units and stop at three of them") {
+    CHECK(studio::gauges::humanBytes(0) == "0 KB");
+    CHECK(studio::gauges::humanBytes(48ull * 1024ull) == "48 KB");
+    CHECK(studio::gauges::humanBytes(212ull * 1024ull * 1024ull) == "212 MB");
+    CHECK(studio::gauges::humanBytes(3ull * 1024ull * 1024ull * 1024ull) == "3.0 GB");
+}
+
+TEST_CASE("gauges: an unmeasurable value is a dash, never a zero") {
+    CHECK(studio::gauges::percentLabel(std::nullopt) == "-");
+    CHECK(studio::gauges::memoryLabel(std::nullopt) == "-");
+    CHECK(studio::gauges::percentLabel(37.4) == "37%");
+    CHECK(studio::gauges::percentLabel(140.0) == "100%");
+    CHECK(studio::gauges::percentLabel(-5.0) == "0%");
+    // Memory keeps one decimal: 0.6% of a 32 GB machine must not read as "1%".
+    CHECK(studio::gauges::memoryLabel(0.62) == "0.6%");
+}
+
+TEST_CASE("gauges: a bar's ceiling scales with what is there") {
+    CHECK(studio::gauges::fraction(50.0, 100.0) == doctest::Approx(0.5));
+    CHECK(studio::gauges::fraction(150.0, 100.0) == doctest::Approx(1.0));
+    CHECK(studio::gauges::fraction(5.0, 0.0) == doctest::Approx(0.0));
+    CHECK(studio::gauges::ceilingFor(4.0, 6.0) == doctest::Approx(6.0));
+    CHECK(studio::gauges::ceilingFor(9.0, 6.0) == doctest::Approx(9.0));
+    // Never zero: a ceiling of 0 would divide in the caller.
+    CHECK(studio::gauges::ceilingFor(0.0, 0.0) > 0.0);
+}
+
+// ---- the turn clock ------------------------------------------------------
+
+TEST_CASE("work_clock: elapsed time and throughput from injected timestamps") {
+    studio::work_clock::Clock c;
+    CHECK(studio::work_clock::elapsedSeconds(c, 5000) == doctest::Approx(0.0));
+
+    studio::work_clock::begin(c, 1000, 100);
+    CHECK(c.running);
+    // A second begin (a re-entrant tick) must not restart the turn.
+    studio::work_clock::begin(c, 4000, 900);
+    CHECK(studio::work_clock::elapsedSeconds(c, 3000) == doctest::Approx(2.0));
+    // 200 tokens in 2 s. The token count of the second begin is ignored on
+    // purpose: the baseline is the turn's start, not the last call.
+    CHECK(studio::work_clock::tokensPerSecond(c, 3000, 300) == doctest::Approx(100.0));
+    // Under a second there is no rate: it would render as a wild number.
+    CHECK(studio::work_clock::tokensPerSecond(c, 1400, 500) == doctest::Approx(0.0));
+    // Clock skew (a smaller `now`) can never produce a negative duration.
+    CHECK(studio::work_clock::elapsedSeconds(c, 0) == doctest::Approx(0.0));
+
+    studio::work_clock::end(c);
+    CHECK_FALSE(c.running);
+    CHECK(studio::work_clock::elapsedSeconds(c, 9000) == doctest::Approx(0.0));
+}
+
+// ---- the machine sampler's unit rule ------------------------------------
+
+TEST_CASE("system stats: CPU percent uses the whole machine, like Task Manager") {
+    // One second of CPU burned over one second of wall clock on four cores is a
+    // quarter of the machine -- the number a task manager shows.
+    CHECK(cpuPercentBetween(1.0, 2.0, 1.0, 4) == doctest::Approx(25.0));
+    CHECK(cpuPercentBetween(0.0, 1.0, 1.0, 1) == doctest::Approx(100.0));
+    // A shorter window with the same CPU time is a higher percentage.
+    CHECK(cpuPercentBetween(0.0, 1.0, 0.5, 4) == doctest::Approx(50.0));
+    // A child that exited lowers the tree's cumulative total: the rate must clamp at
+    // zero rather than report a negative percentage.
+    CHECK(cpuPercentBetween(5.0, 4.0, 1.0, 4) == doctest::Approx(0.0));
+    // A zero-length window (two samples in the same millisecond) has no rate.
+    CHECK(cpuPercentBetween(0.0, 1.0, 0.0, 4) == doctest::Approx(0.0));
+    // Never above 100: a busy process cannot be busier than the machine.
+    CHECK(cpuPercentBetween(0.0, 10.0, 1.0, 1) == doctest::Approx(100.0));
+    // A nonsense core count is treated as one core, not as a division by zero.
+    CHECK(cpuPercentBetween(0.0, 1.0, 1.0, 0) == doctest::Approx(100.0));
 }

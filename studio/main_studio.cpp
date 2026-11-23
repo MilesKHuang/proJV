@@ -295,6 +295,7 @@ int runStudio(int argc, char** argv) {
     }
 
     if (dumpOnly) {
+        app.startSampling(); // BISECT: sampler on, no window
         app.tick();
         const std::string json = app.dumpJson();
         if (dumpPath.empty()) {
@@ -310,6 +311,10 @@ int runStudio(int argc, char** argv) {
         delete runner;
         return 0;
     }
+
+    // Resource sampling: the window owns it, the headless paths never start it (a
+    // --dump-view-model run must not spawn a sampler thread).
+    app.startSampling();
 
     ImGui_ImplWin32_EnableDpiAwareness();
     if (!createWindow(L"proJV (studio)")) {

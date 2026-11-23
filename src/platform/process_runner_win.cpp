@@ -224,6 +224,12 @@ class ProcessRunnerWin : public IProcessRunner {
 
     void Cancel() override { cancelled_ = true; }
 
+    int CurrentPid() const override {
+        // The runner holds the only child there is, so this is also the only
+        // pid a session can claim at this moment.
+        return hProc_ ? static_cast<int>(GetProcessId(hProc_)) : 0;
+    }
+
   private:
     std::mutex mutex_;
     std::atomic<bool> cancelled_{false};

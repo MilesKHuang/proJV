@@ -160,7 +160,13 @@ bool fieldEdited();
 // Returns true on click; listRowDoubleClicked() reports a double click.
 bool listRow(const Metrics& m, const std::string& label, bool selected, bool disabled = false);
 bool listRowDoubleClicked();
-// A small pill of text (a phase name, a model name).
+
+// The same row inside a rect the caller owns, for panels that place their rows
+// themselves (the tree, the session list). Draws the same hover/selection look and
+// keeps the tooltip-free contract: the caller paints its own icons in the space it
+// reserved, so a click on an icon cannot also count as a click on the row.
+bool listRowAt(const Metrics& m, const Rect& box, const std::string& label, bool selected,
+               bool disabled = false, Type tier = Type::Body);// A small pill of text (a phase name, a model name).
 void badge(const Metrics& m, const Rect& box, const std::string& label, ImU32 fg, ImU32 bg);
 
 // ---- scrolling ------------------------------------------------------------

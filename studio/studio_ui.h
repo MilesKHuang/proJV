@@ -37,6 +37,15 @@ struct Frame {
     layout::Rect window;
     layout::Rect header;
     layout::Rect body;
+    layout::Rect left; // the whole left column (empty when it is collapsed)
+    layout::Rect leftSessions;
+    layout::Rect leftFiles;
+    layout::Rect leftSplit; // drag handle: sessions <-> files
+    // One pane's row in the Sessions panel: a title line plus three thin metric
+    // bars. Published so the band's height and the rows it draws agree.
+    float sessionsRowH = 0.0f;
+    float sessionsBarH = 0.0f;
+    bool leftOpen = false;
     layout::Rect chat;
     layout::Rect dock;
     layout::Rect footer;

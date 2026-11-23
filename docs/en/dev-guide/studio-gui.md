@@ -62,6 +62,7 @@ it is wrong in both windows, which is the point.
 | TUI | studio |
 |---|---|
 | title `proJV (TUI)` + `[Agent: phase]` | `proJV (studio)` + the same phase line, same theme field |
+| -- (no left column) | left column: Sessions (one CARD per pane, with its own CPU/MEM/GPU bars) and Files, in one stack (`studio/studio_leftbar.cpp`) |
 | activity strip, 39-cell units, wrapping | same units and width; wraps at the window width |
 | chat: bordered blocks, markdown, reasoning card, diff block | same rows, drawn with ImGui; markdown via the same `markdown_text` parser |
 | right dock 36 cells: TODO + background tasks | same split, same width |
@@ -98,8 +99,9 @@ caret with one keypress is two things moving at once).
 
 ## Modals
 
-Ten, matching the TUI's ten: approval, config, help, quit, welcome, MCP, open
-session, model, theme, theme editor. One at a time; while one is open the screen
+Eleven: the TUI's ten plus the launcher -- approval, config, help, quit, welcome,
+MCP, open session, model, theme, theme editor -- plus launch, which the TUI has no
+counterpart for. One at a time; while one is open the screen
 behind it takes no input. Esc closes everything except the approval dialog -- a
 destructive command needs a real answer. Without an API key, Esc on the welcome
 page exits (there is nothing to type into yet).
@@ -147,17 +149,73 @@ Three rules follow from that:
 ```
 window
 |- header     title, phase pill, the eleven action buttons (they wrap)
-|- body       Row [ chat (Grow) | dock (Fixed) ]     dock toggles with F9
+|- body       Row [ left (Fixed 26%) | chat (Grow) | dock (Fixed) ]   dock toggles with F9
+|  \- left    Col [ Sessions (content height) | handle | Files (Grow) ]  the chevron folds it
 |- composer   the prompt, sharing the chat column's left edge, one row per line of text
-|- footer     status line, queued line, service bar
+|- footer     status line, queued line, service bar (+ the receipt at its right end)
 \- slash      the "/" menu, floating above the composer
 ```
 
 Every height comes from this frame's own measurements: how many rows the action
 buttons wrap into, whether the dock is open, whether there is a queued line, how
-many visual rows the prompt holds. That is why a resize lands on the frame it
-happens, and why there is no `static float bottomHeight` left anywhere in the
-shell.
+many visual rows the prompt holds, and how many cards the Sessions panel is showing.
+The Sessions panel is a minimal wrapper (its header plus one card per pane, capped at
+45% of the column) so the tree gets every pixel that is left. That is why a resize
+lands on the frame it happens, and why there is no `static float bottomHeight` left
+anywhere in the shell.
+
+### The left column: sessions and files
+
+The column is the switchboard (the shape of the reference window this was designed
+from): what this window is running, and what is on disk.
+
+| Panel | Shows | Wired to |
+|---|---|---|
+| Sessions | one CARD per pane this window owns: title + state on the first line, then CPU / MEM / GPU as three thin progress bars inside the same card. The active card is outlined in the accent, hover fills it. Click activates, right click opens the one menu, middle click closes, `+ New` starts a pane in the folder the tree is showing | `App::activatePane` / `closePane` / `startPaneHere` |
+| Files | the tree of the active pane's workspace. Double click a folder re-roots, a file sends its path; every row carries two hit boxes at its right edge, `>` (the path) and `@` (`@path`, the context form proJV already understands); `+` in its toolbar starts a session in that folder, and the context menu repeats both actions plus copy and "start a session here" | `ftree::Tree` + `path_text::payload` |
+
+Four rules the panels keep:
+
+1. **Rows the agent may not touch are marked.** The tree asks
+   `ToolPaths::resolve`; a row outside the allowed roots is drawn dim with the
+   reason in its tooltip, so a refusal is visible before the click instead of after
+   the tool said `__WORKSPACE_VIOLATION__`.
+2. **A number that cannot be measured is `-`, never `0`.** "GPU 0%" and "GPU
+   unknown" are different claims (see `src/platform/isystem_stats.h`), and a card
+   that is still starting shows `-` on all three bars instead of a measured-looking
+   zero.
+3. **A click has a receipt.** The last action's one-line result sits at the right end
+   of the service bar for six seconds, so nothing happens silently.
+4. **A row is reserved before it is drawn.** The cards and the tree rows are drawn at
+   absolute rects; without a `Dummy()` reserving the row first, ImGui reports
+   "SetCursorScreenPos() to extend window boundaries" and paints the whole panel in
+   pure red. And a context menu is opened by a row but DRAWN ONCE after the loop --
+   the same popup name queried once per row is an ImGui id conflict (that was "right
+   click with two panes breaks the GUI").
+
+### One window, several panes
+
+A pane is one `SessionRuntime` plus its own chat, prompt line and derived Screen
+(`struct Pane` in `studio/studio_app.h`). The chrome is shared and reads the active
+pane. Five panes, the reference window's own limit. Consequences worth stating:
+
+- **The workspace is per pane, not per process.** `SessionRuntime::setWorkspace`
+  stores it before `initialize()`, and the seven `getWorkspaceDir()` call sites in
+  `session_runtime.cpp` read that member. The default is still the launch directory,
+  so the TUI and `projv run` are unchanged. Nothing calls `chdir`: one pane moving
+  the process would move every other pane's tools and its snapshot store with it.
+- **A busy pane refuses to close.** `closePane` answers "Esc stops it first" instead
+  of destroying a `SessionRuntime` whose worker thread is still writing.
+- **Starting a pane answers immediately, then the window is busy.** The card and its
+  `starting...` state appear on the click frame; the 3-5 s `initialize()` (session
+  database, MCP servers) runs on the next frame, on the UI thread. A worker thread
+  for it was tried and crashed inside `SessionRuntime::initialize()`, so the work
+  stays where it is safe and only the feedback is asynchronous.
+- **A pane created in the same folder as another gets a suffix** ("proJV @ Release
+  (2)"), so two cards never read identically.
+- There is no launcher dialog: a pane starts from the tree (`+` in its toolbar, a
+  folder's context menu, or `+ New` in the Sessions panel, which uses the tree's
+  root). The path field in the toolbar is the way to reach any other folder.
 
 ### The header is a table, not a hand-written list
 
@@ -178,11 +236,15 @@ without a button fails the test run instead of the user's expectation.
 - `tests/unit/test_studio_design.cpp` pins the geometry: a monotonic type ladder,
   clamped scaling, row/column/percent/grow/min-max rectangles, CJK counted as two
   columns, ellipsis that never splits a code point, `bestTier` choosing the largest
-  tier that fits, `wrappedRowCount` counting the rows a multi-line prompt needs (a
-  newline, a wrap, a trailing newline), and the header's table: one entry per
-  documented key, the toggle and role-chip labels following their state, and
-  `actions::pack` wrapping instead of dropping. None of those modules includes
-  ImGui, so they test without a GPU or a window.
+  tier that fits, `wrappedRowCount` counting the rows a multi-line prompt needs, the
+  header's table (one entry per documented key, stateful labels, wrap-don't-drop),
+  the file tree (`nameKey` order, folders first, `b2` before `b10`, a real directory
+  read, expansion depth), the path payload's four quoting cases, the gauge
+  arithmetic (bytes, `-` for unknown, a ceiling that scales) and the turn clock. None
+  of those modules includes ImGui, so they test without a GPU or a window.
+- `cpuPercentBetween` is pinned the same way: one second of CPU over one second of
+  wall clock on four cores is 25%, a tree that shrank clamps to 0, a zero-length
+  window has no rate.
 - `tests/unit/test_worker_wait.cpp` pins the exit rule: a finished worker is joined
   (cleanup is then safe), an unfinished one is detached and the call returns at once
   (`src/core/worker_wait.h`). There is no "wait N seconds" judgement anywhere.
@@ -195,6 +257,21 @@ without a button fails the test run instead of the user's expectation.
 
 ## What is deliberately different
 
+- **A window owns several sessions.** The TUI is one session per process; the studio
+  can hold panes side by side, each with its own workspace. That is a studio feature,
+  not a shared derivation: the panes' state lives in `studio/studio_app.h`, and the
+  `view_model` contract gained no field for it.
+- **Resource sampling has its own thread and no child process.** `ISystemStats`
+  reads counters (Toolhelp32 + `GetProcessTimes` + PDH on Windows, `/proc` + sysfs on
+  Linux). It never goes through `IProcessRunner` -- that runner is one child at a
+  time by design, and making a sample queue behind a 30-minute shell command would
+  be useless. A GPU counter set that does not exist is reported as unknown, with the
+  reason, instead of a fabricated 0%.
+- **Per-pane CPU/MEM is NOT attributed when several panes share one process.** Their
+  shell children hang off the same parent, so the System panel reports the whole
+  tree; a per-pane figure would be a guess dressed as a measurement.
+- **No layout persistence yet.** The column's width, the split ratio and the tree
+  root live in memory, the same way the window has no `imgui.ini`.
 - **Docking is enabled but has no dock host yet.** `ImGuiConfigFlags_DockingEnable`
   is set and viewports are off (D1); the layout is the TUI's fixed one until the
   blueprint editor (08.7) needs floating panels.
@@ -203,10 +280,9 @@ without a button fails the test run instead of the user's expectation.
   window anchored above the prompt, so it never pushes the prompt off the screen; modal
   dialogs carry Close/OK buttons. These are additions on top of the key map, never
   replacements for it.
-- **Ten dialogs, one shell.** Title bar with a close affordance, a scrolling body and
+- **Eleven dialogs, one shell.** Title bar with a close affordance, a scrolling body and
   a right-aligned action footer, sized from its content; the primary action carries
-  the accent. Ten hand-sized dialogs used to clip their own text at 150% DPI.
-- **Readability beats fidelity for dim text.** `studio_theme::readable()` lifts
+  the accent. Eleven hand-sized dialogs used to clip their own text at 150% DPI.- **Readability beats fidelity for dim text.** `studio_theme::readable()` lifts
   secondary text to at least a 4.5:1 contrast ratio against the window background.
   The TUI's "disabled" grey is 2.7:1 on the Light theme, which is fine on a terminal
   and unreadable in a window.
@@ -269,10 +345,17 @@ without a button fails the test run instead of the user's expectation.
 | `studio/main_studio_sdl.cpp` | Linux: the same loop over SDL2 |
 | `studio/studio_app.{h,cpp}` | state, actions, key map, `Source` filling |
 | `studio/studio_ui.cpp` | the main screen: chat, dock, status, the wrapping header, input |
-| `studio/studio_modals.cpp` | the ten modals |
+| `studio/studio_leftbar.cpp` | the left column: Sessions, Files, System, the drag handles |
+| `studio/studio_modals.cpp` | the ten modals (no launcher: a pane starts from the tree) |
 | `studio/studio_markdown.cpp` | `markdown_text` lines -> ImGui draw calls |
 | `studio/studio_theme.cpp` | `ThemeColors` -> ImU32 (the studio's only colour conversion), fonts |
 | `studio/design/actions.{h,cpp}` | the header's button table: one row per documented key, plus the wrap packing |
+| `studio/design/file_tree.{h,cpp}` | the tree model: Explorer order, lazy levels, visible rows |
+| `studio/design/path_text.{h,cpp}` | the path -> prompt text rule (`>`, `@`, quoting) |
+| `studio/design/gauges.{h,cpp}` | bytes / percent / fraction / ceiling arithmetic for the System panel |
+| `studio/design/work_clock.{h,cpp}` | turn elapsed time and throughput, timestamps injected |
+| `src/platform/isystem_stats.h` | the sampling interface (no child processes, unknown is not zero) |
+| `src/platform/system_stats_{win,linux}.cpp` | the two implementations (Toolhelp32 + PDH / `/proc` + sysfs) |
 | `studio/design/tokens.{h,cpp}` | the size ladder (type / space / radius) and `Metrics` |
 | `studio/design/layout.{h,cpp}` | the flexbox-subset solver, pure arithmetic |
 | `studio/design/fit.{h,cpp}` | measuring, ellipsis, tier fitting, row counting, measurer injected |

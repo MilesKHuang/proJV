@@ -4,12 +4,17 @@
 #include "core/help_text.h"
 #include "core/snapshot.h"
 #include "core/speaker_slots.h"
+#include "design/path_text.h"
+#include "platform/iprocess_runner.h"
+#include "platform/isystem_stats.h"
 #include "platform/isystem_util.h"
 #include "tui/approval_logic.h"
 #include "tui/paste_flatten.h"
 #include "tui/theme_manager.h"
 
 #include <algorithm>
+#include <chrono>
+#include <map>
 #include <cstdio>
 #include <filesystem>
 
@@ -17,6 +22,7 @@ namespace studio {
 namespace {
 
 constexpr size_t kMaxBubbles = 200; // bound the rendering cost, same cap as TuiApp
+constexpr int kMaxPanes = 5;        // the reference window's MAX_PANES
 
 std::string stripMd(const std::string& name) {
     if (name.size() > 3 && name.substr(name.size() - 3) == ".md")
@@ -40,30 +46,77 @@ double doubleOr(const std::string& s, double fallback) {
     }
 }
 
+long long monotonicMs() {
+    using namespace std::chrono;
+    return static_cast<long long>(
+        duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+// "proJV @ projV": the program and the directory it was started in. The reference
+// panel names its sessions the same way, and the name is the only thing that tells
+// two panes apart in a list.
+std::string paneTitleFor(const std::string& workspace) {
+    std::error_code ec;
+    std::string leaf = std::filesystem::path(workspace).filename().string();
+    if (leaf.empty()) leaf = workspace;
+    if (leaf.empty()) leaf = "projV";
+    return "projV @ " + leaf;
+}
+
 } // namespace
 
 App::App() = default;
-App::~App() = default;
 
-bool App::initialize(IProcessRunner* runner) {
-    runtime_ = std::make_unique<SessionRuntime>();
-    runtime_->setProcessRunner(runner);
+App::~App() {
+    stopSampling();
+    for (auto& owned : panes_) {
+        if (owned && owned->starter.joinable()) owned->starter.join();
+    }
+    panes_.clear();
+}
 
-    // Every callback below runs on the TURN thread. None of them touches a widget:
-    // they queue a string or set a flag, and tick() reads it on the studio thread.
-    runtime_->onNotice = [this](const std::string& text) {
-        std::lock_guard<std::mutex> lk(noticeMutex_);
-        pendingNotices_.push_back(text);
+Pane& App::active() { return *panes_[static_cast<size_t>(active_)]; }
+const Pane& App::active() const { return *panes_[static_cast<size_t>(active_)]; }
+
+void App::bindActive() {
+    if (panes_.empty()) {
+        runtime_ = nullptr;
+        active_ = 0;
+        return;
+    }
+    if (active_ < 0) active_ = 0;
+    if (active_ >= static_cast<int>(panes_.size())) active_ = static_cast<int>(panes_.size()) - 1;
+    // A pane that is still starting has a runtime whose agent and database do not
+    // exist yet: the turn-driving code must see "no runtime rather than a half-
+ // built one. That read was the access violation reported on + New.
+ Pane& pane = *panes_[static_cast<size_t>(active_)];
+ runtime_ = pane.state.load() == Pane::State::Ready ? pane.rt.get() : nullptr;
+}
+
+// The callbacks below run on that pane's TURN thread. None of them touches a
+// widget: they queue a string or set a flag, and tick() reads it on this thread.
+void App::wireRuntime(Pane& pane) {
+    Pane* p = &pane;
+    App* self = this;
+    pane.rt->onNotice = [p](const std::string& text) {
+        std::lock_guard<std::mutex> lk(p->noticeMutex);
+        p->notices.push_back(text);
     };
-    runtime_->onSessionReset = [this] {
-        chat_.clear();
-        lastMessageId_ = 0;
-        chatFollowBottom_ = true;
+    pane.rt->onSessionReset = [p, self] {
+        p->chat.clear();
+        p->lastMessageId = 0;
+        p->followBottom = true;
+        if (self->runtime_ && self->runtime_ == p->rt.get()) self->promptReload_ = false;
     };
     // OSC 7501 is a terminal feature. A window has no host terminal to report to,
     // so the studio leaves the phase channel unset on purpose.
-    if (!runtime_->initialize()) return false;
+}
 
+bool App::initialize(IProcessRunner* runner) {
+    runner_ = runner;
+    std::string why;
+    if (!newPane(std::string(), &why, true)) return false;
+    if (!runtime_) return false;
     ThemeManager::instance().init(getThemeDir(), runtime_->config().themeName);
     ThemeManager::instance().onThemeChanged = [this](const std::string& name) {
         if (!runtime_) return;
@@ -71,25 +124,209 @@ bool App::initialize(IProcessRunner* runner) {
         saveConfig(runtime_->config());
         themeStatus_ = "theme: " + name;
     };
-
     slashAll_ = slash_menu::all(runtime_->installedSkills(), runtime_->skillsDir());
-
-    refreshChat();
     refreshModels();
     if (!hasApiKey()) openWelcomeModal();
+    firstPaneReady_ = true;
+    finishStartup_ = true;
     return true;
 }
 
+bool App::newPane(const std::string& workspace, std::string* why, bool syncNow) {
+    // Five, the reference window's own limit: every pane carries a runtime, a worker
+    // thread and its own MCP servers, so this is a budget, not an opinion.
+    if (static_cast<int>(panes_.size()) >= kMaxPanes) {
+        if (why) *why = "pane limit reached (5): close one first";
+        setReceipt("pane limit reached (5): close one first");
+        return false;
+    }
+    auto pane = std::make_unique<Pane>();
+    pane->rt = std::make_unique<SessionRuntime>();
+    pane->rt->setProcessRunner(runner_);
+    if (!workspace.empty()) pane->rt->setWorkspace(workspace);
+    pane->workspace = workspace.empty() ? getWorkspaceDir() : workspace;
+    pane->title = paneTitleFor(pane->workspace);
+    pane->state.store(Pane::State::Starting);
+    Pane* raw = pane.get();
+    wireRuntime(*pane);
+    panes_.push_back(std::move(pane));
+    refreshPaneTitles();
+    activatePane(static_cast<int>(panes_.size()) - 1);
+
+    // initialize() opens the session database and starts the MCP servers: three to
+    // five seconds. Two ways to do it, and both matter:
+    //   - the FIRST pane (start-up): here, on this thread, before the window exists;
+    //   - every later pane: handed to tick() through pendingInit_, which runs it on
+    //     the next frame -- by then the new card is already on screen showing
+    //     "starting...", so "+" answers immediately instead of looking dead.
+    // A worker thread was tried for this and CRASHED inside initialize()
+    // (SessionRuntime is not thread-safe to build off the UI thread), so the work
+    // stays on this thread and only the *feedback* is asynchronous.
+    if (syncNow) {
+        const bool ok = raw->rt && raw->rt->initialize();
+        if (ok) raw->workspace = raw->rt->workspace();
+        raw->state.store(ok ? Pane::State::Ready : Pane::State::Failed);
+        if (!ok) raw->error = "initialize failed (see projv_files/logs)";
+        raw->started.store(true);
+        bindActive();
+        if (ok) adoptFinishedPanes();
+    } else {
+        pendingInit_ = static_cast<int>(panes_.size()) - 1;
+    }
+    // `pane` was MOVED into panes_ above: read through the raw pointer, or this line
+    // dereferences a null unique_ptr (the access violation that killed start-up).
+    setReceipt("starting " + raw->title + " in " + raw->workspace + " ...");
+    return true;
+}
+
+void App::refreshPaneTitles() {
+    // Two panes in folders whose last component is the same ("…\Release") would read
+    // identically in the list. The first keeps the plain name, the rest get " (2)",
+    // " (3)", … in list order — recomputed after every add or close, so the numbers
+    // never have a gap.
+    std::map<std::string, int> seen;
+    for (auto& owned : panes_) {
+        Pane& pane = *owned;
+        const std::string base = paneTitleFor(pane.workspace);
+        int& count = seen[base];
+        ++count;
+        pane.title = count == 1 ? base : base + " (" + std::to_string(count) + ")";
+    }
+}
+
+bool App::paneReady(int index) const {
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return false;
+    return panes_[static_cast<size_t>(index)]->state.load() == Pane::State::Ready;
+}
+
+void App::adoptFinishedPanes() {
+    for (auto& owned : panes_) {
+        Pane& pane = *owned;
+        // Join first: the startup thread is the only writer of this runtime until it
+        // has finished, and a join makes that write visible before we read it.
+        if (pane.started.load() && pane.starter.joinable()) pane.starter.join();
+        if (pane.state.load() != Pane::State::Ready || pane.adopted) continue;
+        pane.adopted = true;
+        if (pane.workspace.empty()) pane.workspace = pane.rt->workspace();
+        refreshPaneTitles();
+        if (!firstPaneReady_) {
+            firstPaneReady_ = true;
+            ThemeManager::instance().init(getThemeDir(), pane.rt->config().themeName);
+            ThemeManager::instance().onThemeChanged = [this](const std::string& name) {
+                if (!runtime_) return;
+                runtime_->config().themeName = name;
+                saveConfig(runtime_->config());
+                themeStatus_ = "theme: " + name;
+            };
+            slashAll_ = slash_menu::all(pane.rt->installedSkills(), pane.rt->skillsDir());
+            refreshModels();
+            if (!hasApiKey()) openWelcomeModal();
+        }
+        if (&pane == &active()) {
+            std::string err;
+            tree_.setRoot(pane.workspace, &err);
+            promptReload_ = true;
+        }
+        setReceipt("ready: " + pane.title);
+    }
+}
+
+void App::activatePane(int index) {
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return;
+    active_ = index;
+    bindActive();
+    // A pane switch rebinds the prompt, the chat and the file tree: the tree follows
+    // the directory of the session you are looking at (the reference panel does the
+    // same, and it is why the two panels feel like one switchboard).
+    std::string err;
+    tree_.setRoot(active().workspace, &err);
+    treeSelected_ = 0;
+    promptReload_ = true;
+}
+
 void App::shutdown() {
-    if (runtime_) runtime_->shutdown();
+    stopSampling();
+    for (auto& owned : panes_) {
+        if (owned && owned->starter.joinable()) owned->starter.join();
+    }
+    for (auto& pane : panes_) {
+        if (pane && pane->rt && pane->state == Pane::State::Ready) pane->rt->shutdown();
+    }
 }
 
 void App::emergencyShutdown() {
-    if (runtime_) runtime_->emergencyShutdown();
+    for (auto& pane : panes_) {
+        if (pane && pane->rt) pane->rt->emergencyShutdown();
+    }
 }
 
 bool App::hasApiKey() const {
     return runtime_ && runtime_->config().loaded && !runtime_->config().apiKey.empty();
+}
+
+bool App::paneBusy(int index) const {
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return false;
+    const Pane& pane = *panes_[static_cast<size_t>(index)];
+    return pane.state.load() == Pane::State::Ready && pane.rt->isBusy();
+}
+
+const std::string& App::paneTitle(int index) const {
+    static const std::string empty;
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return empty;
+    return panes_[static_cast<size_t>(index)]->title;
+}
+
+const std::string& App::paneWorkspace(int index) const {
+    static const std::string empty;
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return empty;
+    return panes_[static_cast<size_t>(index)]->workspace;
+}
+
+const view_model::Screen& App::screenOf(int index) const {
+    static const view_model::Screen empty;
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return empty;
+    return panes_[static_cast<size_t>(index)]->screen;
+}
+
+const std::string& App::paneStateName(int index) const {
+    static const std::string ready = "ready";
+    static const std::string starting = "starting...";
+    static const std::string failed = "failed";
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return ready;
+    switch (panes_[static_cast<size_t>(index)]->state) {
+    case Pane::State::Starting:
+        return starting;
+    case Pane::State::Failed:
+        return failed;
+    case Pane::State::Ready:
+    default:
+        return ready;
+    }
+}
+
+bool App::closePane(int index) {
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return false;
+    Pane& pane = *panes_[static_cast<size_t>(index)];
+    // One ending, and it may not orphan a worker or a startup thread: a busy pane
+    // must be stopped first (Esc), a starting one must finish.
+    if (pane.state.load() == Pane::State::Starting) {
+        setReceipt("pane is still starting: wait a moment");
+        return false;
+    }
+    if (pane.state.load() == Pane::State::Ready && pane.rt->isBusy()) {
+        setReceipt("pane is running a turn: Esc stops it first");
+        return false;
+    }
+    if (pane.state.load() == Pane::State::Ready) pane.rt->shutdown();
+    panes_.erase(panes_.begin() + index);
+    refreshPaneTitles();
+    if (panes_.empty()) {
+        bindActive();
+        return true;
+    }
+    activatePane(std::min(active_, static_cast<int>(panes_.size()) - 1));
+    setReceipt("pane closed");
+    return true;
 }
 
 float App::sourceCost() const {
@@ -103,75 +340,12 @@ float App::sourceCost() const {
 
 // ---- chat projection -----------------------------------------------------
 
-void App::harvestSpeakers() {
-    if (!runtime_) return;
-    for (const auto& a : runtime_->skillAgentStatuses()) {
-        if (!a.displayName.empty()) knownSpeakers_.insert(a.displayName);
+void App::harvestSpeakers(Pane& pane) {
+    if (!pane.rt || pane.state.load() != Pane::State::Ready) return;
+    for (const auto& a : pane.rt->skillAgentStatuses()) {
+        if (!a.displayName.empty()) pane.knownSpeakers.insert(a.displayName);
     }
 }
-
-void App::refreshChat() {
-    if (!runtime_ || !runtime_->agent()) return;
-    chat_.clear();
-    lastMessageId_ = 0;
-    harvestSpeakers();
-    auto msgs = runtime_->agent()->getNewMessagesSince(0);
-    for (const auto& msg : msgs) {
-        auto derived = bubble_model::deriveBubbles(msg, knownSpeakers_);
-        chat_.insert(chat_.end(), derived.begin(), derived.end());
-        if (msg.id > lastMessageId_) lastMessageId_ = msg.id;
-    }
-}
-
-void App::drainNotices() {
-    std::vector<std::string> notes;
-    {
-        std::lock_guard<std::mutex> lk(noticeMutex_);
-        notes.swap(pendingNotices_);
-    }
-    for (auto& n : notes) {
-        bubble_model::Bubble cb;
-        cb.role = "system";
-        cb.content = std::move(n);
-        chat_.push_back(std::move(cb));
-    }
-    if (!notes.empty()) chatFollowBottom_ = true;
-}
-
-void App::tick() {
-    if (!runtime_) return;
-    drainNotices();
-    harvestSpeakers();
-
-    if (Agent* a = runtime_->agent()) {
-        auto newMsgs = a->getNewMessagesSince(lastMessageId_);
-        for (const auto& msg : newMsgs) {
-            auto derived = bubble_model::deriveBubbles(msg, knownSpeakers_);
-            chat_.insert(chat_.end(), derived.begin(), derived.end());
-            if (msg.id > lastMessageId_) lastMessageId_ = msg.id;
-        }
-        // No forced "follow the bottom" here: the shell owns that flag and writes it
-        // every frame from the real scroll position. Setting it true from the engine
-        // side is what yanked the transcript back down while it was being read.
-    }
-    if (chat_.size() > kMaxBubbles) {
-        chat_.erase(chat_.begin(), chat_.begin() + static_cast<long>(chat_.size() - kMaxBubbles));
-    }
-
-    // An approval request appears and disappears on its own: follow the agent's
-    // phase, exactly like the TUI's per-frame sync does.
-    if (runtime_->phase() == AgentPhase::AwaitApproval) {
-        if (modal_ != "approval") openApprovalModal();
-    } else if (modal_ == "approval") {
-        modal_ = "none";
-    }
-
-    runtime_->drainPendingQueue();
-    fillSource();
-    screen_ = view_model::build(source_);
-    spinnerFrame_ = (spinnerFrame_ + 1) % 4;
-}
-
 void App::fillSource() {
     view_model::Source s;
     s.version = PROJV_VERSION;
@@ -209,7 +383,7 @@ void App::fillSource() {
         s.estimatedTokens = a->getEstimatedContextTokens();
         s.windowTokens = a->getContextWindowSize();
     }
-    s.bubbles = chat_;
+    s.bubbles = active().chat;
     s.reasoningExpanded = reasoningExpanded_;
 
     // Agent strip: the same cells the TUI lays out, from the same snapshot.
@@ -246,12 +420,12 @@ void App::fillSource() {
     s.slashOpen = slashOpen_;
     s.slashSelected = slashSelected_;
 
-    s.input.text = input_;
-    s.input.cursor = static_cast<int>(input_.size());
+    s.input.text = active().input;
+    s.input.cursor = static_cast<int>(active().input.size());
     s.input.placeholder = "type a message - Enter sends, Shift+Enter starts a new line";
 
     fillModalSource(s);
-    source_ = std::move(s);
+    active().source = std::move(s);
 }
 
 // The open modal's rows. Only one is ever filled, so this is a chain, not a block
@@ -427,7 +601,7 @@ void App::fillModalSource(view_model::Source& s) {
 // ---- input line ----------------------------------------------------------
 
 void App::setInputText(const std::string& s) {
-    input_ = s;
+    active().input = s;
     onInputEdited();
 }
 
@@ -446,8 +620,8 @@ void App::commitInput(const char* text) {
     if (next.size() > paste_flatten::kMaxFlattenChars) {
         next.resize(paste_flatten::kMaxFlattenChars);
     }
-    if (next == input_) return;
-    input_ = std::move(next);
+    if (next == active().input) return;
+    active().input = std::move(next);
     onInputEdited();
 }
 
@@ -456,13 +630,13 @@ void App::onInputEdited() {
     // first character of the arguments ("/wish a...") closes the menu, which is
     // exactly what the user means -- and a newline after the name counts as that
     // separator, or the menu would hang over the composer for good.
-    const size_t sp = input_.find_first_of(" \t\n");
-    const bool bare = !input_.empty() && input_[0] == '/' && sp == std::string::npos;
+    const size_t sp = active().input.find_first_of(" \t\n");
+    const bool bare = !active().input.empty() && active().input[0] == '/' && sp == std::string::npos;
     if (!bare) {
         slashOpen_ = false;
         return;
     }
-    slashRows_ = slash_menu::filter(slashAll_, input_);
+    slashRows_ = slash_menu::filter(slashAll_, active().input);
     slashSelected_ = 0;
     slashOpen_ = !slashRows_.empty();
 }
@@ -481,7 +655,7 @@ void App::slashSelect(int index) {
 
 void App::slashFill() {
     if (slashSelected_ < 0 || slashSelected_ >= static_cast<int>(slashRows_.size())) return;
-    input_ = slash_menu::completion(slashRows_[static_cast<size_t>(slashSelected_)]);
+    active().input = slash_menu::completion(slashRows_[static_cast<size_t>(slashSelected_)]);
     slashOpen_ = false;
 }
 
@@ -763,11 +937,11 @@ void App::applyTheme(const std::string& name) {
 
 void App::send() {
     if (!runtime_) return;
-    if (input_.empty()) return;
-    const std::string text = input_;
-    input_.clear();
+    if (active().input.empty()) return;
+    const std::string text = active().input;
+    active().input.clear();
     slashOpen_ = false;
-    chatFollowBottom_ = true;
+    active().followBottom = true;
     if (runtime_->submit(text)) runtime_->startAsync();
 }
 
@@ -786,7 +960,7 @@ bool App::approvedAlways() const {
 
 void App::newChat() {
     if (runtime_) runtime_->newChat();
-    chatFollowBottom_ = true;
+    active().followBottom = true;
 }
 
 void App::switchPromptNext() {
@@ -805,7 +979,7 @@ void App::setModel(const std::string& id) {
 
 void App::switchToDialog(const std::string& dbPath) {
     if (runtime_) runtime_->switchToDialog(dbPath);
-    chatFollowBottom_ = true;
+    active().followBottom = true;
 }
 
 void App::saveApiKey() {
@@ -839,18 +1013,18 @@ void App::toggleDock() {
 }
 
 void App::scrollChat(int rows) {
-    scrollRequest_ += rows;
-    chatFollowBottom_ = false;
+    active().scrollRequest += rows;
+    active().followBottom = false;
 }
 
 int App::takeScrollRequest() {
-    const int n = scrollRequest_;
-    scrollRequest_ = 0;
+    const int n = active().scrollRequest;
+    active().scrollRequest = 0;
     return n;
 }
 
 bool App::takeFollowBottom() {
-    const bool follow = chatFollowBottom_;
+    const bool follow = active().followBottom;
     return follow;
 }
 
@@ -859,7 +1033,7 @@ void App::refuseIfBusy(std::string* why) const {
 }
 
 std::string App::describeState() const {
-    return view_model::toJson(screen_);
+    return view_model::toJson(active().screen);
 }
 
 // ---- the key map (docs/*/user-guide/08-reference.md, key for key) --------
@@ -941,8 +1115,8 @@ bool App::handleKey(GKey key) {
             slashClose();
         } else if (busy()) {
             cancelTurn();
-        } else if (!input_.empty()) {
-            input_.clear();
+        } else if (!active().input.empty()) {
+            active().input.clear();
             slashOpen_ = false;
         } else {
             openModal("quit");
@@ -1014,5 +1188,296 @@ std::string* App::configBufferAt(int index) {
         return nullptr;
     }
 }
+
+// ---- panes: projection, receipts, injection, sampling --------------------
+
+void App::refreshChat(Pane& pane) {
+    if (!pane.rt || pane.state.load() != Pane::State::Ready || !pane.rt->agent()) return;
+    pane.chat.clear();
+    pane.lastMessageId = 0;
+    harvestSpeakers(pane);
+    auto msgs = pane.rt->agent()->getNewMessagesSince(0);
+    for (const auto& msg : msgs) {
+        auto derived = bubble_model::deriveBubbles(msg, pane.knownSpeakers);
+        pane.chat.insert(pane.chat.end(), derived.begin(), derived.end());
+        if (msg.id > pane.lastMessageId) pane.lastMessageId = msg.id;
+    }
+}
+
+void App::drainNotices(Pane& pane) {
+    std::vector<std::string> notes;
+    {
+        std::lock_guard<std::mutex> lk(pane.noticeMutex);
+        notes.swap(pane.notices);
+    }
+    if (notes.empty()) return;
+    for (auto& n : notes) {
+        bubble_model::Bubble cb;
+        cb.role = "system";
+        cb.content = std::move(n);
+        pane.chat.push_back(std::move(cb));
+    }
+    pane.followBottom = true;
+}
+
+void App::tick() {
+    if (panes_.empty()) return;
+    bindActive();
+    adoptFinishedPanes();
+    // A pane created last frame gets its (3-5 s) initialize() HERE, on the UI thread,
+    // while its card is already on screen saying "starting...": the click answered
+    // immediately for a frame, and then the window is busy while the engine builds.
+    if (pendingInit_ >= 0) {
+        const int index = pendingInit_;
+        pendingInit_ = -1;
+        if (index >= 0 && index < static_cast<int>(panes_.size())) {
+            Pane& pane = *panes_[static_cast<size_t>(index)];
+            if (pane.state.load() == Pane::State::Starting) {
+                const bool ok = pane.rt && pane.rt->initialize();
+                if (ok) pane.workspace = pane.rt->workspace();
+                pane.state.store(ok ? Pane::State::Ready : Pane::State::Failed);
+                if (!ok) pane.error = "initialize failed (see projv_files/logs)";
+                pane.started.store(true);
+                bindActive();
+                if (ok) adoptFinishedPanes();
+            }
+        }
+    }
+    // Every pane is drained and projected, not only the visible one: a notice or a
+    // finished turn must not appear out of order when the user switches back.
+    for (auto& owned : panes_) {
+        Pane& pane = *owned;
+        if (pane.state.load() != Pane::State::Ready) continue;
+        drainNotices(pane);
+        harvestSpeakers(pane);
+        if (Agent* a = pane.rt->agent()) {
+            auto newMsgs = a->getNewMessagesSince(pane.lastMessageId);
+            for (const auto& msg : newMsgs) {
+                auto derived = bubble_model::deriveBubbles(msg, pane.knownSpeakers);
+                pane.chat.insert(pane.chat.end(), derived.begin(), derived.end());
+                if (msg.id > pane.lastMessageId) pane.lastMessageId = msg.id;
+            }
+        }
+        if (pane.chat.size() > kMaxBubbles) {
+            pane.chat.erase(pane.chat.begin(),
+                            pane.chat.begin() + static_cast<long>(pane.chat.size() - kMaxBubbles));
+        }
+        // The turn clock: started when the pane becomes busy, stopped when it is not.
+        const int tokens = pane.rt->promptTokens() + pane.rt->completionTokens();
+        if (pane.rt->isBusy()) {
+            if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), tokens);
+        } else if (pane.clock.running) {
+            work_clock::end(pane.clock);
+        }
+    }
+
+    // An approval request appears and disappears on its own: follow the agent's
+    // phase, exactly like the TUI's per-frame sync does. A pane waiting in the
+    // background pulls itself forward -- a blocked question must never sit invisible
+    // behind another pane.
+    if (runtime_ && runtime_->phase() == AgentPhase::AwaitApproval) {
+        if (modal_ != "approval") openApprovalModal();
+    } else if (modal_ == "approval") {
+        modal_ = "none";
+    } else {
+        for (int i = 0; i < static_cast<int>(panes_.size()); ++i) {
+            Pane& pane = *panes_[static_cast<size_t>(i)];
+            if (i == active_ || pane.state.load() != Pane::State::Ready) continue;
+            if (pane.rt->phase() == AgentPhase::AwaitApproval) {
+                activatePane(i);
+                openApprovalModal();
+                setReceipt("pane " + std::to_string(i + 1) + " is waiting for approval");
+                break;
+            }
+        }
+    }
+
+    for (auto& pane : panes_) {
+        if (pane->state == Pane::State::Ready) pane->rt->drainPendingQueue();
+    }
+
+    // One sampler group per pane: its background tasks, its MCP servers and -- when
+    // exactly one pane is running a tool -- the runner's single child, which can only
+    // belong to that pane.
+    if (stats_) {
+        int busy = 0;
+        int busyIndex = -1;
+        for (int i = 0; i < static_cast<int>(panes_.size()); ++i) {
+            if (paneBusy(i)) {
+                ++busy;
+                busyIndex = i;
+            }
+        }
+        std::vector<TrackedGroup> groups;
+        groups.reserve(panes_.size());
+        for (int i = 0; i < static_cast<int>(panes_.size()); ++i) {
+            Pane& pane = *panes_[static_cast<size_t>(i)];
+            TrackedGroup group;
+            group.key = i;
+            if (pane.state.load() == Pane::State::Ready) {
+                for (const auto& task : pane.rt->taskSnapshots()) {
+                    if (task.state == bg_task::State::Running && task.pid > 0)
+                        group.pids.push_back(task.pid);
+                }
+                if (mcp::Manager* mcp = pane.rt->mcpManager()) {
+                    const std::vector<int> pids = mcp->serverPids();
+                    group.pids.insert(group.pids.end(), pids.begin(), pids.end());
+                }
+                if (busy == 1 && busyIndex == i && runner_) {
+                    const int child = runner_->CurrentPid();
+                    if (child > 0) group.pids.push_back(child);
+                }
+            }
+            groups.push_back(std::move(group));
+        }
+        stats_->setTracked(groups);
+    }
+
+    fillSource();
+    if (active().state.load() == Pane::State::Ready) {
+        active().screen = view_model::build(active().source);
+    } else {
+        // A pane that is starting or has failed has no agent: show its state and
+        // nothing else, instead of the previous pane's rows.
+        view_model::Source waiting = active().source;
+        waiting.phase = AgentPhase::Idle;
+        waiting.busy = false;
+        waiting.status.state = AgentState::Idle;
+        waiting.bubbles.clear();
+        waiting.agents.clear();
+        waiting.tasks.clear();
+        waiting.todoText.clear();
+        view_model::Screen scr = view_model::build(waiting);
+        scr.statusText = paneStateName(active_);
+        scr.statusSpinner = active().state.load() == Pane::State::Starting;
+        scr.chat.clear();
+        scr.agents.clear();
+        scr.agentsEmpty = true;
+        scr.tasks.clear();
+        scr.tasksEmpty = true;
+        scr.todo.clear();
+        scr.todoEmpty = true;
+        active().screen = std::move(scr);
+    }
+    spinnerFrame_ = (spinnerFrame_ + 1) % 4;
+}
+
+void App::setTreeRoot(const std::string& dir) {
+    std::string err;
+    if (tree_.setRoot(dir, &err)) {
+        treeSelected_ = 0;
+        return;
+    }
+    setReceipt("cannot open " + dir + ": " + err);
+}
+
+void App::setLeftSplit(float ratio) {
+    if (!(ratio > 0.0f)) return;
+    leftSplit_ = std::min(0.8f, std::max(0.2f, ratio));
+}
+
+void App::setReceipt(const std::string& text) {
+    receipt_ = text;
+    receiptUntilMs_ = monotonicMs() + 6000; // six seconds, then it stops being true
+}
+
+const std::string& App::receipt() const {
+    static const std::string empty;
+    if (receipt_.empty()) return empty;
+    if (monotonicMs() > receiptUntilMs_) return empty;
+    return receipt_;
+}
+
+void App::injectPromptText(const std::string& text) {
+    if (text.empty()) return;
+    std::string& line = active().input;
+    if (!line.empty()) {
+        const char last = line.back();
+        if (last != ' ' && last != '\n') line += ' ';
+    }
+    line += text;
+    // The field is ImGui-owned while it has the keyboard: it reloads from this
+    // buffer only after its active id is cleared (see studio_input.cpp).
+    promptReload_ = true;
+    setReceipt("sent " + text + " -> prompt");
+}
+
+bool App::takePromptReload() {
+    const bool wanted = promptReload_;
+    promptReload_ = false;
+    return wanted;
+}
+
+void App::startSampling() {
+    if (!stats_) stats_ = CreateSystemStats();
+    if (stats_) stats_->start();
+}
+
+void App::stopSampling() {
+    if (stats_) stats_->stop();
+}
+
+StatsSnapshot App::stats() const {
+    if (!stats_) return StatsSnapshot{};
+    return stats_->snapshot();
+}
+
+GroupSample App::paneSample(int index) const {
+    const StatsSnapshot snap = stats();
+    for (size_t i = 0; i < snap.keys.size() && i < snap.groups.size(); ++i) {
+        if (snap.keys[i] == index) return snap.groups[i];
+    }
+    return GroupSample{};
+}
+
+void App::startPaneHere(const std::string& dir) {
+    const std::string target = dir.empty() ? getWorkspaceDir() : dir;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(std::filesystem::path(target), ec) || ec) {
+        setReceipt("not a directory: " + target);
+        return;
+    }
+    std::string why;
+    if (!newPane(target, &why)) {
+        setReceipt("cannot start a pane: " + why);
+        return;
+    }
+    setTreeRoot(target);
+}
+
+const ToolPaths& App::toolPaths() const {
+    // A static empty ToolPaths allows everything (the documented legacy behaviour),
+    // which is exactly right when there is no runtime yet: the tree marks nothing.
+    static const ToolPaths empty;
+    if (!runtime_) return empty;
+    return runtime_->toolPaths();
+}
+
+std::string App::workSummary() const {
+    if (panes_.empty() || !runtime_) return std::string();
+    const Pane& pane = active();
+    if (!pane.clock.running) return std::string();
+    const long long now = monotonicMs();
+    const double seconds = work_clock::elapsedSeconds(pane.clock, now);
+    const double rate = work_clock::tokensPerSecond(pane.clock, now, activeTokens());
+    char buf[96];
+    const AgentStatus status = runtime_->status();
+    if (status.state == AgentState::ExecutingTool && status.toolProgressTotal > 0) {
+        std::snprintf(buf, sizeof buf, "%.1fs  %.0f tok/s  tool %d/%d", seconds, rate,
+                      status.toolProgressCurrent, status.toolProgressTotal);
+    } else {
+        std::snprintf(buf, sizeof buf, "%.1fs  %.0f tok/s", seconds, rate);
+    }
+    return buf;
+}
+
+int App::activeTokens() const {
+    if (!runtime_) return 0;
+    return runtime_->promptTokens() + runtime_->completionTokens();
+}
+
+long long App::nowMs() const { return monotonicMs(); }
+
+void App::setFollowBottom(bool on) { active().followBottom = on; }
 
 } // namespace studio

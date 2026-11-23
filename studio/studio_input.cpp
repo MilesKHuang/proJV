@@ -25,6 +25,10 @@
 #include <string>
 
 #include "imgui.h"
+// ClearActiveID lives in imgui_internal.h. It is the only public-ish way to say
+// "drop the item that owns the keyboard" -- the alternative is poking
+// ImGuiInputTextState, which is a bigger dependency on the same file.
+#include "imgui_internal.h"
 
 #include "design/tokens.h"
 #include "studio_app.h"
@@ -79,6 +83,15 @@ void drawPrompt(App& app, const Frame& f) {
         wantFocus = true;
 
     ImGui::SetCursorScreenPos(ImVec2(box.x, box.y));
+    // The left column can push text into this line (a path, a `@path`). While the
+    // field owns the keyboard it keeps its own copy of the text, so the only way to
+    // show the new buffer is to drop the active id for one frame and take the
+    // keyboard back: the field then reloads from App::inputText() with the caret at
+    // the end. ImGui 1.93 has no public "replace the active buffer" call.
+    if (app.takePromptReload()) {
+        ImGui::ClearActiveID();
+        wantFocus = true;
+    }
     ImGui::PushStyleColor(ImGuiCol_FrameBg, p.surface);
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, p.surface);
     ImGui::PushStyleColor(ImGuiCol_FrameBgActive, p.surface);

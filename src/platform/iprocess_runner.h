@@ -55,6 +55,11 @@ class IProcessRunner {
     // Signal the running process to terminate.
     // Windows: TerminateJobObject / Linux: killpg(SIGTERM) -> SIGKILL.
     virtual void Cancel() = 0;
+
+    // The pid of the child currently running, or 0 when the runner is idle. Used by
+    // a host that samples resource use per session: the runner is one child at a
+    // time, so this pid belongs to the session whose turn is executing it.
+    virtual int CurrentPid() const { return 0; }
 };
 
 // Factory: platform-specific implementation

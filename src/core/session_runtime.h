@@ -53,6 +53,19 @@ class SessionRuntime {
     // iprocess_runner.h). Must be set before initialize().
     void setProcessRunner(IProcessRunner* r) { procRunner_ = r; }
 
+    // The workspace this session's tools resolve against. Must be called before
+    // initialize(); the default is the launch directory (getWorkspaceDir), so the
+    // TUI and `projv run` keep exactly the behaviour they had.
+    //
+    // One window can host several sessions rooted in different directories, which
+    // is why this is a member and not a process-wide read: `chdir` would move every
+    // other session's tools (and its snapshot store) with it.
+    void setWorkspace(const std::string& dir);
+    const std::string& workspace() const { return workspace_; }
+    // The roots this session may touch. The studio's file tree marks rows outside
+    // them, so a refusal is visible before the click instead of after.
+    const ToolPaths& toolPaths() const { return paths_; }
+
     // Everything TuiApp::initialize() used to do, minus the theme, the terminal
     // status channel and the model list refresh trigger.
     bool initialize();
@@ -178,6 +191,7 @@ class SessionRuntime {
     DeepSeekClient client_;
     ToolRegistry tools_;
     ToolPaths paths_;
+    std::string workspace_; // setWorkspace() or the launch directory
     std::optional<PythonToolManager> pytoolMgr_;
     std::unique_ptr<mcp::Manager> mcpManager_;
     std::atomic<bool> toolsReloadRequested_{false};

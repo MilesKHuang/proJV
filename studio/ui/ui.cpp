@@ -523,6 +523,38 @@ bool listRowDoubleClicked() {
     return g_rowDouble;
 }
 
+bool listRowAt(const Metrics& m, const Rect& box, const std::string& label, bool selected,
+               bool disabled, Type tier) {
+    if (box.empty()) return false;
+    const Palette p = palette();
+    ImGui::SetCursorScreenPos(v2(box));
+    // A row is a click surface, not a button: the keyboard-navigation cursor (a ring
+    // in ImGuiCol_NavCursor, which the theme sets to the streaming accent) would be
+    // painted around whichever row the nav system landed on first -- a red frame in
+    // the middle of a panel. The selection fill already says where you are.
+    ImGui::PushStyleColor(ImGuiCol_NavCursor, IM_COL32(0, 0, 0, 0));
+    pushWidgetId(label, box);
+    const bool clicked = ImGui::InvisibleButton("##row", ImVec2(box.w, box.h));
+    const bool hovered = ImGui::IsItemHovered();
+    g_rowDouble = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+    popWidgetId();
+    ImGui::PopStyleColor();
+
+    const float radius = tokens::radiusPx(m, Radius::Xs);
+    if (selected) {
+        fillRound(box, p.selected, radius);
+        fill(Rect{box.x, box.y, std::max(2.0f, m.hairline * 2.0f), box.h}, p.accent);
+    } else if (hovered && !disabled) {
+        fillRound(box, p.hover, radius);
+    }
+    const Rect textBox =
+        box.inset(tokens::spacePx(m, Space::Sm), 0.0f, tokens::spacePx(m, Space::Xs), 0.0f);
+    // A label starting with "##" is id-only, ImGui's own convention: the panels pass
+    // a row's path there (unique and stable) and draw the row's text themselves.
+    const bool drawLabel = !(label.size() >= 2 && label[0] == '#' && label[1] == '#');
+    if (drawLabel) textAt(m, textBox, label, disabled ? p.textDim : p.text, tier, false, 0.0f, 0.5f);
+    return clicked && !disabled;
+}
 void badge(const Metrics& m, const Rect& box, const std::string& label, ImU32 fg, ImU32 bg) {
     if (box.empty()) return;
     fillRound(box, bg, tokens::radiusPx(m, Radius::Pill));

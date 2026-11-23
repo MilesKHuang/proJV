@@ -53,13 +53,21 @@ void SessionRuntime::notice(const std::string& text) {
 
 // ---- tools --------------------------------------------------------------
 
+void SessionRuntime::setWorkspace(const std::string& dir) {
+    // Stored, not applied: initialize() builds paths_ from it, so calling this
+    // after initialize() would leave the tools on the old root. That is why the
+    // header says "before initialize()".
+    workspace_ = dir;
+}
+
 void SessionRuntime::setupTools() {
     // Two roots, not one: the workspace is the launch directory (every file tool,
     // the shell CWD and the pytool sandbox root there), and projv_files sits next
     // to the exe. projv_files is writable -- that is what "add a skill" means --
     // except sessions/ and logs/, which are history and stay read-only.
-    paths_ = ToolPaths::forSession(getWorkspaceDir(), getProjvDir());
-    const std::string ws = getWorkspaceDir();
+    if (workspace_.empty()) workspace_ = getWorkspaceDir();
+    paths_ = ToolPaths::forSession(workspace_, getProjvDir());
+    const std::string ws = workspace_;
     if (agent_) agent_->setWorkspacePath(paths_.describe());
 
     // Snapshots (/undo). Best effort: an oversized workspace or a read-only
@@ -351,7 +359,7 @@ bool SessionRuntime::initialize() {
     // are registered at the first turn boundary (see runTurnLoop), which is also
     // where the capability map that names them is built.
     mcpManager_ = std::make_unique<mcp::Manager>();
-    mcpManager_->setWorkDir(getWorkspaceDir());
+    mcpManager_->setWorkDir(workspace_);
     mcp::ensureConfigFile(mcp::configPath());
     if (!mcpManager_->loadFromJson(mcp::configPath()))
         debugLogWarnf("[Runtime] mcp.json: %s", mcpManager_->configError().c_str());
@@ -393,7 +401,7 @@ bool SessionRuntime::submit(const std::string& text) {
 
     // /workspace: display only, no turn.
     if (trimmed == "/workspace") {
-        notice("[Workspace] " + getWorkspaceDir());
+        notice("[Workspace] " + workspace_);
         return false;
     }
 
@@ -563,7 +571,7 @@ bool SessionRuntime::submit(const std::string& text) {
     std::string turnText = trimmed;
     std::vector<ImageAttachment> images;
     {
-        auto parsed = image_input::parseMarkers(trimmed, getWorkspaceDir());
+        auto parsed = image_input::parseMarkers(trimmed, workspace_);
         if (!parsed.ok()) {
             notice(parsed.error + "\n(message not sent)");
             return false;
@@ -1024,7 +1032,7 @@ std::string SessionRuntime::buildSharedContext() {
 
 void SessionRuntime::injectFixedBlocks() {
     if (!agent_) return;
-    const std::string ws = getWorkspaceDir();
+    const std::string ws = workspace_;
     const std::string projv = getProjvDir();
     // P1: fixed for the session. Written even when every field is empty (the
     // builder always emits every line), because the fixed prefix must keep a
@@ -1042,7 +1050,7 @@ void SessionRuntime::injectFixedBlocks() {
 
 void SessionRuntime::refreshEnvironmentBlock() {
     if (!agent_) return;
-    const std::string ws = getWorkspaceDir();
+    const std::string ws = workspace_;
     const std::string env = ctx::buildEnvironment(ws, getProjvDir(), ws, config_.cppCompilerPath,
                                                   config_.pythonPath, config_.clangFormatPath);
     if (agent_->replaceEnvironmentBlock(env))

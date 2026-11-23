@@ -28,6 +28,7 @@
 #include "design/tokens.h"
 #include "studio_app.h"
 #include "studio_input.h"
+#include "studio_leftbar.h"
 #include "studio_markdown.h"
 #include "studio_text.h"
 #include "studio_theme.h"
@@ -44,9 +45,9 @@ using tokens::Space;
 using tokens::Type;
 using ui::Palette;
 
+
 // One text surface for the whole chat: it owns the selection and the layout cache.
 TextSurface g_surface;
-
 // The frame of the last drawFrame call: the composer, the slash menu and the
 // modals align to the grid the shell computed, not to their own idea of it.
 Frame g_frame;
@@ -725,6 +726,17 @@ void drawStatusLine(App& app, const Frame& f) {
     // Body, with Small only as the fallback for a line too long to fit: the footer
     // is read at a glance, and 13.5 px of grey was reported as too small twice.
     const Type tiers[2] = {Type::Body, Type::Small};
+    // The turn's own figures, right-aligned and dim: how long this has been running
+    // and how fast it is producing. Studio clock (the view model reads none), so it
+    // is drawn here rather than derived into the snapshot.
+    const std::string work = app.workSummary();
+    if (!work.empty()) {
+        const float w = std::min(box.w * 0.5f, ui::measure(m, work, Type::Small, false));
+        ui::textAt(m, layout::Rect{box.right() - w, box.y, w, box.h},
+                   ui::fitLine(m, work, w, Type::Small, false), p.textDim, Type::Small, false, 1.0f,
+                   0.5f);
+        box.w = std::max(1.0f, box.w - w - tokens::spacePx(m, Space::Sm));
+    }
     ui::fittedText(m, box, s.statusText, fld(s.statusColor), tiers, 2, false, 0.0f);
 }
 
@@ -763,6 +775,16 @@ void drawStatusBar(App& app, const Frame& f) {
         ui::textAt(m, layout::Rect{x, f.statusBar.y, w, f.statusBar.h}, seg.text, fld(seg.color),
                    tier, false, 0.0f);
         x += w + gap * 0.5f;
+    }
+    // The receipt: what the last click did, at the right end of the same bar. It
+    // expires on its own, so a stale claim never sits there looking current.
+    const std::string& receipt = app.receipt();
+    if (!receipt.empty()) {
+        const float avail = std::max(1.0f, limit - x - tokens::spacePx(m, Space::Sm));
+        const float w = std::min(avail, ui::measure(m, receipt, tier, false));
+        ui::textAt(m, layout::Rect{limit - w, f.statusBar.y, w, f.statusBar.h},
+                   ui::fitLine(m, receipt, w, tier, false),
+                   studio_theme::field(&ThemeColors::statusRunning), tier, false, 0.0f, 0.5f);
     }
 }
 
@@ -908,6 +930,14 @@ Frame computeFrame(App& app, const Metrics& m) {
     root.padding(layout::Edges::all(page));
     root.add(layout::Node::none().height(headerH));
     layout::Node body = layout::Node::row(m.gutter).hGrow(1.0f);
+    // The left column is a sibling of the chat, not an overlay: the transcript
+    // shrinks by exactly its width, and the reading measure re-centres in what is
+    // left. `leftOpen` is the panel's own chevron, not a key.
+    const float leftW =
+        app.leftOpen() ? std::min(std::max(340.0f * m.factor, contentW * 0.26f),
+                                  contentW * 0.40f)
+                       : 0.0f;
+    if (leftW > 0.0f) body.add(layout::Node::none().width(leftW));
     body.add(layout::Node::none().wGrow(1.0f));
     if (f.dockOpen) body.add(layout::Node::none().width(m.dockW).minsize(220.0f * m.factor, 0.0f));
     root.add(body);
@@ -916,10 +946,38 @@ Frame computeFrame(App& app, const Metrics& m) {
 
     f.header = root.children[0].rect;
     // The solver's own children, not a copy of their rects: the body node holds
-    // the chat and the dock, and both were placed against the height it got.
+    // the left column, the chat and the dock, and all three were placed against the
+    // height it got.
     const layout::Node& bodyNode = root.children[1];
-    f.chat = bodyNode.children[0].rect;
-    if (f.dockOpen && bodyNode.children.size() > 1) f.dock = bodyNode.children[1].rect;
+    size_t child = 0;
+    f.leftOpen = leftW > 0.0f;
+    if (f.leftOpen) f.left = bodyNode.children[child++].rect;
+    f.chat = bodyNode.children[child++].rect;
+    if (f.dockOpen && child < bodyNode.children.size()) f.dock = bodyNode.children[child].rect;
+    // --- the left column's own stack: sessions / handle / files ----------------
+    // The Sessions panel is as tall as its content (a minimal wrapper: one row per
+    // pane plus the header) and the file tree gets every pixel that is left, capped
+    // so five panes cannot eat the tree.
+    if (f.leftOpen && !f.left.empty()) {
+        const float gap = tokens::spacePx(m, Space::Sm);
+        const float handleH = tokens::spacePx(m, Space::Sm);
+        // A title line plus three progress bars, one per metric: a caption line and a
+        // slim track under it, which is what "an ordinary progress bar" looks like.
+        f.sessionsBarH = std::max(4.0f, m.hairline * 4.0f);
+        f.sessionsRowH =
+            m.rowH + 3.0f * (tokens::linePx(m, Type::Caption) + f.sessionsBarH + gap) + gap;        const float sessionsWanted = m.rowH + static_cast<float>(app.paneCount()) * f.sessionsRowH +
+                                     3.0f * gap;
+        const float sessionsMax = std::max(6.0f * m.rowH, f.left.h * 0.45f);
+        const float sessionsH = std::min(sessionsWanted, sessionsMax);
+        layout::Node col = layout::Node::col(0.0f);
+        col.add(layout::Node::none().height(sessionsH));
+        col.add(layout::Node::none().height(handleH));
+        col.add(layout::Node::none().hGrow(1.0f));
+        layout::solve(col, f.left);
+        f.leftSessions = col.children[0].rect;
+        f.leftSplit = col.children[1].rect;
+        f.leftFiles = col.children[2].rect;
+    }
     f.footer = root.children[2].rect;
     // The reading column: capped and centred. Published so the composer, the
     // slash menu and the modals share one left edge with the transcript.
@@ -992,6 +1050,7 @@ void drawFrame(App& app) {
         const Palette p = ui::palette();
         ui::fill(g_frame.window, p.window);
         drawHeader(app, g_frame);
+        if (g_frame.leftOpen) drawLeftBar(app, g_frame);
         drawChat(app, g_frame);
         if (g_frame.dockOpen) drawDock(app, g_frame);
         drawStatusLine(app, g_frame);

@@ -168,6 +168,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/platform/install_shim.cpp
     ${SRC_DIR}/platform/cli_args.cpp
     ${SRC_DIR}/platform/log_files.cpp
+    ${SRC_DIR}/platform/system_stats.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -225,6 +226,7 @@ if(WIN32)
         ${SRC_DIR}/tools/python_tool_manager.cpp
         ${SRC_DIR}/platform/process_runner_win.cpp
         ${SRC_DIR}/platform/system_util_win.cpp
+        ${SRC_DIR}/platform/system_stats_win.cpp
     )
 else()
     set(PLATFORM_SOURCES
@@ -232,6 +234,7 @@ else()
         ${SRC_DIR}/tools/python_tool_manager.cpp
         ${SRC_DIR}/platform/process_runner_linux.cpp
         ${SRC_DIR}/platform/system_util_linux.cpp
+        ${SRC_DIR}/platform/system_stats_linux.cpp
     )
 endif()
 
@@ -255,6 +258,7 @@ target_include_directories(proJV_lib PRIVATE
 if(WIN32)
     target_link_libraries(proJV_lib PRIVATE
         crypt32 ole32 shell32 comctl32 comdlg32 gdi32 user32 dbghelp advapi32
+        pdh psapi
         ${CURL_LIBRARY}
         SQLiteCpp
     )
@@ -362,6 +366,7 @@ set(STUDIO_SOURCES
     ${STUDIO_DIR}/studio_text.cpp
     ${STUDIO_DIR}/studio_input.cpp
     ${STUDIO_DIR}/studio_ui.cpp
+    ${STUDIO_DIR}/studio_leftbar.cpp
     ${STUDIO_DIR}/studio_modals.cpp
     # The design system: pure tokens + layout + text fitting (no ImGui), then the
     # widget kit that paints them.
@@ -369,6 +374,10 @@ set(STUDIO_SOURCES
     ${STUDIO_DIR}/design/layout.cpp
     ${STUDIO_DIR}/design/fit.cpp
     ${STUDIO_DIR}/design/actions.cpp
+    ${STUDIO_DIR}/design/file_tree.cpp
+    ${STUDIO_DIR}/design/path_text.cpp
+    ${STUDIO_DIR}/design/gauges.cpp
+    ${STUDIO_DIR}/design/work_clock.cpp
     ${STUDIO_DIR}/ui/ui.cpp
 )
 set(STUDIO_BACKEND_SOURCES

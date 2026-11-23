@@ -100,7 +100,9 @@ class Manager {
     size_t toolCount(const std::string& name) const;
     unsigned spawnCount(const std::string& name) const;
     std::vector<std::string> serverNames() const;
-
+    // The pids of the servers that are spawned, for a host that samples resource use
+    // per session (the studio's session rows). Empty when nothing is running.
+    std::vector<int> serverPids() const;
     // Read-only snapshot for the capability map (P3): name, purpose, and the
     // registered tool names, sorted by server name. Only Ready servers that are
     // actually registered are listed -- naming a tool the model cannot call is

@@ -59,6 +59,7 @@ build/proJV_studio
 | TUI | studio |
 |---|---|
 | 标题 `proJV (TUI)` + `[Agent: phase]` | `proJV (studio)` + 同一行 phase，同一主题字段 |
+| ——（没有左栏） | 左栏：Sessions（每个 pane 一张卡片，卡内自带 CPU/MEM/GPU 三条细进度条）与 Files，一列堆叠（`studio/studio_leftbar.cpp`） |
 | 活动条：39 列单元、自动换行 | 同一单元、同一宽度，按窗口宽度换行 |
 | 聊天：带框块、markdown、思考卡、diff 块 | 同一批行，用 ImGui 画；markdown 用同一个 `markdown_text` 解析器 |
 | 右 dock 36 列：TODO + 后台任务 | 同样的切分与宽度 |
@@ -129,7 +130,8 @@ Esc 关闭除审批以外的全部——破坏性命令要一个明确答复。�
 ```
 window
 ├── header    标题、阶段徽章、十一个动作按钮（放不下就换行）
-├── body      Row [ 聊天区(Grow) | dock(Fixed) ]   dock 可用 F9 关闭
+├── body      Row [ 左栏(固定 26%) | 聊天区(Grow) | dock(Fixed) ]   dock 可用 F9 关闭
+│   └── 左栏    Col [ Sessions（内容高度） | 手柄 | Files（吃掉剩余） ]   Files 标题上的箭头折叠整列
 ├── composer  输入框，与聊天列左边缘对齐，文字几行就几行高
 ├── footer    状态行、排队行、服务栏
 └── slash     锚在输入框上方的 "/" 菜单浮层
@@ -147,6 +149,34 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 而不是隐藏，区块高度随行数长。`tests/unit/test_studio_design.cpp` 断言表里的快捷键
 集合等于参考手册的键位表：给产品加了键却忘了按钮，失败的是测试，而不是用户的期待。
 
+### 左栏：会话与文件
+
+左栏是调度台（参照窗口的形状）：这个窗口在跑什么、磁盘上有什么。
+
+| 面板 | 显示什么 | 接到哪里 |
+|---|---|---|
+| Sessions | 本窗口拥有的 pane，**一个一张卡片**：第一行标题 + 状态，下面同一张卡里是 CPU / MEM / GPU 三条细进度条。选中的卡用强调色描边、悬停填充；点一下切过去，右键出唯一那个菜单，中键关闭，`+ New` 在树当前目录开一个会话 | `App::activatePane` / `closePane` / `startPaneHere` |
+| Files | 当前 pane 工作目录的树。双击文件夹换根、双击文件发路径；每行右边缘两个热区 `>`（纯路径）和 `@`（`@path`，proJV 本来就懂的上下文写法）；右键菜单再给一遍，外加复制与在此启动 | `ftree::Tree` + `path_text::payload` |
+
+三条规矩：
+
+1. **agent 碰不到的行要标出来。** 树去问 `ToolPaths::resolve`，允许根之外的行画淡、tooltip 写原因——被拒绝在点之前就能看见，而不是等工具回一句 `__WORKSPACE_VIOLATION__`。
+2. **测不到就是 `-`，不是 `0`。** GPU 0% 和 GPU 未知 是两句不同的话（见 `src/platform/isystem_stats.h`）。
+3. **每个点击都有回执。** 最近一次动作的一行结果在服务栏右端停六秒，没有任何操作会静默结束。
+
+### 一个窗口，多个 pane
+
+一个 pane = 一个 `SessionRuntime` 加它自己的聊天、输入行与推导出来的 Screen（`studio/studio_app.h` 的 `struct Pane`）。界面外壳是共享的，读的是当前 pane。两条要点：
+
+- **工作目录按 pane，不按进程。** `SessionRuntime::setWorkspace` 在 `initialize()` 之前存下它，`session_runtime.cpp` 里 7 处 `getWorkspaceDir()` 改读这个成员；默认值仍是启动目录，所以 TUI 与 `projv run` 行为不变。任何地方都不调 `chdir`：一个 pane 改进程目录，会把别的 pane 的工具和它的快照库一起挪走。
+- **忙着的 pane 拒绝关闭。** `closePane` 回一句先按 Esc 停，而不是销毁一个工作线程还在写库的 `SessionRuntime`。
+
+开会话没有对话框：从文件树落点——工具栏上的 `+`、文件夹右键Start a session here、或 Sessions 面板的 `+ New`（用树当前目录）。想换目录就在树顶那行路径里输。
+
+- **点下 `+` 立刻有反应。** 卡片和 `starting...` 在点击那一帧就出现，真正那 3-5 秒的 `initialize()`（会话库 + MCP 服务）在下一帧、仍然在 UI 线程上做。把它挪到后台线程试过，会在 `SessionRuntime::initialize()` 里崩，所以工作留在安全的地方，只有反馈是异步的。
+- **同目录的第二张卡片带序号**（proJV @ Release (2)），两张卡不会读起来一样。
+- **每张卡先 `Dummy()` 占位再画**：卡片和树行都是绝对矩形绘制，不先占位 ImGui 就会报 "SetCursorScreenPos() to extend window boundaries 并把整块面板描成纯红；右键菜单由行打开、但只在循环外画一次，否则同名弹窗每行查一次就是 id 冲突（多 pane 右键出错就是它）。
+
 ## 一致性测试
 
 - `tests/unit/test_view_model.cpp` 钉住推导，并与 TUI 自己的渲染器交叉验证：
@@ -157,6 +187,7 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
   `bestTier` 选最大能放下的档位、多行输入框需要几行（换行符／折行／末尾换行符），
   以及头部那张表：每个文档化的键恰好一条、开关与角色胶囊的标签跟随状态、
   `actions::pack` 只换行不丢按钮。这些模块都不含 ImGui，所以不需要 GPU 也能测。
+- `cpuPercentBetween` 同样钉住：四核上一秒 CPU / 一秒墙上时间 = 25%，进程树变小会夹到 0，零长度窗口没有速率。
 - `tests/unit/test_worker_wait.cpp` 钉住退出语义：干完的线程会被 join（可以安全清理），
   没干完的线程被 detach 且调用立刻返回（`src/core/worker_wait.h`）。没有"等 N 秒"这种判据。
 - `tests/unit/test_status_line.cpp` 钉住 `Stopping...`：取消请求压过所有运行中的状态，
@@ -167,6 +198,10 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 
 ## 有意保留的差异
 
+- **一个窗口拥有多个会话。** TUI 是一进程一会话；studio 能并排多个 pane，各带自己的工作目录。这是 studio 的特性而不是共享推导：pane 状态住在 `studio/studio_app.h`，`view_model` 一个字段都没加。
+- **资源采样有自己的线程，且不拉子进程。** `ISystemStats` 只读计数器（Windows 用 Toolhelp32 + `GetProcessTimes` + PDH，Linux 用 `/proc` + sysfs）。它从不经过 `IProcessRunner`——那个 runner 按设计一次一个子进程，采样排在一条 30 分钟的命令后面毫无意义。没有的 GPU 计数器报未知并给原因，绝不编一个 0%。
+- **多 pane 共享一个进程时，不做 per-pane 的 CPU/MEM 归属。** 它们的 shell 子进程同父，System 面板报整棵树；给出 per-pane 数字等于把猜测包装成测量。
+- **暂不做版面持久化。** 左栏宽度、分割比例、树根只在内存里，跟没有 `imgui.ini`一致。
 - **停靠开着，但还没有 dock 宿主。** 设了 `ImGuiConfigFlags_DockingEnable`、
   关掉了多视口（D1）；版面仍是 TUI 的固定版式，浮动面板等 08.7 蓝图编辑器要用
   时再接。
@@ -226,6 +261,14 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 | `studio/main_studio_sdl.cpp` | Linux：同一套循环，走 SDL2 |
 | `studio/studio_app.{h,cpp}` | 状态、动作、按键表、填充 `Source` |
 | `studio/studio_ui.cpp` | 主界面：聊天、dock、状态、会换行的头部、输入 |
+| `studio/studio_leftbar.cpp` | 左栏：Sessions、Files、System 与两条拖拽手柄 |
+| `studio/studio_modals.cpp` | 十个模态（没有启动器：会话从文件树开） |
+| `studio/design/file_tree.{h,cpp}` | 树模型：Explorer 顺序、惰性层级、可见行 |
+| `studio/design/path_text.{h,cpp}` | 路径 -> 提示文本的规则（`>`、`@`、加引号） |
+| `studio/design/gauges.{h,cpp}` | System 面板的字节/百分比/占比/上限算术 |
+| `studio/design/work_clock.{h,cpp}` | 回合耗时与吞吐，时间戳外部注入 |
+| `src/platform/isystem_stats.h` | 采样接口（不拉子进程，未知不等于 0） |
+| `src/platform/system_stats_{win,linux}.cpp` | 两份实现（Toolhelp32 + PDH / `/proc` + sysfs） |
 | `studio/studio_modals.cpp` | 十个模态 |
 | `studio/studio_markdown.cpp` | `markdown_text` 行 -> ImGui 绘制 |
 | `studio/studio_theme.cpp` | `ThemeColors` -> ImU32（studio 唯一的颜色转换）、字体 |
