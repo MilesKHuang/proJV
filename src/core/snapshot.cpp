@@ -7,6 +7,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -61,7 +62,7 @@ struct Meta {
 // One workspace's store. Everything that used to be one process-wide `State`
 // lives here, and there is one WorkspaceStore per canonical workspace path.
 struct WorkspaceStore {
-    bool open = false;
+    std::atomic<bool> open{false};
     std::string reason;
     fs::path projvDir;
     fs::path workspace;
@@ -693,7 +694,7 @@ Store open(const std::string& workspace, int keepDays, int maxWorkspaceGb, std::
         st->reason = err;
         return handle;
     }
-    st->open = true;
+    st->open.store(true);
     debugLogInfof("[snapshot] open %s (session store %s)", st->workspace.string().c_str(),
                   st->root.string().c_str());
     return handle;
@@ -701,9 +702,10 @@ Store open(const std::string& workspace, int keepDays, int maxWorkspaceGb, std::
 
 bool isAvailable(Store s) {
     auto st = storeAt(s);
-    if (!st) return false;
-    std::lock_guard<std::mutex> lk(st->mtx);
-    return st->open;
+    // No store lock: a front-end asks this while painting, and the agent thread may
+    // be inside a whole-workspace scan holding it. `open` flips once, before the
+    // handle is handed out, and is atomic for exactly this reader.
+    return st && st->open.load();
 }
 
 int beginTurn(Store s, const std::string& sessionId, std::string& err) {
@@ -714,7 +716,7 @@ int beginTurn(Store s, const std::string& sessionId, std::string& err) {
         return -1;
     }
     std::lock_guard<std::mutex> lk(st->mtx);
-    if (!st->open) {
+    if (!st->open.load()) {
         err = st->reason.empty() ? "snapshots are not available" : st->reason;
         return -1;
     }
@@ -806,7 +808,7 @@ int lastTurn(Store s, const std::string& sessionId) {
     auto st = storeAt(s);
     if (!st) return -1;
     std::lock_guard<std::mutex> lk(st->mtx);
-    if (!st->open) return -1;
+    if (!st->open.load()) return -1;
     try {
         SQLite::Statement q(
             *st->db, "SELECT MAX(seq) FROM turns WHERE session_id=? AND ended_at IS NOT NULL "
@@ -826,7 +828,7 @@ Report undoLast(Store s, const std::string& sessionId, bool force) {
         return r;
     }
     std::lock_guard<std::mutex> lk(st->mtx);
-    if (!st->open) {
+    if (!st->open.load()) {
         r.error = st->reason.empty() ? "snapshots are not available" : st->reason;
         return r;
     }
@@ -859,7 +861,7 @@ Report restoreTo(Store s, const std::string& sessionId, int turnSeq, bool force)
         return r;
     }
     std::lock_guard<std::mutex> lk(st->mtx);
-    if (!st->open) {
+    if (!st->open.load()) {
         r.error = st->reason.empty() ? "snapshots are not available" : st->reason;
         return r;
     }
