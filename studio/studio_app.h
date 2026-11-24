@@ -97,17 +97,11 @@ struct Pane {
     view_model::Screen screen;
     bool followBottom = true;
     int scrollRequest = 0;
-    // A pane is created OFF the UI thread: initialize() opens the session database
-    // and spawns the MCP servers, which took seconds while the window froze.
+    // A pane is initialised on the UI thread (see App::newPane); there is no
+    // startup thread, so there is nothing to join and no hand-off to order.
     enum class State { Starting, Ready, Failed };
-    // Written by the startup thread, read by the UI thread: atomic so the hand-off
-    // is addressed rather than assumed to be ordered.
     std::atomic<State> state{State::Starting};
     bool adopted = false; // tick() has seen this pane become ready
-    // The startup thread. tick() JOINS it before touching the runtime: a join is a
-    // real happens-before edge, so nothing observes a half-built SessionRuntime.
-    std::thread starter;
-    std::atomic<bool> started{false};
     std::string error;
     work_clock::Clock clock;
     int tokensMark = 0; // prompt+completion when the current turn started
@@ -337,7 +331,11 @@ class App {
     // App::initialize() on the UI thread (which is now off it).
     bool finishStartup_ = false;
     bool firstPaneReady_ = false;
-    int pendingInit_ = -1; // a pane created this frame, waiting for its initialize()
+    // Panes created this frame, waiting for their initialize() on the next tick.
+    // A queue, not a single slot: two clicks in one frame must both be initialised.
+    // It holds the Pane*, not its index: closing any pane shifts every index after
+    // it, and a queued index would then point at a different session.
+    std::vector<Pane*> pendingInit_;
 
     // The left column.
     ftree::Tree tree_;

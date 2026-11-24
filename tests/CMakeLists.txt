@@ -58,6 +58,7 @@ set(TEST_SOURCES
     unit/test_install_shim.cpp
     unit/test_mcp.cpp
     unit/test_session_runtime.cpp
+    unit/test_session_init.cpp
     unit/test_skill_deliverable.cpp
     # The whole-screen view model (design 08.5, D4): derivation + TUI parity.
     unit/test_view_model.cpp

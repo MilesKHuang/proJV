@@ -308,6 +308,9 @@ bool SessionRuntime::initialize() {
     agent_->setContextWindow(config_.contextWindow);
 
     // Prompt files from projv_files/prompts/.
+    // ensureDefaultPrompts() is the ONLY thing that creates that directory and
+    // seeds the default role, so it must run before anything reads the list.
+    promptFiles_ = ensureDefaultPrompts();
     // compactor.md is the /compress prompt, not a role. Every other file here is
     // a role, whatever it is called -- no name is reserved.
     promptFiles_.erase(std::remove(promptFiles_.begin(), promptFiles_.end(), "compactor.md"),
@@ -315,7 +318,11 @@ bool SessionRuntime::initialize() {
     activePromptIndex_ = defaultPromptIndex(promptFiles_);
     agent_->setSystemPrompt(activePromptContent());
 
-    // Sessions dir (lazy-create DB on first message).
+    // Sessions dir (lazy-create DB on first message). Without this assignment the
+    // directory name is empty: the DB path collapses to "/session_<ts>.db" (the
+    // root of the current drive on Windows) and listSessions() iterates "" -- so
+    // F4/Open came up blank and a new conversation was never persisted.
+    sessionsDir_ = getSessionsDir();
     std::error_code ec;
     fs::create_directories(sessionsDir_, ec);
     if (ec) {
@@ -346,7 +353,12 @@ bool SessionRuntime::initialize() {
         }
     };
 
-    // Inject system prompt as first session message.
+    // Inject system prompt as first session message: P0 (role), so the fixed
+    // prefix is exactly three system messages. The index is what buildChatRequest
+    // and applyCompaction rely on to keep P0/P1/P2 at [0, 3) -- with this line
+    // missing the prefix shrank to two, and the capability map plus the compaction
+    // summary were inserted one slot early.
+    agent_->addPersistedMessage(Message::System(activePromptContent()));
 
     // Fixed prefix: P1 [ENVIRONMENT] + P2 [PROJECT] right after the role prompt.
     // Same call the F3 and "/clear" paths use, so a conversation always starts
@@ -1208,6 +1220,7 @@ void SessionRuntime::saveApiKeyAndConnect(const std::string& apiKey) {
 void SessionRuntime::saveFullConfig(const AppConfig& next) {
     // One source of truth: the dialog edits a copy of AppConfig and hands it back,
     // so a key that exists in AppConfig cannot be silently dropped by the panel.
+    const std::string previousPython = config_.pythonPath;
     config_.apiKey = next.apiKey;
     config_.baseUrl = next.baseUrl;
     config_.model = next.model;
@@ -1230,6 +1243,9 @@ void SessionRuntime::saveFullConfig(const AppConfig& next) {
     if (!saveConfig(config_)) config_.loadError = "Failed to save config file!";
 
     client_.setConfig(config_);
+    // The auto-detection cache is keyed on nothing; a changed python path must
+    // invalidate it, or the new setting is ignored for the rest of the process.
+    if (previousPython != config_.pythonPath) PythonToolManager::resetPythonCache();
     // Tool-table writes must not race the agent thread: ToolRegistry's maps are a
     // bare unordered_map and the Agent iterates them in buildChatRequest() ->
     // getFilteredToolDefinitions(). While a turn (or a skill -- it sets the same

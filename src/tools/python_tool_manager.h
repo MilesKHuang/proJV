@@ -20,6 +20,12 @@ class PythonToolManager {
                                      const std::string& workspacePath, const std::string& args,
                                      IProcessRunner* procRunner);
 
+    /// Drop the process-wide auto-detection cache. Call this when the configured
+    /// python path changes, so the next session probes again instead of reusing a
+    /// result taken before the edit. Without an explicit path, detection costs one
+    /// shell round trip per PROCESS (not per session) because of that cache.
+    static void resetPythonCache();
+
   private:
     static std::string pytoolDir();
     static std::string autoDetectPython();

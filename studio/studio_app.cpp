@@ -70,9 +70,7 @@ App::App() = default;
 
 App::~App() {
     stopSampling();
-    for (auto& owned : panes_) {
-        if (owned && owned->starter.joinable()) owned->starter.join();
-    }
+    pendingInit_.clear(); // raw pointers: drop them before their owners
     panes_.clear();
 }
 
@@ -154,25 +152,29 @@ bool App::newPane(const std::string& workspace, std::string* why, bool syncNow) 
     refreshPaneTitles();
     activatePane(static_cast<int>(panes_.size()) - 1);
 
-    // initialize() opens the session database and starts the MCP servers: three to
-    // five seconds. Two ways to do it, and both matter:
+    // initialize() builds the runtime: config, tools, agent, prompts, the fixed
+    // context blocks and the MCP spawn. Two ways, and both matter:
     //   - the FIRST pane (start-up): here, on this thread, before the window exists;
-    //   - every later pane: handed to tick() through pendingInit_, which runs it on
-    //     the next frame -- by then the new card is already on screen showing
-    //     "starting...", so "+" answers immediately instead of looking dead.
+    //   - every later pane: queued for tick(), which runs it on the next frame -- by
+    //     then the new card is already on screen showing "starting...", so "+"
+    //     answers immediately instead of looking dead.
     // A worker thread was tried for this and CRASHED inside initialize()
     // (SessionRuntime is not thread-safe to build off the UI thread), so the work
     // stays on this thread and only the *feedback* is asynchronous.
+    // The measured cost is in docs/en|zh/dev-guide/studio-gui.md; it is NOT the
+    // 3-5 s this comment used to claim.
     if (syncNow) {
         const bool ok = raw->rt && raw->rt->initialize();
         if (ok) raw->workspace = raw->rt->workspace();
         raw->state.store(ok ? Pane::State::Ready : Pane::State::Failed);
         if (!ok) raw->error = "initialize failed (see projv_files/logs)";
-        raw->started.store(true);
         bindActive();
         if (ok) adoptFinishedPanes();
     } else {
-        pendingInit_ = static_cast<int>(panes_.size()) - 1;
+        // A QUEUE, not one slot: two clicks in the same frame used to overwrite the
+        // first index, and that pane stayed Starting for ever -- closePane() refuses
+        // to close a Starting pane, so it was stuck with no way out.
+        pendingInit_.push_back(raw);
     }
     // `pane` was MOVED into panes_ above: read through the raw pointer, or this line
     // dereferences a null unique_ptr (the access violation that killed start-up).
@@ -203,9 +205,6 @@ bool App::paneReady(int index) const {
 void App::adoptFinishedPanes() {
     for (auto& owned : panes_) {
         Pane& pane = *owned;
-        // Join first: the startup thread is the only writer of this runtime until it
-        // has finished, and a join makes that write visible before we read it.
-        if (pane.started.load() && pane.starter.joinable()) pane.starter.join();
         if (pane.state.load() != Pane::State::Ready || pane.adopted) continue;
         pane.adopted = true;
         if (pane.workspace.empty()) pane.workspace = pane.rt->workspace();
@@ -247,9 +246,6 @@ void App::activatePane(int index) {
 
 void App::shutdown() {
     stopSampling();
-    for (auto& owned : panes_) {
-        if (owned && owned->starter.joinable()) owned->starter.join();
-    }
     for (auto& pane : panes_) {
         if (pane && pane->rt && pane->state == Pane::State::Ready) pane->rt->shutdown();
     }
@@ -1225,22 +1221,26 @@ void App::tick() {
     if (panes_.empty()) return;
     bindActive();
     adoptFinishedPanes();
-    // A pane created last frame gets its (3-5 s) initialize() HERE, on the UI thread,
-    // while its card is already on screen saying "starting...": the click answered
-    // immediately for a frame, and then the window is busy while the engine builds.
-    if (pendingInit_ >= 0) {
-        const int index = pendingInit_;
-        pendingInit_ = -1;
-        if (index >= 0 && index < static_cast<int>(panes_.size())) {
-            Pane& pane = *panes_[static_cast<size_t>(index)];
-            if (pane.state.load() == Pane::State::Starting) {
-                const bool ok = pane.rt && pane.rt->initialize();
-                if (ok) pane.workspace = pane.rt->workspace();
-                pane.state.store(ok ? Pane::State::Ready : Pane::State::Failed);
-                if (!ok) pane.error = "initialize failed (see projv_files/logs)";
-                pane.started.store(true);
-                bindActive();
-            }
+    // Panes created last frame get their initialize() HERE, on the UI thread, while
+    // their cards are already on screen saying "starting...": the click answered
+    // immediately, and then the window is busy while the engine builds. One pane per
+    // frame keeps a burst of clicks from stalling a single frame for several
+    // initialisations at once.
+    if (!pendingInit_.empty()) {
+        Pane* queued = pendingInit_.front();
+        pendingInit_.erase(pendingInit_.begin());
+        // The pane may have been closed between the click and this frame; the raw
+        // pointer is only dereferenced after its owner is found in panes_.
+        const bool alive = queued != nullptr && std::any_of(
+            panes_.begin(), panes_.end(),
+            [queued](const std::unique_ptr<Pane>& p) { return p.get() == queued; });
+        if (alive && queued->state.load() == Pane::State::Starting) {
+            Pane& pane = *queued;
+            const bool ok = pane.rt && pane.rt->initialize();
+            if (ok) pane.workspace = pane.rt->workspace();
+            pane.state.store(ok ? Pane::State::Ready : Pane::State::Failed);
+            if (!ok) pane.error = "initialize failed (see projv_files/logs)";
+            bindActive();
         }
     }
     // Every pane is drained and projected, not only the visible one: a notice or a
