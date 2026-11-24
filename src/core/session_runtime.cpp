@@ -74,12 +74,15 @@ void SessionRuntime::setupTools() {
 
     // Snapshots (/undo). Best effort: an oversized workspace or a read-only
     // store turns undo off with a reason, and the rest of the app keeps going.
+    // The handle is per workspace: a second pane on the same folder gets the same
+    // one (one baseline, one index.db -- that is the sharing the studio needs), a
+    // pane on another folder gets its own and cannot see this one's files.
     {
         std::string snapErr;
-        if (!snapshot::open(ws, config_.snapshotsKeepDays, config_.snapshotsMaxWorkspaceGb,
-                            snapErr)) {
+        snapshotStore_ = snapshot::open(ws, config_.snapshotsKeepDays,
+                                        config_.snapshotsMaxWorkspaceGb, snapErr);
+        if (!snapshot::isAvailable(snapshotStore_) && !snapErr.empty())
             debugLogWarnf("[Runtime] undo disabled: %s", snapErr.c_str());
-        }
     }
 
     registerShellTool(tools_, paths_, procRunner_, &taskRegistry_);
@@ -250,6 +253,7 @@ bool SessionRuntime::initialize() {
     SkillRunner::ensureDefaultSkills(skillsDir_);
 
     agent_ = new Agent(client_, tools_);
+    agent_->setSnapshotStore(snapshotStore_);
     agent_->onTokenUsage = [this](int p, int c) {
         totalPromptTokens_.fetch_add(p, std::memory_order_relaxed);
         totalCompletionTokens_.fetch_add(c, std::memory_order_relaxed);

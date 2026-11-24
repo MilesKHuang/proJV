@@ -117,6 +117,8 @@ class SessionRuntime {
     mcp::Manager* mcpManager() { return mcpManager_.get(); }
     const std::vector<std::string>& promptFiles() const { return promptFiles_; }
     int activePromptIndex() const { return activePromptIndex_; }
+    // Whether /undo can work in this session's workspace (see snapshot.h).
+    bool snapshotsAvailable() const { return snapshot::isAvailable(snapshotStore_); }
     const std::string& skillsDir() const { return skillsDir_; }
     std::vector<bg_task::Snapshot> taskSnapshots() const;
     std::vector<std::string> installedSkills() const;
@@ -192,6 +194,7 @@ class SessionRuntime {
     ToolRegistry tools_;
     ToolPaths paths_;
     std::string workspace_; // setWorkspace() or the launch directory
+    snapshot::Store snapshotStore_ = snapshot::kNoStore; // this workspace's /undo store
     std::optional<PythonToolManager> pytoolMgr_;
     std::unique_ptr<mcp::Manager> mcpManager_;
     std::atomic<bool> toolsReloadRequested_{false};

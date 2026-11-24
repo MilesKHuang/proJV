@@ -587,7 +587,7 @@ void App::fillModalSource(view_model::Source& s) {
                 ? "ALWAYS remembers this exact command in config.toml; NO drops the whole batch."
                 : "strict mode: nothing is remembered; NO drops the whole batch.";
         s.approval.undo =
-            snapshot::isAvailable()
+            (runtime_ && runtime_->snapshotsAvailable())
                 ? "[Undo available] the files this turn changes can be restored with /undo"
                 : "[Undo unavailable] a deletion here cannot be reverted";
         s.approval.buttons = {"YES -- Execute Once", "ALWAYS -- Allow This Command",

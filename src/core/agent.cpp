@@ -246,7 +246,7 @@ void Agent::run() {
     // read-only store or an oversized workspace switches undo off, it never
     // blocks the turn.
     std::string snapErr;
-    const int snapSeq = snapshot::beginTurn(sessionId(), snapErr);
+    const int snapSeq = snapshot::beginTurn(snapshotStore_, sessionId(), snapErr);
     if (snapSeq < 0 && !snapErr.empty())
         debugLogInfof("[Agent] snapshots off: %s", snapErr.c_str());
 
@@ -607,7 +607,7 @@ void Agent::run() {
     }
     if (snapSeq >= 0) {
         std::string endErr;
-        if (!snapshot::endTurn(snapSeq, endErr))
+        if (!snapshot::endTurn(snapshotStore_, snapSeq, endErr))
             debugLogWarnf("[Agent] snapshot end failed: %s", endErr.c_str());
     }
     debugLog("[Agent] run: END");
@@ -1332,7 +1332,7 @@ bool Agent::handleQuickCommand(const std::string& input) {
     }
     if (c == "/undo" || c == "/undo!") {
         const bool force = (c == "/undo!");
-        const snapshot::Report r = snapshot::undoLast(sessionId(), force);
+        const snapshot::Report r = snapshot::undoLast(snapshotStore_, sessionId(), force);
         addPersistedMessage(Message::System(snapshotReportText("/undo", r)));
         return true;
     }
@@ -1349,7 +1349,7 @@ bool Agent::handleQuickCommand(const std::string& input) {
                 Message::System("[Snapshot] Usage: /restore <turn> confirm -- see /help."));
             return true;
         }
-        const snapshot::Report r = snapshot::restoreTo(sessionId(), turn, confirm);
+        const snapshot::Report r = snapshot::restoreTo(snapshotStore_, sessionId(), turn, confirm);
         addPersistedMessage(Message::System(snapshotReportText("/restore", r)));
         return true;
     }

@@ -38,6 +38,7 @@ class TuiApp {
     }
 
     Agent* getAgent() { return runtime_ ? runtime_->agent() : nullptr; }
+    bool snapshotsAvailable() const { return runtime_ && runtime_->snapshotsAvailable(); }
     mcp::Manager* mcpManager() { return runtime_ ? runtime_->mcpManager() : nullptr; }
 
     // Live agent status / phase (forwarded for streaming rendering).
