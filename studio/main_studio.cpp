@@ -330,7 +330,14 @@ int runStudio(int argc, char** argv) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // D1: docking on
     // No viewports (D1): one OS window, no focus surprises.
-    io.ConfigDpiScaleFonts = true;
+    // NOT ConfigDpiScaleFonts: the studio scales its metrics itself (applyMetrics)
+    // AND sets FontScaleDpi (studio_theme::loadFonts). Letting ImGui scale the atlas
+    // as well multiplied the glyphs by the monitor scale twice -- at 150% every
+    // character was drawn 2.25x while the layout was laid out for 1.5x, so text ran
+    // past the right edge and was clipped, and Chinese (which has more ink) read a
+    // size bigger than the Latin beside it. The monitor scale is honoured exactly
+    // once now, through FontScaleDpi.
+    io.ConfigDpiScaleFonts = false;
     io.IniFilename = nullptr; // no imgui.ini: the layout is fixed for now
     io.LogFilename = nullptr;
     ImGui::GetPlatformIO().Platform_SetImeDataFn = setImeData;
