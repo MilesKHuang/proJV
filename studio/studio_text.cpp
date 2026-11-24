@@ -146,7 +146,8 @@ std::string TextSurface::textInLine(const VisualLine& line, int c0, int c1) {
 }
 
 std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& text, bool markdown,
-                                                             float width, int blockId) {
+                                                             float width, int blockId,
+                                                             std::vector<TableData>* tables) {
     std::vector<VisualLine> out;
     int lineNo = 0;
     const float cw = charWidth() > 0.0f ? charWidth() : 8.0f;
@@ -227,104 +228,34 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
     while (i < lines.size()) {
         const auto& line = lines[i];
 
-        // ---- table: a run of rows carrying cells instead of segments ----
+        // ---- table: hand the whole thing to ImGui's table widget ----------------
         if (!line.cells.empty()) {
             size_t j = i;
             std::vector<const markdown_text::Line*> rows;
             while (j < lines.size() && !lines[j].cells.empty()) rows.push_back(&lines[j++]);
             size_t cols = 0;
             for (const auto* r : rows) cols = std::max(cols, r->cells.size());
-            const auto cellText = [](const markdown_text::Line& l, size_t c) {
-                std::string t;
-                if (c < l.cells.size())
-                    for (const auto& s : l.cells[c]) t += s.text;
-                return t;
-            };
-            std::vector<int> widths(cols, 0);
-            for (const auto* r : rows)
-                for (size_t c = 0; c < cols; ++c)
-                    widths[c] = std::max(widths[c], columnsOf(cellText(*r, c)));
-            // Fit the table into the bubble instead of throwing its right-hand columns
-            // away. The old rule kept the first columns that fitted and silently
-            // dropped the rest, so a two-column table whose second column was long
-            // showed nothing but the first one -- the "table shows only the SHA" report.
-            // Every column now gets a share of the width and wraps inside it.
-            const int maxCols = std::max(8, static_cast<int>(width / std::max(1.0f, cw)));
-            const int seps = 3 * (static_cast<int>(cols) - 1) + 4; // separators + the │ frame
-            int natural = seps;
-            for (int w : widths) natural += std::max(w, 1);
-            if (natural > maxCols && cols > 0) {
-                const std::vector<int> need = widths;
-                const int avail = std::max<int>(static_cast<int>(cols) * 6, maxCols - seps);
-                // Every narrow column keeps its content -- a 7-character hash must not be
-                // cut down to 4 because the column beside it is long. The wide columns
-                // share what is left, and a remainder flows back to them in order.
-                const int share = std::max(8, avail / static_cast<int>(cols));
-                int left = avail;
+
+            TableData td;
+            td.weights.assign(std::max<size_t>(cols, 1), 1.0f);
+            for (const auto* r : rows) {
+                std::vector<std::string> cells(std::max<size_t>(cols, 1));
                 for (size_t c = 0; c < cols; ++c) {
-                    widths[c] = std::min(need[c], share);
-                    left -= widths[c];
+                    std::string text;
+                    if (c < r->cells.size())
+                        for (const auto& seg : r->cells[c]) text += seg.text;
+                    cells[c] = text;
+                    td.weights[c] = std::max(td.weights[c], static_cast<float>(columnsOf(text)));
                 }
-                for (size_t c = 0; c < cols && left > 0; ++c) {
-                    const int extra = std::min(left, need[c] - widths[c]);
-                    widths[c] += extra;
-                    left -= extra;
-                }
-                for (size_t c = cols; left < 0 && c-- > 0;) {
-                    const int cut = std::min(-left, std::max(0, widths[c] - 4));
-                    widths[c] -= cut;
-                    left += cut;
-                }
+                td.rows.push_back(std::move(cells));
             }
-            for (size_t ri = 0; ri < rows.size(); ++ri) {
-                const markdown_text::Line* r = rows[ri];
-                // Wrap each cell into its own column width, then emit one visual line
-                // per line of the tallest cell: a long cell grows downwards instead of
-                // running past the bubble.
-                std::vector<std::vector<std::vector<markdown_text::Segment>>> cellRows(cols);
-                size_t rowLines = 1;
-                for (size_t c = 0; c < cols; ++c) {
-                    std::vector<markdown_text::Segment> segs;
-                    if (c < r->cells.size()) segs = r->cells[c];
-                    const float colPx = static_cast<float>(std::max(1, widths[c])) * cw;
-                    cellRows[c] = studio_md::wrap(segs, colPx);
-                    if (cellRows[c].empty()) cellRows[c].push_back({});
-                    rowLines = std::max(rowLines, cellRows[c].size());
-                }
-                for (size_t k = 0; k < rowLines; ++k) {
-                    // UTF-8 bytes, not a universal character name: without /utf-8 MSVC
-                    // would encode │ in the system code page.
-                    std::string text = "\xE2\x94\x82 "; // left edge
-                    for (size_t c = 0; c < cols; ++c) {
-                        std::string cell;
-                        if (k < cellRows[c].size())
-                            for (const auto& seg : cellRows[c][k]) cell += seg.text;
-                        int have = columnsOf(cell);
-                        while (have < widths[c]) {
-                            cell += ' ';
-                            ++have;
-                        }
-                        text += cell;
-                        text += (c + 1 < cols) ? " \xE2\x94\x82 " : " \xE2\x94\x82";
-                    }
-                    VisualLine vl;
-                    vl.block = blockId;
-                    vl.line = lineNo++;
-                    vl.table = true;
-                    vl.tableTop = (ri == 0 && k == 0);
-                    vl.tableLast = (ri + 1 == rows.size() && k + 1 == rowLines);
-                    vl.tableHeaderRow = r->tableHeader;
-                    markdown_text::Segment s;
-                    s.text = text;
-                    s.style = r->tableHeader ? markdown_text::Style::TableHeader
-                                             : markdown_text::Style::TableCell;
-                    vl.plain = text;
-                    vl.runs.push_back(std::move(s));
-                    // One rule under every row: that is the grid the TUI draws, and it
-                    // is what turns a run of padded text into something with cells.
-                    if (k + 1 == rowLines) vl.rule = true;
-                    out.push_back(std::move(vl));
-                }
+            if (tables) {
+                VisualLine vl;
+                vl.block = blockId;
+                vl.line = lineNo++;
+                vl.tableIndex = static_cast<int>(tables->size());
+                tables->push_back(std::move(td));
+                out.push_back(std::move(vl));
             }
             i = j;
             continue;
@@ -424,7 +355,8 @@ const TextSurface::Cached* TextSurface::cachedLayout(int blockId, const std::str
         entry.second.hash = h;
         entry.second.width = width;
         entry.second.markdown = markdown;
-        entry.second.lines = buildLines(text, markdown, width, blockId);
+        entry.second.tables.clear();
+        entry.second.lines = buildLines(text, markdown, width, blockId, &entry.second.tables);
         return &entry.second;
     }
     cache_.emplace_back(blockId, Cached{});
@@ -453,29 +385,29 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             studio_theme::pushText(studio_theme::TextRole::Title);
         else if (vl.tier == 2)
             studio_theme::pushText(studio_theme::TextRole::Heading);
-        // A table row is painted in the monospace face: its cells are padded by
-        // character cells, so only a fixed-width face keeps the columns and the │
-        // separators lined up (the proportional face turned them into a word salad).
-        if (vl.table) studio_theme::pushMono(studio_theme::TextRole::Body);
+        // A markdown table is one widget, not a run of padded text lines: hand the
+        // parsed rows to ImGui's table (the GUI's ftxui::Table). It brings its own
+        // borders, header band and zebra, all from the theme's ImGuiCol_Table* entries.
+        if (vl.tableIndex >= 0) {
+            if (vl.tableIndex < static_cast<int>(layout->tables.size())) {
+                ImGui::PushStyleColor(ImGuiCol_Text, plainColor);
+                drawTable(layout->tables[static_cast<size_t>(vl.tableIndex)]);
+                ImGui::PopStyleColor();
+            }
+            // Keep the line's box so hit-testing and the selection still know where it
+            // is; without this it would sit at (0,0) and swallow clicks in the corner.
+            const ImVec2 p0 = ImGui::GetItemRectMin();
+            const ImVec2 p1 = ImGui::GetItemRectMax();
+            vl.x0 = p0.x;
+            vl.y0 = p0.y;
+            vl.x1 = std::max(p1.x, p0.x + 1.0f);
+            vl.y1 = std::max(p1.y, p0.y + 1.0f);
+            frameLines_.push_back(vl);
+            continue;
+        }
 
         vl.x0 = ImGui::GetCursorScreenPos().x;
         vl.y0 = ImGui::GetCursorScreenPos().y;
-        // The table's top edge. The bottom edge is drawn with the other rules, after
-        // the last row has been painted and its height is known.
-        if (vl.tableTop)
-            dl->AddLine(ImVec2(vl.x0, vl.y0 - 3.0f * dpi),
-                        ImVec2(vl.x0 + width - ind, vl.y0 - 3.0f * dpi),
-                        studio_theme::field(&ThemeColors::separator));
-        // The header row sits on a band. mdTableHdr is a BACKGROUND colour in this
-        // theme (the TUI paints the row with it), which is why it cannot be the text
-        // colour -- drawn as glyphs it was invisible.
-        if (vl.tableHeaderRow) {
-            const float pad = 3.0f * dpi;
-            dl->AddRectFilled(ImVec2(vl.x0 - pad, vl.y0 - pad * 0.5f),
-                              ImVec2(vl.x0 + width - ind + pad,
-                                     vl.y0 + ImGui::GetTextLineHeight() + pad * 0.5f),
-                              studio_theme::field(&ThemeColors::mdTableHdr), 3.0f);
-        }
         // Hard clip to this line's own box. The wrap decides where a line ends, but a
         // single glyph must never be painted outside the surface it belongs to: the
         // bubble is a card, and text crossing its edge is the one thing a reader
@@ -522,7 +454,6 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             ImGui::PopStyleColor();
         }
         if (vl.runs.empty()) ImGui::NewLine();
-        if (vl.table) studio_theme::popText();
 
         vl.x1 = ImGui::GetItemRectMax().x;
         vl.y1 = ImGui::GetItemRectMax().y;
@@ -540,15 +471,46 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
                         ImVec2(vl.x0 + width - ind, vl.y1 + 3.0f * dpi),
                         studio_theme::field(&ThemeColors::separator));
         }
-        if (vl.tableLast) {
-            dl->AddLine(ImVec2(vl.x0, vl.y1 + 3.0f * dpi),
-                        ImVec2(vl.x0 + width - ind, vl.y1 + 3.0f * dpi),
-                        studio_theme::field(&ThemeColors::separator));
-        }
         frameLines_.push_back(vl);
         if (vl.tier != 0) studio_theme::popText();
         if (ind > 0.0f) ImGui::Unindent(ind);
     }
+}
+
+void TextSurface::drawTable(const TableData& t) {
+    if (t.rows.empty() || t.rows[0].empty()) return;
+    const int cols = static_cast<int>(t.rows[0].size());
+    const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX;
+    ImGui::PushID(&t);
+    if (ImGui::BeginTable("##mdtable", cols, flags)) {
+        float total = 0.0f;
+        for (float w : t.weights) total += std::max(1.0f, w);
+        if (total <= 0.0f) total = static_cast<float>(cols);
+        for (int c = 0; c < cols; ++c) {
+            // The weight is the column's natural width in character cells, so a 2-glyph
+            // "项" column stays narrow and the long text column takes the rest. ImGui's
+            // own stretch then shares out whatever the bubble gives the table.
+            const float w = c < static_cast<int>(t.weights.size())
+                                ? std::max(1.0f, t.weights[static_cast<size_t>(c)])
+                                : 1.0f;
+            ImGui::TableSetupColumn(t.rows[0][static_cast<size_t>(c)].c_str(),
+                                    ImGuiTableColumnFlags_WidthStretch, w / total);
+        }
+        ImGui::TableHeadersRow(); // the band comes from ImGuiCol_TableHeaderBg (theme)
+        const std::string empty;
+        for (size_t r = 1; r < t.rows.size(); ++r) {
+            ImGui::TableNextRow();
+            for (int c = 0; c < cols; ++c) {
+                ImGui::TableSetColumnIndex(c);
+                const std::string& cell =
+                    c < static_cast<int>(t.rows[r].size()) ? t.rows[r][static_cast<size_t>(c)] : empty;
+                ImGui::TextWrapped("%s", cell.c_str()); // wraps inside its own cell
+            }
+        }
+        ImGui::EndTable();
+    }
+    ImGui::PopID();
 }
 
 bool TextSurface::hitTest(float x, float y, int* block, int* line, int* col) const {

@@ -83,31 +83,36 @@ class TextSurface {
         // Draw a thin rule under this line: the table header row, so the columns read
         // as a header and not as another data row.
         bool rule = false;
-        // Table row: drawn in the monospace face (the cells are padded by character
-        // cells, so only a fixed-width face keeps the columns and the │ separators
-        // lined up), framed top and bottom.
-        bool table = false;
-        bool tableTop = false;
-        bool tableLast = false;
-        // The header row: painted over a band (mdTableHdr is a background colour in
-        // this theme, and the TUI uses it exactly that way).
-        bool tableHeaderRow = false;
+        // A markdown table is ONE line here: the drawer hands the parsed rows to
+        // ImGui's table widget (the GUI's own equivalent of the ftxui::Table the TUI
+        // uses) instead of padding text into columns. -1 = not a table.
+        int tableIndex = -1;
         // Block decoration: a quote bar on the left, or a code-band background.
         bool quote = false;
         bool codeBg = false;
         // Pixels this line starts indented by (hanging indent of a wrapped list item).
         float indent = 0.0f;
     };
+    // One parsed table: rows[0] is the header; `weights` is each column's natural
+    // width in character cells, which becomes ImGui's proportional column width.
+    struct TableData {
+        std::vector<std::vector<std::string>> rows;
+        std::vector<float> weights;
+    };
     struct Cached {
         size_t hash = 0;
         float width = 0.0f;
         bool markdown = false;
         std::vector<VisualLine> lines;
+        std::vector<TableData> tables;
     };
 
-    // Markdown -> drawable lines (block model: indent, tier, decoration).
+    // Markdown -> drawable lines (block model: indent, tier, decoration). Tables are
+    // collected into `tables`; the line that stood in for one carries its index.
     static std::vector<VisualLine> buildLines(const std::string& text, bool markdown, float width,
-                                              int blockId);
+                                              int blockId, std::vector<TableData>* tables);
+    // ImGui::BeginTable with the theme's table colours: borders, header band, zebra.
+    void drawTable(const TableData& t);
 
     std::vector<VisualLine> frameLines_; // hit boxes for THIS frame
     std::vector<std::pair<int, Cached>> cache_;
