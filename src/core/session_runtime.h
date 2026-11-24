@@ -138,6 +138,11 @@ class SessionRuntime {
     void switchPrompt(int index);
     void newChat();
     void switchToDialog(const std::string& dbPath);
+    // Give the session a fixed database file, creating it when it is not there.
+    // The headless `run --session` front-end needs one session across two
+    // processes: the snapshot index and /undo are keyed on the database name, so
+    // without this a second run cannot undo the first one's turn.
+    bool useSessionFile(const std::string& dbPath);
     void setModel(const std::string& model);
     void setMcpEnabled(const std::string& name, bool enabled);
     void refreshModels();

@@ -1131,6 +1131,35 @@ void SessionRuntime::reinitConversation(bool keepStorage) {
     if (onSessionReset) onSessionReset();
 }
 
+bool SessionRuntime::useSessionFile(const std::string& dbPath) {
+    if (!agent_ || dbPath.empty()) return false;
+
+    std::error_code ec;
+    if (fs::is_regular_file(dbPath, ec)) {
+        switchToDialog(dbPath); // existing session: open it and load its history
+        return true;
+    }
+    // A file that is only here because somebody typed the flag wrong would send
+    // every turn into a session nobody can find again.
+    fs::path parent = fs::path(dbPath).parent_path();
+    if (!parent.empty()) fs::create_directories(parent, ec);
+
+    const std::string oldPath = storage_.currentPath();
+    agent_->cancel();
+    agent_->clearSession();
+    storage_.closeDatabase();
+    if (!storage_.createDatabase(dbPath)) {
+        debugLogWarnf("[Runtime] cannot create the session database '%s'", dbPath.c_str());
+        if (!oldPath.empty()) storage_.openDatabase(oldPath);
+        agent_->setStorage(&storage_);
+        return false;
+    }
+    agent_->setStorage(&storage_);
+    debugLogInfof("[Runtime] session database: %s", dbPath.c_str());
+    if (onSessionReset) onSessionReset();
+    return true;
+}
+
 void SessionRuntime::switchToDialog(const std::string& dbPath) {
     if (!agent_) return;
     agent_->cancel();

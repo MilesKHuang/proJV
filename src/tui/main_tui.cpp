@@ -524,6 +524,13 @@ int runHeadless(const cli_args::RunOptions& o, IProcessRunner* runner) {
 
     if (!rt.initialize()) return 1;
     if (!rt.agent()) return 1;
+    // `run --session PATH`: keep one session across invocations. The snapshot
+    // index and /undo are keyed on the session database name, so without this a
+    // second `run` cannot undo what the first one did.
+    if (!o.sessionPath.empty() && !rt.useSessionFile(o.sessionPath)) {
+        std::fprintf(stderr, "cannot use session database: %s\n", o.sessionPath.c_str());
+        return 1;
+    }
 
     // There is no dialog here, so the dial is set before the first tool runs.
     // "always" == Loose: destructive commands run (the red line is still refused).
