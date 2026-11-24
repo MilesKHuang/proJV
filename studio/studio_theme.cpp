@@ -326,8 +326,9 @@ bool loadFonts(float scale, std::string* err) {
     // A CJK glyph fills its em box; Consolas' and Segoe UI's Latin glyphs do not.
     // At the same nominal pixel size Microsoft YaHei therefore reads a size bigger
     // (and much heavier) than the Latin text next to it -- the "中文比英文大一号"
-    // report. Merge the CJK faces at 90% of the Latin size so the two agree.
-    constexpr float kCjkScale = 0.90f;
+    // report. 0.90 was too far the other way (Chinese then read smaller than the
+    // Latin); 0.95 is the middle the screenshots agreed on.
+    constexpr float kCjkScale = 0.95f;
     const float cjkSize = size * kCjkScale;
 
     // 1. Monospace + CJK behind it: chat, prompt, tables, box drawing.
@@ -344,7 +345,7 @@ bool loadFonts(float scale, std::string* err) {
     }
     ImFontConfig cjkCfg;
     cjkCfg.MergeMode = true;
-    cjkCfg.GlyphOffset.y = 1.0f; // smaller glyphs sit on the Latin baseline, not above it
+    cjkCfg.GlyphOffset.y = 0.0f; // the smaller glyph sits on the Latin baseline
     bool cjk = false;
     for (int i = 0; i < 5 && faces.cjk[i]; ++i) {
         if (io.Fonts->AddFontFromFileTTF(faces.cjk[i], cjkSize, &cjkCfg,
@@ -362,7 +363,7 @@ bool loadFonts(float scale, std::string* err) {
     if (g_ui) {
         ImFontConfig uiCjk;
         uiCjk.MergeMode = true;
-        uiCjk.GlyphOffset.y = 1.0f;
+        uiCjk.GlyphOffset.y = 0.0f;
         for (int i = 0; i < 5 && faces.cjk[i]; ++i) {
             if (io.Fonts->AddFontFromFileTTF(faces.cjk[i], cjkSize, &uiCjk,
                                              io.Fonts->GetGlyphRangesChineseFull()))
