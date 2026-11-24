@@ -83,6 +83,12 @@ class TextSurface {
         // Draw a thin rule under this line: the table header row, so the columns read
         // as a header and not as another data row.
         bool rule = false;
+        // Table row: drawn in the monospace face (the cells are padded by character
+        // cells, so only a fixed-width face keeps the columns and the │ separators
+        // lined up), framed top and bottom.
+        bool table = false;
+        bool tableTop = false;
+        bool tableLast = false;
         // Block decoration: a quote bar on the left, or a code-band background.
         bool quote = false;
         bool codeBg = false;

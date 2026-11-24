@@ -247,7 +247,7 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
             // showed nothing but the first one -- the "table shows only the SHA" report.
             // Every column now gets a share of the width and wraps inside it.
             const int maxCols = std::max(8, static_cast<int>(width / std::max(1.0f, cw)));
-            const int seps = 3 * (static_cast<int>(cols) - 1);
+            const int seps = 3 * (static_cast<int>(cols) - 1) + 4; // separators + the │ frame
             int natural = seps;
             for (int w : widths) natural += std::max(w, 1);
             if (natural > maxCols && cols > 0) {
@@ -264,7 +264,8 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                 }
             }
             bool headerSeen = false;
-            for (const auto* r : rows) {
+            for (size_t ri = 0; ri < rows.size(); ++ri) {
+                const markdown_text::Line* r = rows[ri];
                 // Wrap each cell into its own column width, then emit one visual line
                 // per line of the tallest cell: a long cell grows downwards instead of
                 // running past the bubble.
@@ -279,9 +280,9 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                     rowLines = std::max(rowLines, cellRows[c].size());
                 }
                 for (size_t k = 0; k < rowLines; ++k) {
-                    VisualLine vl;
-                    vl.block = blockId;
-                    vl.line = lineNo++;
+                    // UTF-8 bytes, not a universal character name: without /utf-8 MSVC
+                    // would encode │ in the system code page.
+                    std::string text = "\xE2\x94\x82 "; // left edge
                     for (size_t c = 0; c < cols; ++c) {
                         std::string cell;
                         if (k < cellRows[c].size())
@@ -291,13 +292,21 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                             cell += ' ';
                             ++have;
                         }
-                        markdown_text::Segment s;
-                        s.text = cell + (c + 1 < cols ? "   " : "");
-                        s.style = r->tableHeader ? markdown_text::Style::TableHeader
-                                                 : markdown_text::Style::TableCell;
-                        vl.plain += s.text;
-                        vl.runs.push_back(std::move(s));
+                        text += cell;
+                        text += (c + 1 < cols) ? " \xE2\x94\x82 " : " \xE2\x94\x82";
                     }
+                    VisualLine vl;
+                    vl.block = blockId;
+                    vl.line = lineNo++;
+                    vl.table = true;
+                    vl.tableTop = (ri == 0 && k == 0);
+                    vl.tableLast = (ri + 1 == rows.size() && k + 1 == rowLines);
+                    markdown_text::Segment s;
+                    s.text = text;
+                    s.style = r->tableHeader ? markdown_text::Style::TableHeader
+                                             : markdown_text::Style::TableCell;
+                    vl.plain = text;
+                    vl.runs.push_back(std::move(s));
                     // The rule closes the header, so it belongs under its LAST line.
                     if (r->tableHeader && !headerSeen && k + 1 == rowLines) {
                         vl.rule = true; // the header is separated from the data
@@ -433,9 +442,19 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             studio_theme::pushText(studio_theme::TextRole::Title);
         else if (vl.tier == 2)
             studio_theme::pushText(studio_theme::TextRole::Heading);
+        // A table row is painted in the monospace face: its cells are padded by
+        // character cells, so only a fixed-width face keeps the columns and the │
+        // separators lined up (the proportional face turned them into a word salad).
+        if (vl.table) studio_theme::pushMono(studio_theme::TextRole::Body);
 
         vl.x0 = ImGui::GetCursorScreenPos().x;
         vl.y0 = ImGui::GetCursorScreenPos().y;
+        // The table's top edge. The bottom edge is drawn with the other rules, after
+        // the last row has been painted and its height is known.
+        if (vl.tableTop)
+            dl->AddLine(ImVec2(vl.x0, vl.y0 - 3.0f * dpi),
+                        ImVec2(vl.x0 + width - ind, vl.y0 - 3.0f * dpi),
+                        studio_theme::field(&ThemeColors::separator));
         // Hard clip to this line's own box. The wrap decides where a line ends, but a
         // single glyph must never be painted outside the surface it belongs to: the
         // bubble is a card, and text crossing its edge is the one thing a reader
@@ -482,6 +501,7 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             ImGui::PopStyleColor();
         }
         if (vl.runs.empty()) ImGui::NewLine();
+        if (vl.table) studio_theme::popText();
 
         vl.x1 = ImGui::GetItemRectMax().x;
         vl.y1 = ImGui::GetItemRectMax().y;
@@ -495,6 +515,11 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
                           static_cast<double>((vl.x1 - vl.x0) - width), vl.block, vl.line);
         }
         if (vl.rule) {
+            dl->AddLine(ImVec2(vl.x0, vl.y1 + 3.0f * dpi),
+                        ImVec2(vl.x0 + width - ind, vl.y1 + 3.0f * dpi),
+                        studio_theme::field(&ThemeColors::separator));
+        }
+        if (vl.tableLast) {
             dl->AddLine(ImVec2(vl.x0, vl.y1 + 3.0f * dpi),
                         ImVec2(vl.x0 + width - ind, vl.y1 + 3.0f * dpi),
                         studio_theme::field(&ThemeColors::separator));
