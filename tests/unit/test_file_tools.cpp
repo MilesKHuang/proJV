@@ -305,19 +305,34 @@ TEST_CASE("format_file: clang mode reports a clear error and leaves the file alo
         registerFormatTool(reg, root.string(), nullptr, "");
         CHECK(has(run(reg, "format_file", {{"path", "n.cpp"}}), "No process runner"));
     }
-    if (IProcessRunner* runner = CreateProcessRunner()) {
-        ToolRegistry reg;
-        registerFileTools(reg, root.string());
-        registerFormatTool(reg, root.string(), runner, "projv_no_such_clang_format");
-        // An explicit style gets past the "no .clang-format" guard, so the
-        // missing binary is what we exercise here.
-        const std::string out = run(reg, "format_file", {{"path", "n.cpp"}, {"style", "LLVM"}});
-        CHECK(has(out, "not found"));
-        CHECK(has(out, "mode=\"whitespace\"")); // points at the fallback
-        CHECK(readAt(root, "n.cpp") == original);
-        runner->Cancel();
-        delete runner;
-    }
+    IProcessRunner* runner = CreateProcessRunner();
+    REQUIRE(runner != nullptr);
+    ToolRegistry reg;
+    registerFileTools(reg, root.string());
+    // A bare name no PATH has. The tool resolves it itself, so this case behaves
+    // the same on every machine and in every language -- it used to depend on
+    // cmd.exe saying "is not recognized", which a Chinese Windows does not.
+    registerFormatTool(reg, root.string(), runner, "projv_no_such_clang_format");
+    // An explicit style gets past the "no .clang-format" guard, so the missing
+    // binary is what we exercise here.
+    std::string out = run(reg, "format_file", {{"path", "n.cpp"}, {"style", "LLVM"}});
+    CHECK(has(out, "clang-format not found"));
+    CHECK(has(out, "mode=\"whitespace\"")); // points at the fallback
+    CHECK(readAt(root, "n.cpp") == original);
+
+    // A path copied from another machine: absolute, and not here. "The system
+    // cannot find the path specified" matched nothing either, so the deployment
+    // case got the raw shell text instead of the actionable message.
+    ToolRegistry reg2;
+    registerFileTools(reg2, root.string());
+    registerFormatTool(reg2, root.string(), runner, "C:/definitely/not/here/clang-format.exe");
+    out = run(reg2, "format_file", {{"path", "n.cpp"}, {"style", "LLVM"}});
+    CHECK(has(out, "clang-format not found"));
+    CHECK(has(out, "mode=\"whitespace\""));
+    CHECK(readAt(root, "n.cpp") == original);
+
+    runner->Cancel();
+    delete runner;
 }
 
 TEST_CASE("format_file: unknown mode is rejected") {
@@ -336,54 +351,60 @@ TEST_CASE("format_file: clang mode refuses to guess a style when there is no .cl
     registerFileTools(reg, root.string());
     // A runner is present, so the only thing stopping the call is the missing
     // style file -- which is the point: LLVM fallback would restyle everything.
-    registerFormatTool(reg, root.string(), CreateProcessRunner(), "");
+    IProcessRunner* runner = CreateProcessRunner();
+    REQUIRE(runner != nullptr);
+    registerFormatTool(reg, root.string(), runner, "");
 
     const std::string out = run(reg, "format_file", {{"path", "a.cpp"}});
     CHECK(has(out, "no .clang-format found"));
     CHECK(has(out, "mode=\"whitespace\""));
     CHECK(readAt(root, "a.cpp") == "int  x = 1;\n"); // untouched
+
+    runner->Cancel();
+    delete runner;
 }
 
 TEST_CASE("format_file: clang mode works when a style is given explicitly") {
-    // Skips itself when this machine has no clang-format binary.
-    std::vector<std::string> candidates = {
-#ifdef _WIN32
-        "C:\\Program Files (x86)\\Microsoft Visual "
-        "Studio\\2019\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
-        "C:\\Program Files\\Microsoft Visual "
-        "Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
-        "C:\\Program Files\\LLVM\\bin\\clang-format.exe",
-#else
-        "/usr/bin/clang-format",
-        "/usr/local/bin/clang-format",
-#endif
-    };
-    std::string exe;
-    for (const auto& c : candidates) {
+    // PATH first (that is where a package manager puts it), then the install
+    // locations Visual Studio and the LLVM installer use -- a machine can have
+    // clang-format without it being on PATH. No binary at all: skip, because the
+    // clang branch is not what this machine can prove.
+    std::vector<std::string> tries = {""};
+    for (const char* c :
+         {"C:\\Program Files (x86)\\Microsoft Visual "
+          "Studio\\2019\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
+          "C:\\Program Files\\Microsoft Visual "
+          "Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe",
+          "C:\\Program Files\\LLVM\\bin\\clang-format.exe", "/usr/bin/clang-format",
+          "/usr/local/bin/clang-format"}) {
         std::error_code ec;
-        if (fs::exists(c, ec)) {
-            exe = c;
-            break;
-        }
-    }
-    if (exe.empty()) {
-        WARN("no clang-format on this machine -- clang branch not exercised");
-        return;
+        if (fs::exists(c, ec)) tries.push_back(c);
     }
 
     const fs::path root = freshRoot("fmt_clang_real");
     writeAt(root, "b.cpp", "int    main(){return 0;}   \n");
-    ToolRegistry reg;
-    registerFileTools(reg, root.string());
     IProcessRunner* runner = CreateProcessRunner();
     REQUIRE(runner != nullptr);
-    registerFormatTool(reg, root.string(), runner, exe);
 
-    const std::string out = run(reg, "format_file", {{"path", "b.cpp"}, {"style", "LLVM"}});
+    std::string out;
+    for (const std::string& cfg : tries) {
+        ToolRegistry reg;
+        registerFileTools(reg, root.string());
+        registerFormatTool(reg, root.string(), runner, cfg);
+        writeAt(root, "b.cpp", "int    main(){return 0;}   \n");
+        out = run(reg, "format_file", {{"path", "b.cpp"}, {"style", "LLVM"}});
+        if (!has(out, "clang-format not found")) break;
+    }
     runner->Cancel();
     delete runner;
 
-    CHECK(has(out, "Formatted (clang-format)"));
+    if (has(out, "clang-format not found")) {
+        WARN("no clang-format on this machine -- clang branch not exercised");
+        return;
+    }
+    // The tool's own text goes into the failure: a bare CHECK here used to report
+    // "false == has(out, ...)" and drop whatever clang-format had said.
+    CHECK_MESSAGE(has(out, "Formatted (clang-format)"), out);
     const std::string after = readAt(root, "b.cpp");
     CHECK(after != "int    main(){return 0;}   \n"); // it really rewrote the file
     CHECK(has(after, "int main()"));

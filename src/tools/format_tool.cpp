@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -59,6 +60,67 @@ int diffLines(const std::string& a, const std::string& b) {
         if (x[i] != y[i]) ++n;
     n += static_cast<int>(x.size() > y.size() ? x.size() - y.size() : y.size() - x.size());
     return n;
+}
+
+// -- clang-format lookup ------------------------------------------------
+// Decided BEFORE a shell is spawned. The command runs through cmd.exe, and the
+// sentence it prints for a missing program is written in the OS language; a path
+// copied from another machine answers "The system cannot find the path
+// specified". Guessing "not installed" from that text is a locale and layout
+// lottery: on a Chinese Windows the actionable message never appeared and the
+// user got the raw shell text instead.
+bool hasPathSeparator(const std::string& s) {
+    return s.find('/') != std::string::npos || s.find('\\') != std::string::npos;
+}
+
+// Every directory on PATH, in order. The extension list is a Windows need (a
+// bare "clang-format" there is clang-format.exe); elsewhere the name is the file.
+std::string findOnPath(const std::string& name) {
+#ifdef _WIN32
+    constexpr char kSep = ';';
+    const char* kExts[] = {"", ".exe", ".cmd", ".bat"};
+#else
+    constexpr char kSep = ':';
+    const char* kExts[] = {""};
+#endif
+    const char* pathEnv = std::getenv("PATH");
+    if (!pathEnv) return std::string();
+    const std::string all(pathEnv);
+    size_t pos = 0;
+    while (pos <= all.size()) {
+        size_t end = all.find(kSep, pos);
+        if (end == std::string::npos) end = all.size();
+        std::string dir = all.substr(pos, end - pos);
+        pos = end + 1;
+        if (dir.empty()) continue;
+        // A quoted PATH entry is legal on Windows; the shell strips the quotes.
+        if (dir.size() >= 2 && dir.front() == '"' && dir.back() == '"')
+            dir = dir.substr(1, dir.size() - 2);
+        for (const char* ext : kExts) {
+            std::error_code ec;
+            const fs::path candidate = fs::path(dir) / (name + ext);
+            if (fs::is_regular_file(candidate, ec) && !ec) return candidate.string();
+        }
+    }
+    return std::string();
+}
+
+// The executable to run, or empty when this machine does not have it. A
+// configured path is trusted only when that file is really there.
+std::string resolveClangFormat(const std::string& configured) {
+    if (configured.empty()) return findOnPath("clang-format");
+    if (hasPathSeparator(configured)) {
+        std::error_code ec;
+        return (fs::is_regular_file(configured, ec) && !ec) ? configured : std::string();
+    }
+    return findOnPath(configured);
+}
+
+std::string clangFormatMissing(const std::string& configured) {
+    return "Error: clang-format not found ('" +
+           (configured.empty() ? std::string("clang-format") : configured) +
+           "'). Install it, set clang_format_path in config.toml, or call format_file with "
+           "mode=\"whitespace\".";
 }
 
 // Nearest .clang-format, walking up from the file to the workspace root.
@@ -180,8 +242,6 @@ void registerFormatTool(ToolRegistry& registry, const ToolPaths& paths, IProcess
             if (!procRunner)
                 return "Error: No process runner available; use mode=\"whitespace\" instead.";
 
-            const std::string exe =
-                clangFormatPath.empty() ? std::string("clang-format") : clangFormatPath;
             std::string styleArg;
             const std::string style = extractStringArg(args, "style");
             if (!style.empty()) {
@@ -197,6 +257,12 @@ void registerFormatTool(ToolRegistry& registry, const ToolPaths& paths, IProcess
                        ". Add one, pass style=\"LLVM\" (or another style) explicitly, "
                        "or call format_file with mode=\"whitespace\".";
             }
+
+            // Resolved before anything is spawned: "not installed" has to be a fact
+            // about this machine, not a guess at the shell's wording. The style
+            // check above stays first -- it never needed the binary at all.
+            const std::string exe = resolveClangFormat(clangFormatPath);
+            if (exe.empty()) return clangFormatMissing(clangFormatPath);
 
             ProcessConfig cfg;
             cfg.command = quotePath(exe) + " -i" + styleArg + " " + quotePath(resolved);
