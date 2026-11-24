@@ -804,9 +804,15 @@ void drawSlash(App& app, const Frame& f) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, tokens::radiusPx(m, Radius::Md));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                         ImVec2(0.0f, std::max(1.0f, tokens::spacePx(m, Space::Xs) * 0.5f)));
+    // NoFocusOnAppearing / NoNavFocus: without them ImGui focuses a window the
+    // moment it appears, and FocusWindow() drops the active item of every OTHER
+    // window -- which is the composer. Typing "/" opened this list and took the
+    // keyboard away, leaving nothing but Up/Down (handled by the app, not ImGui).
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+                                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                                   ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_NoNavFocus;
     if (ImGui::Begin("##slash", nullptr, flags)) {
         const int count = static_cast<int>(s.slashRows.size());
         const int shown = std::min(10, count);

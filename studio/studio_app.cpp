@@ -74,8 +74,27 @@ App::~App() {
     panes_.clear();
 }
 
-Pane& App::active() { return *panes_[static_cast<size_t>(active_)]; }
-const Pane& App::active() const { return *panes_[static_cast<size_t>(active_)]; }
+// Answers for "there is no pane". Closing the last pane leaves the window with an
+// empty shell, and the prompt, the header and F4 keep running: without this, every
+// one of those paths dereferences panes_[0] on an empty vector -- that is the crash
+// F4 caused once the last card was gone. Writes land here and are dropped on
+// purpose: there is no session to write to.
+static Pane& noPane() {
+    static Pane pane;
+    return pane;
+}
+
+Pane& App::active() {
+    if (panes_.empty() || active_ < 0 || active_ >= static_cast<int>(panes_.size()))
+        return noPane();
+    return *panes_[static_cast<size_t>(active_)];
+}
+
+const Pane& App::active() const {
+    if (panes_.empty() || active_ < 0 || active_ >= static_cast<int>(panes_.size()))
+        return noPane();
+    return *panes_[static_cast<size_t>(active_)];
+}
 
 void App::bindActive() {
     if (panes_.empty()) {
