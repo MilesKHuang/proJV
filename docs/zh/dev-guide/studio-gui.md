@@ -168,7 +168,7 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 
 一个 pane = 一个 `SessionRuntime` 加它自己的聊天、输入行与推导出来的 Screen（`studio/studio_app.h` 的 `struct Pane`）。界面外壳是共享的，读的是当前 pane。两条要点：
 
-- **工作目录按 pane，不按进程。** `SessionRuntime::setWorkspace` 在 `initialize()` 之前存下它，`session_runtime.cpp` 里 7 处 `getWorkspaceDir()` 改读这个成员；默认值仍是启动目录，所以 TUI 与 `projv run` 行为不变。任何地方都不调 `chdir`：一个 pane 改进程目录，会把别的 pane 的工具和它的快照库一起挪走。
+- **工作目录按 pane，不按进程。** `SessionRuntime::setWorkspace` 在 `initialize()` 之前存下它，`session_runtime.cpp` 里 7 处 `getWorkspaceDir()` 改读这个成员；默认值仍是启动目录，所以 TUI 与 `projv run` 行为不变。任何地方都不调 `chdir`：一个 pane 改进程目录，会把别的 pane 的工具和它的快照库一起挪走。`/undo` 守同一条规则：快照库按工作目录取，同一个目录上的两个 pane 共享一份基线、一个 blob 目录和一个索引，另一个目录上的 pane 看不到、也还原不到那个目录的文件。turn 仍然按会话算：每一轮都带着会话数据库名，别人的 turn 留下的内容不会被这一轮记成自己的改动。
 - **忙着的 pane 拒绝关闭。** `closePane` 回一句先按 Esc 停，而不是销毁一个工作线程还在写库的 `SessionRuntime`。
 
 开会话没有对话框：从文件树落点——工具栏上的 `+`、文件夹右键的 "Start a session here"、或 Sessions 面板的 `+ New`（用树当前目录）。想换目录就在树顶那行路径里输。

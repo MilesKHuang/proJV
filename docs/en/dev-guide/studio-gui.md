@@ -204,6 +204,11 @@ pane. Five panes, the reference window's own limit. Consequences worth stating:
   `session_runtime.cpp` read that member. The default is still the launch directory,
   so the TUI and `projv run` are unchanged. Nothing calls `chdir`: one pane moving
   the process would move every other pane's tools and its snapshot store with it.
+  `/undo` follows the same rule: the snapshot store is keyed by the workspace, so
+  two panes on one folder share one baseline, one blob directory and one index, and
+  a pane on another folder can neither see nor restore that folder's files. Turns
+  stay per session: every turn carries the session database name, and a turn does
+  not claim a file whose content another session's finished turn produced.
 - **A busy pane refuses to close.** `closePane` answers "Esc stops it first" instead
   of destroying a `SessionRuntime` whose worker thread is still writing.
 - **Starting a pane costs one frame, then ~40 ms.** Measured with per-stage timers on
