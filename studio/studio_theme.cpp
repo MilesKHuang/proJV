@@ -323,12 +323,11 @@ bool loadFonts(float scale, std::string* err) {
     io.Fonts->Clear();
     const FaceList faces = faceList();
     const float size = 18.0f;
-    // A CJK glyph fills its em box; Consolas' and Segoe UI's Latin glyphs do not, so
-    // at the same nominal pixel size Microsoft YaHei read a size bigger and much
-    // heavier than the Latin text next to it. The face list now prefers YaHei LIGHT
-    // (msyhl.ttc), whose strokes are close to Consolas' weight; with that the size
-    // can stay at parity, which is what the screenshots asked for.
-    constexpr float kCjkScale = 1.0f;
+    // Optical size, measured off the screenshots: a CJK ideograph fills ~0.88 of its
+    // em, a Latin cap height is ~0.70. At 1.0 the Chinese glyphs were ~27% taller than
+    // the digits beside them ("大小还是有差距"); 0.85 lands them within a pixel of the
+    // Latin ascender. One constant, one line, if it still reads off.
+    constexpr float kCjkScale = 0.85f;
     const float cjkSize = size * kCjkScale;
 
     // 1. Monospace + CJK behind it: chat, prompt, tables, box drawing.
