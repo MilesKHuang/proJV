@@ -52,7 +52,10 @@ ImU32 styleColor(Style st) {
     case Style::HR:
         return studio_theme::fromHex(T.mdHR);
     case Style::TableHeader:
-        return studio_theme::fromHex(T.mdTableHdr);
+        // NOT mdTableHdr: that colour is a BACKGROUND in this theme (the TUI paints
+        // the header row with it), so drawing glyphs in it made the header vanish.
+        // The header is separated by bold text plus a band (see drawBlock).
+        return studio_theme::fromHex(T.text);
     case Style::TableCell:
     case Style::Normal:
     default:

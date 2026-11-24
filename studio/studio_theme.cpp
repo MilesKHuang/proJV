@@ -41,8 +41,8 @@ FaceList faceList() {
     // Consolas / Segoe UI ship with Windows; MS YaHei is the UI CJK face.
     FaceList f{{"C:\\Windows\\Fonts\\consola.ttf", "C:\\Windows\\Fonts\\lucon.ttf",
                 "C:\\Windows\\Fonts\\cour.ttf", nullptr},
-               {"C:\\Windows\\Fonts\\msyh.ttc", "C:\\Windows\\Fonts\\msyh.ttf",
-                "C:\\Windows\\Fonts\\simhei.ttf", "C:\\Windows\\Fonts\\simsun.ttc", nullptr},
+               {"C:\\Windows\\Fonts\\msyhl.ttc", "C:\\Windows\\Fonts\\msyh.ttc",
+                "C:\\Windows\\Fonts\\msyh.ttf", "C:\\Windows\\Fonts\\simhei.ttf", nullptr},
                {"C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\tahoma.ttf",
                 "C:\\Windows\\Fonts\\arial.ttf", nullptr}};
     return f;
@@ -323,12 +323,12 @@ bool loadFonts(float scale, std::string* err) {
     io.Fonts->Clear();
     const FaceList faces = faceList();
     const float size = 18.0f;
-    // A CJK glyph fills its em box; Consolas' and Segoe UI's Latin glyphs do not.
-    // At the same nominal pixel size Microsoft YaHei therefore reads a size bigger
-    // (and much heavier) than the Latin text next to it -- the "中文比英文大一号"
-    // report. 0.90 was too far the other way (Chinese then read smaller than the
-    // Latin); 0.95 is the middle the screenshots agreed on.
-    constexpr float kCjkScale = 0.95f;
+    // A CJK glyph fills its em box; Consolas' and Segoe UI's Latin glyphs do not, so
+    // at the same nominal pixel size Microsoft YaHei read a size bigger and much
+    // heavier than the Latin text next to it. The face list now prefers YaHei LIGHT
+    // (msyhl.ttc), whose strokes are close to Consolas' weight; with that the size
+    // can stay at parity, which is what the screenshots asked for.
+    constexpr float kCjkScale = 1.0f;
     const float cjkSize = size * kCjkScale;
 
     // 1. Monospace + CJK behind it: chat, prompt, tables, box drawing.

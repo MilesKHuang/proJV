@@ -89,6 +89,9 @@ class TextSurface {
         bool table = false;
         bool tableTop = false;
         bool tableLast = false;
+        // The header row: painted over a band (mdTableHdr is a background colour in
+        // this theme, and the TUI uses it exactly that way).
+        bool tableHeaderRow = false;
         // Block decoration: a quote bar on the left, or a code-band background.
         bool quote = false;
         bool codeBg = false;

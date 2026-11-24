@@ -76,7 +76,10 @@ ImU32 runColor(markdown_text::Style style, ImU32 plainOverride) {
     case markdown_text::Style::Quote: return studio_theme::fromHex(T.mdQuote);
     case markdown_text::Style::Bullet:
     case markdown_text::Style::Ordered: return studio_theme::fromHex(T.mdBullet);
-    case markdown_text::Style::TableHeader: return studio_theme::fromHex(T.mdTableHdr);
+    // mdTableHdr is a BACKGROUND in this theme (the TUI paints the header row with
+    // it). Drawing glyphs in it made the header disappear; the row now gets a band
+    // instead (drawBlock) and the text keeps the body colour.
+    case markdown_text::Style::TableHeader: return studio_theme::fromHex(T.text);
     default: return studio_theme::fromHex(T.text);
     }
 }
@@ -251,19 +254,28 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
             int natural = seps;
             for (int w : widths) natural += std::max(w, 1);
             if (natural > maxCols && cols > 0) {
-                const int avail = std::max<int>(static_cast<int>(cols) * 4, maxCols - seps);
-                const int content = std::max(1, natural - seps);
-                int used = 0;
+                const std::vector<int> need = widths;
+                const int avail = std::max<int>(static_cast<int>(cols) * 6, maxCols - seps);
+                // Every narrow column keeps its content -- a 7-character hash must not be
+                // cut down to 4 because the column beside it is long. The wide columns
+                // share what is left, and a remainder flows back to them in order.
+                const int share = std::max(8, avail / static_cast<int>(cols));
+                int left = avail;
                 for (size_t c = 0; c < cols; ++c) {
-                    int want = static_cast<int>(static_cast<long long>(avail) *
-                                                std::max(widths[c], 1) / content);
-                    want = std::max(want, 4);
-                    if (c + 1 == cols) want = std::max(4, avail - used); // last takes the rest
-                    widths[c] = want;
-                    used += want;
+                    widths[c] = std::min(need[c], share);
+                    left -= widths[c];
+                }
+                for (size_t c = 0; c < cols && left > 0; ++c) {
+                    const int extra = std::min(left, need[c] - widths[c]);
+                    widths[c] += extra;
+                    left -= extra;
+                }
+                for (size_t c = cols; left < 0 && c-- > 0;) {
+                    const int cut = std::min(-left, std::max(0, widths[c] - 4));
+                    widths[c] -= cut;
+                    left += cut;
                 }
             }
-            bool headerSeen = false;
             for (size_t ri = 0; ri < rows.size(); ++ri) {
                 const markdown_text::Line* r = rows[ri];
                 // Wrap each cell into its own column width, then emit one visual line
@@ -301,17 +313,16 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                     vl.table = true;
                     vl.tableTop = (ri == 0 && k == 0);
                     vl.tableLast = (ri + 1 == rows.size() && k + 1 == rowLines);
+                    vl.tableHeaderRow = r->tableHeader;
                     markdown_text::Segment s;
                     s.text = text;
                     s.style = r->tableHeader ? markdown_text::Style::TableHeader
                                              : markdown_text::Style::TableCell;
                     vl.plain = text;
                     vl.runs.push_back(std::move(s));
-                    // The rule closes the header, so it belongs under its LAST line.
-                    if (r->tableHeader && !headerSeen && k + 1 == rowLines) {
-                        vl.rule = true; // the header is separated from the data
-                        headerSeen = true;
-                    }
+                    // One rule under every row: that is the grid the TUI draws, and it
+                    // is what turns a run of padded text into something with cells.
+                    if (k + 1 == rowLines) vl.rule = true;
                     out.push_back(std::move(vl));
                 }
             }
@@ -455,6 +466,16 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             dl->AddLine(ImVec2(vl.x0, vl.y0 - 3.0f * dpi),
                         ImVec2(vl.x0 + width - ind, vl.y0 - 3.0f * dpi),
                         studio_theme::field(&ThemeColors::separator));
+        // The header row sits on a band. mdTableHdr is a BACKGROUND colour in this
+        // theme (the TUI paints the row with it), which is why it cannot be the text
+        // colour -- drawn as glyphs it was invisible.
+        if (vl.tableHeaderRow) {
+            const float pad = 3.0f * dpi;
+            dl->AddRectFilled(ImVec2(vl.x0 - pad, vl.y0 - pad * 0.5f),
+                              ImVec2(vl.x0 + width - ind + pad,
+                                     vl.y0 + ImGui::GetTextLineHeight() + pad * 0.5f),
+                              studio_theme::field(&ThemeColors::mdTableHdr), 3.0f);
+        }
         // Hard clip to this line's own box. The wrap decides where a line ends, but a
         // single glyph must never be painted outside the surface it belongs to: the
         // bubble is a card, and text crossing its edge is the one thing a reader
