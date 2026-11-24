@@ -220,3 +220,46 @@ TEST_CASE("snapshot: two sessions in one workspace keep their own files") {
     std::error_code ec;
     fs::remove_all(ws, ec);
 }
+
+TEST_CASE("snapshot: a build tree is not tracked, a folder that merely starts with 'build' is") {
+    const fs::path ws = makeTempDir("ws_skip");
+    fs::create_directories(ws / "build-e2e");
+    fs::create_directories(ws / "cmake-build-debug");
+    fs::create_directories(ws / "builder");
+    writeFile(ws / "keep.txt", "k0\n");
+    writeFile(ws / "builder/b.txt", "b0\n");
+    writeFile(ws / "build-e2e/artifact.txt", "x0\n");
+    writeFile(ws / "cmake-build-debug/out.txt", "y0\n");
+
+    std::string err;
+    const snapshot::Store store = snapshot::open(ws.string(), 7, 0, err);
+    REQUIRE(store != snapshot::kNoStore);
+    const int turn = snapshot::beginTurn(store, "skip_session", err);
+    REQUIRE(turn >= 0);
+
+    // One turn that touches both kinds: real files, and files inside a build tree. The
+    // `builder/` directory is source and must stay tracked -- the prefix carries the
+    // separator for exactly that reason.
+    writeFile(ws / "keep.txt", "k1\n");
+    writeFile(ws / "builder/b.txt", "b1\n");
+    writeFile(ws / "build-e2e/artifact.txt", "x1\n");
+    writeFile(ws / "cmake-build-debug/out.txt", "y1\n");
+    fs::create_directories(ws / "build-e2e/sub");
+    writeFile(ws / "build-e2e/sub/new.txt", "n\n");
+    REQUIRE(snapshot::endTurn(store, turn, err));
+
+    const snapshot::Report r = snapshot::undoLast(store, "skip_session", false);
+    CHECK(r.ok);
+    CHECK(r.restored.size() == 2); // keep.txt + builder/b.txt, nothing from a build tree
+    CHECK(readFile(ws / "keep.txt") == "k0\n");
+    CHECK(readFile(ws / "builder/b.txt") == "b0\n");
+    // Never recorded, so the undo left them exactly as the turn left them: an /undo
+    // must not be able to delete a build tree.
+    CHECK(readFile(ws / "build-e2e/artifact.txt") == "x1\n");
+    CHECK(readFile(ws / "cmake-build-debug/out.txt") == "y1\n");
+    CHECK(fs::exists(ws / "build-e2e/sub/new.txt"));
+
+    snapshot::close();
+    std::error_code ec;
+    fs::remove_all(ws, ec);
+}

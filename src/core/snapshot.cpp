@@ -40,13 +40,22 @@ constexpr size_t kMaxOpenTurns = 8;
 // the store itself and the whole projv_files tree (see scan()).
 bool isSkippedDir(const std::string& name) {
     static const char* k[] = {".git",     ".svn",        ".hg",           ".vs",         ".vscode",
-                              ".idea",    "build",       "Debug",         "Release",     "x64",
+                              ".idea",    "Debug",       "Release",       "x64",
                               "x86",      "bin",         "bin64",         "obj",         "out",
                               "target",   "dist",        "node_modules",  "packages",    "vendor",
                               "external", "__pycache__", ".pytest_cache", ".mypy_cache", ".cache",
                               "coverage", "venv",        ".venv"};
     for (const char* s : k)
         if (name == s) return true;
+    // Build trees are named `build`, `build_debug`, `build-e2e`, `build_linux`,
+    // `cmake-build-debug` -- the repo's .gitignore lists them one by one. Matching by
+    // prefix keeps a whole build tree out of the snapshot: recording it bloats the
+    // store and, worse, offers an /undo that would delete the build. A directory that
+    // merely starts with the word -- `builder` -- is source and stays tracked, which
+    // is why the prefix carries the separator.
+    if (name == "build") return true;
+    if (name.starts_with("build-") || name.starts_with("build_")) return true;
+    if (name.starts_with("cmake-build")) return true;
     return false;
 }
 
