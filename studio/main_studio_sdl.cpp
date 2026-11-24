@@ -189,7 +189,11 @@ int main(int argc, char** argv) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigDpiScaleFonts = true;
+    // Same rule as the Win32 front-end: the studio scales its own metrics
+    // (applyMetrics) and sets FontScaleDpi (loadFonts), so ImGui must not scale the
+    // atlas a second time. With both on, a 150% display drew every glyph at 2.25x
+    // inside a layout built for 1.5x: text ran past its box and was clipped.
+    io.ConfigDpiScaleFonts = false;
     io.IniFilename = nullptr;
     io.LogFilename = nullptr;
 
