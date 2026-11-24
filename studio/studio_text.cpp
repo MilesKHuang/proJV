@@ -241,47 +241,70 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
             for (const auto* r : rows)
                 for (size_t c = 0; c < cols; ++c)
                     widths[c] = std::max(widths[c], columnsOf(cellText(*r, c)));
-            // A table was the one block that ignored the available width entirely: the
-            // cells were padded to their own content and the row simply grew past the
-            // bubble. Columns that no longer fit are dropped (the last shown one takes
-            // the remainder), which is what the terminal does at a narrow width.
+            // Fit the table into the bubble instead of throwing its right-hand columns
+            // away. The old rule kept the first columns that fitted and silently
+            // dropped the rest, so a two-column table whose second column was long
+            // showed nothing but the first one -- the "table shows only the SHA" report.
+            // Every column now gets a share of the width and wraps inside it.
             const int maxCols = std::max(8, static_cast<int>(width / std::max(1.0f, cw)));
-            int kept = 0;
-            int used = 0;
-            while (kept < static_cast<int>(cols)) {
-                const int want = widths[static_cast<size_t>(kept)] +
-                                 (kept + 1 < static_cast<int>(cols) ? 3 : 0);
-                if (used + want > maxCols && kept > 0) break;
-                used += want;
-                ++kept;
+            const int seps = 3 * (static_cast<int>(cols) - 1);
+            int natural = seps;
+            for (int w : widths) natural += std::max(w, 1);
+            if (natural > maxCols && cols > 0) {
+                const int avail = std::max<int>(static_cast<int>(cols) * 4, maxCols - seps);
+                const int content = std::max(1, natural - seps);
+                int used = 0;
+                for (size_t c = 0; c < cols; ++c) {
+                    int want = static_cast<int>(static_cast<long long>(avail) *
+                                                std::max(widths[c], 1) / content);
+                    want = std::max(want, 4);
+                    if (c + 1 == cols) want = std::max(4, avail - used); // last takes the rest
+                    widths[c] = want;
+                    used += want;
+                }
             }
-            if (kept <= 0) kept = 1;
-            cols = static_cast<size_t>(kept);
-            widths.resize(cols);
             bool headerSeen = false;
             for (const auto* r : rows) {
-                VisualLine vl;
-                vl.block = blockId;
-                vl.line = lineNo++;
+                // Wrap each cell into its own column width, then emit one visual line
+                // per line of the tallest cell: a long cell grows downwards instead of
+                // running past the bubble.
+                std::vector<std::vector<std::vector<markdown_text::Segment>>> cellRows(cols);
+                size_t rowLines = 1;
                 for (size_t c = 0; c < cols; ++c) {
-                    std::string cell = cellText(*r, c);
-                    int have = columnsOf(cell);
-                    while (have < widths[c]) {
-                        cell += ' ';
-                        ++have;
+                    std::vector<markdown_text::Segment> segs;
+                    if (c < r->cells.size()) segs = r->cells[c];
+                    const float colPx = static_cast<float>(std::max(1, widths[c])) * cw;
+                    cellRows[c] = studio_md::wrap(segs, colPx);
+                    if (cellRows[c].empty()) cellRows[c].push_back({});
+                    rowLines = std::max(rowLines, cellRows[c].size());
+                }
+                for (size_t k = 0; k < rowLines; ++k) {
+                    VisualLine vl;
+                    vl.block = blockId;
+                    vl.line = lineNo++;
+                    for (size_t c = 0; c < cols; ++c) {
+                        std::string cell;
+                        if (k < cellRows[c].size())
+                            for (const auto& seg : cellRows[c][k]) cell += seg.text;
+                        int have = columnsOf(cell);
+                        while (have < widths[c]) {
+                            cell += ' ';
+                            ++have;
+                        }
+                        markdown_text::Segment s;
+                        s.text = cell + (c + 1 < cols ? "   " : "");
+                        s.style = r->tableHeader ? markdown_text::Style::TableHeader
+                                                 : markdown_text::Style::TableCell;
+                        vl.plain += s.text;
+                        vl.runs.push_back(std::move(s));
                     }
-                    markdown_text::Segment s;
-                    s.text = cell + (c + 1 < cols ? "   " : "");
-                    s.style = r->tableHeader ? markdown_text::Style::TableHeader
-                                             : markdown_text::Style::TableCell;
-                    vl.plain += s.text;
-                    vl.runs.push_back(std::move(s));
+                    // The rule closes the header, so it belongs under its LAST line.
+                    if (r->tableHeader && !headerSeen && k + 1 == rowLines) {
+                        vl.rule = true; // the header is separated from the data
+                        headerSeen = true;
+                    }
+                    out.push_back(std::move(vl));
                 }
-                if (r->tableHeader && !headerSeen) {
-                    vl.rule = true; // the header is separated from the data
-                    headerSeen = true;
-                }
-                out.push_back(std::move(vl));
             }
             i = j;
             continue;
