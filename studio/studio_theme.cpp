@@ -41,8 +41,8 @@ FaceList faceList() {
     // Consolas / Segoe UI ship with Windows; MS YaHei is the UI CJK face.
     FaceList f{{"C:\\Windows\\Fonts\\consola.ttf", "C:\\Windows\\Fonts\\lucon.ttf",
                 "C:\\Windows\\Fonts\\cour.ttf", nullptr},
-               {"C:\\Windows\\Fonts\\msyhl.ttc", "C:\\Windows\\Fonts\\msyh.ttc",
-                "C:\\Windows\\Fonts\\msyh.ttf", "C:\\Windows\\Fonts\\simhei.ttf", nullptr},
+               {"C:\\Windows\\Fonts\\msyh.ttc", "C:\\Windows\\Fonts\\msyh.ttf",
+                "C:\\Windows\\Fonts\\simhei.ttf", "C:\\Windows\\Fonts\\simsun.ttc", nullptr},
                {"C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\tahoma.ttf",
                 "C:\\Windows\\Fonts\\arial.ttf", nullptr}};
     return f;
@@ -323,11 +323,12 @@ bool loadFonts(float scale, std::string* err) {
     io.Fonts->Clear();
     const FaceList faces = faceList();
     const float size = 18.0f;
-    // Optical size, measured off the screenshots: a CJK ideograph fills ~0.88 of its
-    // em, a Latin cap height is ~0.70. At 1.0 the Chinese glyphs were ~27% taller than
-    // the digits beside them ("大小还是有差距"); 0.85 lands them within a pixel of the
-    // Latin ascender. One constant, one line, if it still reads off.
-    constexpr float kCjkScale = 0.85f;
+    // Plain: the CJK faces are merged at exactly the Latin size, one atlas, one
+    // scale (see FontScaleDpi below). Every earlier attempt to "fix" the apparent
+    // difference with a ratio made it worse, because the real offender was the atlas
+    // being scaled twice at 150% (main_studio.cpp) -- with that gone, the faces are
+    // simply rendered as designed.
+    constexpr float kCjkScale = 1.0f;
     const float cjkSize = size * kCjkScale;
 
     // 1. Monospace + CJK behind it: chat, prompt, tables, box drawing.

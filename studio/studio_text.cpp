@@ -390,7 +390,11 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
         // borders, header band and zebra, all from the theme's ImGuiCol_Table* entries.
         if (vl.tableIndex >= 0) {
             if (vl.tableIndex < static_cast<int>(layout->tables.size())) {
-                ImGui::PushStyleColor(ImGuiCol_Text, plainColor);
+                // NOT plainColor directly: a markdown body passes 0 there (transparent)
+                // because its runs are coloured per style. Pushing it made the whole
+                // table invisible -- runColor() resolves 0 to the theme's text colour.
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      runColor(markdown_text::Style::Normal, plainColor));
                 drawTable(layout->tables[static_cast<size_t>(vl.tableIndex)]);
                 ImGui::PopStyleColor();
             }
