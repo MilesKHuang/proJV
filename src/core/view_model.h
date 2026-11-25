@@ -391,6 +391,10 @@ Screen build(const Source& src);
 // as UTF-8 so a diff of two snapshots is readable).
 std::string toJson(const Screen& screen);
 
+// "Idle" / "Streaming" / ... for one phase. The same function build() uses for
+// Screen::phaseName, so a pane card and the status line cannot spell it two ways.
+std::string phaseName(AgentPhase p);
+
 // Turn an update_todo list into dock rows (the "[x]" / "[*]" / "[ ]" rule of
 // tui/todo_view.cpp; an unknown mark is "pending").
 std::vector<TodoRow> todoRows(const std::string& pendingTodo);

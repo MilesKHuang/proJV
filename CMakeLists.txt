@@ -369,6 +369,9 @@ set(STUDIO_SOURCES
     ${STUDIO_DIR}/studio_leftbar.cpp
     ${STUDIO_DIR}/studio_modals.cpp
     ${STUDIO_DIR}/png_writer.cpp
+    # tui::beepIdle(): the studio makes the TUI's own "a turn ended" sound, and one
+    # implementation is better than a second MessageBeep that can drift from it.
+    ${SRC_DIR}/tui/terminal.cpp
     # The design system: pure tokens + layout + text fitting (no ImGui), then the
     # widget kit that paints them.
     ${STUDIO_DIR}/design/tokens.cpp

@@ -107,9 +107,16 @@ void metricBar(const Metrics& m, const Rect& row, const std::string& label,
         ImGui::SetTooltip("%s", tooltip.c_str());
 }
 
-std::string paneStateText(const view_model::Screen& s, bool busy) {
-    if (busy && !s.statusText.empty()) return s.statusText;
-    return s.phaseName.empty() ? std::string("Idle") : s.phaseName;
+// The card's state word. It asks the pane, not the pane's last Screen: only the
+// active pane's Screen is rebuilt each frame, so every other card kept a phase from
+// the last time it was looked at ("背景会话早就跑完了，卡片还写着正在执行").
+std::string paneStateText(App& app, const view_model::Screen& s, int index) {
+    const bool busy = app.paneBusy(index);
+    // The active pane's own status line is current and says more ("Running:
+    // read_file (2/5)"); a background pane gets the live phase word.
+    if (busy && index == app.activePane() && !s.statusText.empty()) return s.statusText;
+    std::string live = app.paneActivity(index);
+    return live.empty() ? std::string("Idle") : live;
 }
 
 // One session as ONE card: a title line (name + state) and three progress bars
@@ -120,7 +127,7 @@ void drawSessionRow(App& app, const Metrics& m, const Rect& row, int index) {
     const Palette p = ui::palette();
     const bool activeRow = index == app.activePane();
     const bool busy = app.paneBusy(index);
-    const std::string state = paneStateText(app.screenOf(index), busy);
+    const std::string state = paneStateText(app, app.screenOf(index), index);
     const float gap = tokens::spacePx(m, Space::Xs);
     const float padX = tokens::spacePx(m, Space::Sm);
     const float radius = tokens::radiusPx(m, Radius::Md);

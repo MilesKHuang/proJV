@@ -23,6 +23,7 @@
 #include "platform/log_files.h"
 #include "studio_app.h"
 #include "studio_theme.h"
+#include "tui/terminal.h"
 #include "studio_ui.h"
 #include "tui/theme_manager.h"
 
@@ -226,6 +227,8 @@ int main(int argc, char** argv) {
         if (key != studio::GKey::None) app.handleKey(key);
 
         app.tick();
+        // Same cue as the Win32 half and the TUI (see main_studio.cpp).
+        if (app.takeBeep()) tui::beepIdle();
         studio::drawFrame(app);
 
         ImGui::Render();

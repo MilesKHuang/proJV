@@ -110,6 +110,14 @@ struct Pane {
     std::string error;
     work_clock::Clock clock;
     int tokensMark = 0; // prompt+completion when the current turn started
+    // Last frame's busy flag: a turn's END is the falling edge, which is what the
+    // TUI beeps on. Per pane, because every pane can finish a turn.
+    bool wasBusy = false;
+    // What the last click on THIS pane did. It used to be one string for the whole
+    // window, so a click on another pane's card showed up in this pane's bar.
+    std::string receipt;
+    long long receiptUntil = 0;
+    long long lastScrollMs = 0; // the reader last turned the wheel over this pane
     // Notices arrive on the TURN thread of this pane: queued here, drained by the
     // UI thread on its next tick. One queue per pane, so a message from a pane the
     // user is not looking at cannot land in another pane's chat.
@@ -197,8 +205,21 @@ class App {
     float leftSplit() const { return leftSplit_; }
     void setLeftSplit(float ratio);
     // One line saying what just happened, so a click never has a silent result.
+    // Per pane: the service bar it lands in belongs to one session.
     void setReceipt(const std::string& text);
     const std::string& receipt() const;
+    // The live phase of ONE pane ("Idle" / "ExecutingTools" / "starting...").
+    // The session cards used to read the pane's last Screen, and only the active
+    // pane's Screen is rebuilt each frame -- a background pane's card kept a phase
+    // from minutes ago.
+    std::string paneActivity(int index) const;
+    // A pane's turn just ended: true once, so the platform layer can make the same
+    // sound the TUI makes (tui::beepIdle).
+    bool takeBeep();
+    // The reader turned the wheel / dragged the scrollbar this frame. Auto-follow
+    // backs off for a moment afterwards, so a scroll is never fought.
+    void noteReaderScroll();
+    bool readerMovedRecently() const;
     // Resource sampling (started by the window's main loop, never headless). By
     // value: the sampler copies its last snapshot under a lock, and a reference
     // into that would go stale the moment the thread took the next sample.
@@ -365,8 +386,8 @@ class App {
     int treeSelected_ = 0;
     bool leftOpen_ = true;
     float leftSplit_ = 0.55f; // share of the column the session list gets
-    std::string receipt_;
-    long long receiptUntilMs_ = 0;
+    bool beepPending_ = false; // a pane's turn just ended; the platform layer beeps
+    size_t streamedChars_ = 0; // size of the last streamed answer (growth = pulse)
     int contextPane_ = -1;
     std::string contextPath_;
     bool contextIsDir_ = false;

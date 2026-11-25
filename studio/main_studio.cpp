@@ -28,6 +28,7 @@
 #include "platform/log_files.h"
 #include "studio_app.h"
 #include "studio_theme.h"
+#include "tui/terminal.h"
 #include "studio_ui.h"
 #include "tui/theme_manager.h"
 
@@ -460,6 +461,9 @@ int runStudio(int argc, char** argv) {
         if (key != studio::GKey::None) app.handleKey(key);
 
         app.tick();
+        // The TUI's own cue, on the same edge it uses (a turn ending): a window with
+        // no sound left the user watching for a change instead of being told.
+        if (app.takeBeep()) tui::beepIdle();
         // One scroll request, once the layout has settled: an acceptance image of
         // an opened row has to show the row's own header, not the bottom of it.
         if (!shot.path.empty() && shot.scrollUp > 0 && frames == 3) app.scrollChat(shot.scrollUp);

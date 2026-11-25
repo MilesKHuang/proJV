@@ -373,7 +373,9 @@ void App::fillSource() {
     s.busy = busy() || demoBusy_;
     s.spinnerFrame = spinnerFrame_;
     s.model = runtime_ ? runtime_->config().model : std::string();
-    s.workspace = getWorkspaceDir();
+    // The pane's own folder, not the launch/configured one: a pane started in
+    // another folder showed this window's workspace in its service bar.
+    s.workspace = active().workspace.empty() ? getWorkspaceDir() : active().workspace;
     s.promptTokens = runtime_ ? runtime_->promptTokens() : 0;
     s.completionTokens = runtime_ ? runtime_->completionTokens() : 0;
     s.cost = sourceCost();
@@ -391,6 +393,15 @@ void App::fillSource() {
     if (runtime_ && runtime_->agent()) {
         Agent* a = runtime_->agent();
         s.status = a->getStatus();
+        // Streaming text grows BETWEEN messages, so an appended bubble is not the
+        // only "content arrived" event: each growth is a pulse too, or the chase
+        // would stop in the middle of an answer. It only ever asks; drawChat decides
+        // from the reader's distance and whether they are moving.
+        const size_t streamed = s.status.streamingText.size() + s.status.reasoningText.size();
+        if (streamed != streamedChars_) {
+            streamedChars_ = streamed;
+            if (streamed > 0) active().followBottom = true;
+        }
         s.msgCount = a->getSession().messageCount();
         int toolCount = 0;
         for (const auto& m : a->getSession().getContextMessages()) {
@@ -1234,6 +1245,10 @@ void App::appendDerived(Pane& pane, const Message& msg) {
         pane.chat.push_back(std::move(derived[k]));
     }
     if (msg.id > pane.lastMessageId) pane.lastMessageId = msg.id;
+    // A bubble was appended: that is the moment to decide whether the view should
+    // follow (drawChat checks the distance and whether the reader is moving). Only
+    // for the pane on screen -- a background pane's growth must not move this one.
+    if (!derived.empty() && &pane == &active()) pane.followBottom = true;
 }
 
 void App::refreshChat(Pane& pane) {
@@ -1439,11 +1454,17 @@ void App::tick() {
         }
         // The turn clock: started when the pane becomes busy, stopped when it is not.
         const int tokens = pane.rt->promptTokens() + pane.rt->completionTokens();
-        if (pane.rt->isBusy()) {
+        const bool busyNow = pane.rt->isBusy();
+        if (busyNow) {
             if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), tokens);
         } else if (pane.clock.running) {
             work_clock::end(pane.clock);
         }
+        // A turn's END is the falling edge, which is exactly what the TUI beeps on
+        // (main_tui.cpp: prevBusy && !curBusy). Every pane can end a turn, so any
+        // falling edge asks the platform layer for the same sound.
+        if (pane.wasBusy && !busyNow) beepPending_ = true;
+        pane.wasBusy = busyNow;
     }
 
     // An approval request appears and disappears on its own: follow the agent's
@@ -1552,15 +1573,37 @@ void App::setLeftSplit(float ratio) {
 }
 
 void App::setReceipt(const std::string& text) {
-    receipt_ = text;
-    receiptUntilMs_ = monotonicMs() + 6000; // six seconds, then it stops being true
+    Pane& pane = active();
+    pane.receipt = text;
+    pane.receiptUntil = monotonicMs() + 6000; // six seconds, then it stops being true
 }
 
 const std::string& App::receipt() const {
     static const std::string empty;
-    if (receipt_.empty()) return empty;
-    if (monotonicMs() > receiptUntilMs_) return empty;
-    return receipt_;
+    const Pane& pane = active();
+    if (pane.receipt.empty()) return empty;
+    if (monotonicMs() > pane.receiptUntil) return empty;
+    return pane.receipt;
+}
+
+std::string App::paneActivity(int index) const {
+    if (index < 0 || index >= static_cast<int>(panes_.size())) return std::string();
+    const Pane& pane = *panes_[static_cast<size_t>(index)];
+    if (pane.state.load() == Pane::State::Failed) return "failed";
+    if (pane.state.load() != Pane::State::Ready || !pane.rt) return "starting...";
+    return view_model::phaseName(pane.rt->phase());
+}
+
+bool App::takeBeep() {
+    const bool pending = beepPending_;
+    beepPending_ = false;
+    return pending;
+}
+
+void App::noteReaderScroll() { active().lastScrollMs = monotonicMs(); }
+
+bool App::readerMovedRecently() const {
+    return monotonicMs() - active().lastScrollMs < 400;
 }
 
 void App::injectPromptText(const std::string& text) {

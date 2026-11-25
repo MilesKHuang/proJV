@@ -595,11 +595,24 @@ void drawChat(App& app, const Frame& f) {
     //   - otherwise the view follows only while it is within a third of a screen
     //     of the bottom, which is far enough that a streaming frame cannot lose
     //     the chase and near enough that scrolling away really is "leave me be".
-    const bool jump = open && app.takeFollowBottom();
-    const float slack = std::max(4.0f * tokens::linePx(m, Type::Body),
-                                 ImGui::GetWindowHeight() * 0.33f);
-    const bool follow = jump || (open && ui::scrollFromBottom() <= slack);
-    ui::endScroll(follow);
+    // ONE decision per arriving bubble, never one per frame.
+    //
+    // The pulse comes from the app: a bubble was appended, a message was sent, a
+    // notice arrived, or the streaming answer grew. It is honoured only when the
+    // reader is not moving and is close to the last message -- otherwise the view
+    // stays exactly where it was. A frame without a pulse never calls SetScrollY,
+    // so the wheel always wins and nothing is "locked to the bottom".
+    const bool pulse = open && app.takeFollowBottom();
+    if (open && pulse) {
+        // "Moving" is a wheel turn or a scrollbar drag in the last 400 ms, not
+        // "the prompt has keyboard focus" (it always does).
+        if (ImGui::GetIO().MouseWheel != 0.0f || ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+            app.noteReaderScroll();
+        const float near = 3.0f * tokens::linePx(m, Type::Body);
+        ui::endScroll(!app.readerMovedRecently() && ui::scrollFromBottom() <= near);
+    } else {
+        ui::endScroll(false);
+    }
 }
 
 // ---- dock ----------------------------------------------------------------
@@ -979,9 +992,11 @@ void drawStatusBar(App& app, const Frame& f) {
     // The darkest surface in the window: the bar's own colours are mid-tone status
     // colours, and on the lighter alt surface the figures were unreadable.
     ui::fill(f.statusBar, p.inputBg);
-    // The service bar is reference data (tokens, context, cost), not a footnote:
-    // at Body it reads at arm's length, at Small it read as a caption.
-    const Type tier = Type::Body;
+    // The service bar is reference data (tokens, context, cost), not a footnote.
+    // It sits in the pane column now, which is half the window: at Body only three
+    // of its five segments fitted and the workspace -- the one the user checks --
+    // was the one that fell off the end. Small fits them all.
+    const Type tier = Type::Small;
     const float gap = tokens::spacePx(m, Space::Sm);
     float x = f.statusBar.x + tokens::spacePx(m, Space::Md);
     const float limit = f.statusBar.right() - tokens::spacePx(m, Space::Md);
@@ -1160,8 +1175,15 @@ Frame computeFrame(App& app, const Metrics& m) {
     // The prompt keeps a column on its right for the status line, so measure it
     // against the width it will actually get -- wrapping is computed from the
     // field's own inner width, not from the whole footer's.
-    const float statusColW =
-        std::min(chatW * 0.42f, std::max(200.0f * m.factor, chatW * 0.30f));
+    // The status column is as wide as what it has to say. A fixed 30-42% of the
+    // column gave ~185 px to a box whose usual content is the word "Idle", and the
+    // prompt paid for it. Clamped so a long "Running: read_file (2/5)" cannot eat
+    // the prompt, and so the box does not twitch on every character.
+    const float statusWant =
+        ui::measure(m, s.statusText, Type::Body, false) + 3.0f * tokens::spacePx(m, Space::Md);
+    const float statusColW = std::max(96.0f * m.factor,
+                                      std::min(statusWant, std::min(220.0f * m.factor,
+                                                                    chatW * 0.42f)));
     const float promptW = std::max(120.0f, chatW - statusColW - gap);
     f.composerRows = composerRowCount(app.inputText(), m, promptW);
     const float promptRowH = tokens::typePx(m, Type::Mono);
@@ -1193,7 +1215,17 @@ Frame computeFrame(App& app, const Metrics& m) {
     mid.add(layout::Node::none().hGrow(1.0f));      // the transcript
     mid.add(layout::Node::none().height(footerH));  // its own prompt + service bar
     body.add(mid);
-    if (f.dockOpen) body.add(layout::Node::none().width(m.dockW).minsize(220.0f * m.factor, 0.0f));
+    if (f.dockOpen) {
+        // The dock belongs to the pane whose transcript it sits beside, so it ends
+        // where the transcript ends: a trailing spacer takes the footer's height.
+        // The left column stays full height -- it is the window's launcher, not the
+        // pane's furniture.
+        layout::Node dock = layout::Node::col(0.0f);
+        dock.add(layout::Node::none().hGrow(1.0f));
+        dock.add(layout::Node::none().height(footerH + gap));
+        dock.width(std::max(m.dockW, 220.0f * m.factor));
+        body.add(std::move(dock));
+    }
     root.add(body);
     layout::solve(root, f.window);
 
@@ -1208,7 +1240,10 @@ Frame computeFrame(App& app, const Metrics& m) {
     const layout::Node& midNode = bodyNode.children[child++];
     f.chat = midNode.children[0].rect;
     f.footer = midNode.children[1].rect;
-    if (f.dockOpen && child < bodyNode.children.size()) f.dock = bodyNode.children[child].rect;
+    if (f.dockOpen && child < bodyNode.children.size()) {
+        const layout::Node& dockNode = bodyNode.children[child];
+        f.dock = dockNode.children.empty() ? dockNode.rect : dockNode.children[0].rect;
+    }
     // --- the left column's own stack: sessions / handle / files ----------------
     // The Sessions panel is as tall as its content (a minimal wrapper: one row per
     // pane plus the header) and the file tree gets every pixel that is left, capped

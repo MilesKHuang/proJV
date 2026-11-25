@@ -505,6 +505,14 @@ std::vector<ChatRow> deriveChat(const Source& src) {
     return rows;
 }
 
+} // namespace
+
+std::string phaseName(AgentPhase p) {
+    return phaseNameOf(p);
+}
+
+namespace {
+
 StreamingView deriveStreaming(const AgentPhase phase, const AgentStatus& st) {
     StreamingView v;
     if (phase != AgentPhase::Streaming) return v;

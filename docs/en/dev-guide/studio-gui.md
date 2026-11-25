@@ -309,11 +309,21 @@ out of the stack above the prompt into the column beside it (state on top, the
 turn's own clock or the skill pill under it), which is what bought the prompt its
 second row: `composerRowCount` never returns less than two.
 
-Scrolling follows only a reader who is already near the bottom -- within a third
-of a screen, and never less than four lines. An explicit jump (send, new chat, a
-notice) pins once whatever the distance. The old rule was a binary "was at the
-bottom last frame": one wheel notch stopped the chase for good, and an arriving
-message re-armed it and pulled the view down from three screens up.
+Scrolling is decided ONCE per arriving bubble, never per frame: the app raises a
+pulse when a bubble is appended, a message is sent, a notice arrives or the
+streaming answer grows, and `drawChat` honours it only when the reader is not
+moving (a wheel turn or a scrollbar drag in the last 400 ms) and is within three
+lines of the bottom. A frame without a pulse never touches the scroll position, so
+the wheel always wins. Both earlier rules were wrong in one direction each: a
+binary "was at the bottom last frame" stopped the chase for good after one notch,
+and a per-frame proximity test fought the wheel inside its own band.
+
+The service bar is per pane: its workspace comes from `Pane::workspace` (it used
+to print the window's launch folder), the receipt lives on the pane, and a session
+card asks the pane for its live phase instead of reading the pane's `Screen` --
+only the active pane's Screen is rebuilt each frame, so every other card kept a
+phase from the last time it was looked at. The studio also makes the TUI's own "a
+turn ended" sound (`tui::beepIdle`, on the same falling edge `main_tui.cpp` uses).
 
 The spinner is a drawn arc with a frame-count phase (so a screenshot run stays
 reproducible), not the TUI's `|/-\` glyphs, which read as a stray character
