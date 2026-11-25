@@ -126,9 +126,11 @@
 - **职责。** `config.toml` 往返读写、SQLite 会话持久化。
 - **入口。** `src/core/config.cpp`（TOML 读写与默认值）、`src/core/storage.cpp`
   （建库/开库、追加消息、checkpoint）。
-- **表结构。** `messages` 有一列 `diff TEXT`：写文件的工具产出的 unified diff，
-  在 TUI 里单独一个气泡显示。它只用于显示，绝不能进 `to_json`。老库靠与
-  `reasoning_content` / `image_paths` / `synthetic` 同一段 try-`ALTER TABLE` 迁移。
+- **表结构。** `messages` 有三列只用于显示：`diff TEXT`（写文件的工具产出的
+  unified diff）、`duration_ms`（这次调用花了多久）、`skill_run_id`（这条角色消息
+  属于哪一次技能运行，重放时会话按同样方式折叠）。三者都绝不能进 `to_json`。老库靠
+  与 `reasoning_content` / `image_paths` / `synthetic` 同一段 try-`ALTER TABLE` 迁移，
+  两个新列读回 `0` / 空串——表示"未知"，而不是"瞬时完成"。
 - **测试。** `test_storage_diff.cpp` 覆盖 `diff` 的存取往返，以及从无 `diff` 列的
   旧库迁移；其余由技能与 agent 套件间接覆盖。
 
@@ -182,6 +184,41 @@
   （默认拒绝，`--approve always` 时放行）。
 - **测试。** `tests/unit/test_session_runtime.cpp`（事件契约）与
   `tests/e2e/run_e2e.ps1`（真实 `TuiApp` 跑在运行时之上，对接假 API）。
+
+## 12. studio 前端
+
+- **职责。** 把同一个会话画进窗口。它拥有布局、输入，以及窗口有而终端没有的两份
+  视图状态：哪些行是展开的，以及对话是否跟随末尾。
+- **入口。** `studio/main_studio.cpp`（Win32 + WGL，IME 完整的那一半）与
+  `studio/main_studio_sdl.cpp`（Linux，SDL2）。两者都构造 `studio::App`
+  （`studio/studio_app.{h,cpp}`）并调用 `studio::drawFrame`。
+- **屏幕上的东西来自 `src/core/view_model.h`。** `App::fillSource()` 用活动 pane
+  填一份 `view_model::Source`，`build()` 推导出 `Screen`，`studio_ui.cpp` 只负责摆放。
+  在 `studio_ui.cpp` 里新增一个标签、一个颜色引用、一个顺序或一句派生文案，正是
+  `view_model` 存在的意义所要阻止的分叉：写进推导，让 TUI 选择忽略。
+- **聊天区。** `view_model::ChatRow` 携带折叠字段（`key`、`collapsible`、
+  `collapsed`、`summary`、`status`、`durationText`、`diffSummary`、`diffText`、
+  `extraFull`、`lines`），skill run 的角色块用 `children`。折叠是**推导**出来的
+  （`deriveChat`），状态是**输入**（`Source::toolsCollapsed` / `skillsCollapsed` /
+  `expandedKeys`），行身份来自 `Source::bubbleKeys`——在 `studio_app.cpp` 追加气泡
+  处生成，永远不是行号。新增一种可折叠的行：在 `deriveChat` 填这些字段，再在
+  `drawFoldedTool`（`studio/studio_ui.cpp`）里画。
+- **跟随末尾。** `App::followEnabled()` 是读者自己的闩锁：滚轮或拖动滚动条改它，
+  开着的时候每帧调用 `ui::scrollToBottom()`。内容到达永远不碰它——那三次失败的
+  设计见 studio 指南里的逐帧追踪。
+- **布局。** `studio/design/layout.{h,cpp}` 是一个极小的行列求解器；`computeFrame`
+  （`studio_ui.cpp`）把整窗写成嵌套节点，挪一条带子只改这一个函数。
+  `studio/design/tokens.{h,cpp}` 是字号/间距/圆角阶梯——在绘制调用里写死的像素值是 bug。
+- **不属于视图模型的界面部件。** `studio/design/work_clock.{h,cpp}`（回合时长与吞吐，
+  时间戳由外部注入，视图模型不读时钟）与 `studio/png_writer.{h,cpp}`
+  （`--screenshot`：stored-deflate 写 PNG，不引入图像库）。`studio/ui/ui.{h,cpp}`
+  是控件套件：一个圆角、一种内边距。
+- **截图。** `proJV_studio --screenshot out.png [--frames N] [--demo-chat]
+  [--expand KEY] [--scroll-up N] [--demo-stream N]` 走真实绘制路径并写出 PNG。
+  `--demo-chat` / `--demo-stream` 提供固定对话，验收图因此不需要模型或 key。
+- **测试。** `tests/unit/test_studio_design.cpp`（字号阶梯、布局、适配、头部按钮表、
+  `work_clock`）与 `tests/unit/test_png_writer.cpp`。它们都不包含 ImGui，所以不需要
+  GPU 或窗口就能跑。
 
 ---
 

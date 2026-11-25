@@ -145,6 +145,26 @@ projv run -p "say hi" [--jsonl] [--no-ts] [--max-turns N]
 退出码：`0` 正常、`1` 出错、`2` 被取消、`3` 需要审批但 `--approve never` 拒绝了。
 `projv run --schema` 列出全部事件与字段；CI 解析的是 `projv run -p "..." --jsonl`。
 
+## 窗口：`proJV_studio`
+
+```
+proJV_studio [--dump-view-model [file]] [--screenshot out.png]
+             [--frames N] [--expand KEY] [--scroll-up N]
+             [--demo-chat [--demo-stream N]]
+```
+
+| 参数 | 含义 |
+|---|---|
+| `--dump-view-model [file]` | 输出一帧的视图模型 JSON 后退出（一致性比对的依据） |
+| `--screenshot out.png` | 渲染、读回帧缓冲、写成 PNG 后退出 |
+| `--frames N` | 截图前先渲染多少帧（默认 4） |
+| `--demo-chat` | 灌一份固定对话，不需要模型或 API key |
+| `--demo-stream N` | 每 N 帧追加一条演示气泡（像真实回合那样跟随末尾） |
+| `--expand KEY` | 截图前按 key 展开某一行（例如 `m10:0`） |
+| `--scroll-up N` | 截图前往回滚 N 行 |
+
+`--dump-view-model` 与 `--screenshot` 是两个验收钩子：前者说明"推导出了什么"，后者说明"读者实际看到什么"。两者都不弹窗，`--demo-chat` 让它们在没配 key 的机器上也能跑。窗口自身的行为（折叠、跟随、布局）见[studio 指南](../dev-guide/studio-gui.md)。
+
 ---
 
 下一篇 -> 回到[目录](README.md) | 想改它 -> [开发指南](../dev-guide/README.md)

@@ -8,6 +8,10 @@
 #include <filesystem>
 #include <set>
 
+#ifdef _WIN32
+#include <windows.h> // GetProcessId, for serverPids()
+#endif
+
 namespace mcp {
 namespace {
 
@@ -183,6 +187,22 @@ std::vector<std::string> Manager::serverNames() const {
     for (const auto& up : servers_)
         names.push_back(up->cfg.name);
     return names;
+}
+
+std::vector<int> Manager::serverPids() const {
+    std::vector<int> pids;
+    pids.reserve(servers_.size());
+    for (const auto& up : servers_) {
+        const ProcHandles& proc = up->proc;
+        if (!proc.valid) continue;
+#ifdef _WIN32
+        if (proc.hProc)
+            pids.push_back(static_cast<int>(GetProcessId(static_cast<HANDLE>(proc.hProc))));
+#else
+        if (proc.pid > 0) pids.push_back(proc.pid);
+#endif
+    }
+    return pids;
 }
 
 std::vector<std::string> Manager::toolNames(const std::string& name) const {

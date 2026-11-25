@@ -46,6 +46,9 @@ struct ToolResult {
     std::string content; // result text
     bool isError = false;
     bool isCancelled = false;
+    // Wall time the call took, measured around the registry call. Display only:
+    // it rides on the tool row's message and never enters `content`.
+    int64_t durationMs = 0;
     // Unified diff of the file this call wrote (write_file / edit_file /
     // md_file / format_file). Display only: it goes into the tool row of the
     // session database for the TUI bubble and is never part of `content`, so it
@@ -91,6 +94,15 @@ struct Message {
     // serialized by to_json() and never counted as input tokens -- it exists to
     // be looked at, not to be read by the model.
     std::string diff;
+    // Wall time of the call that produced this tool message, in milliseconds.
+    // Display only. to_json() builds its keys explicitly, so it never reaches the
+    // API; the TUI does not read it either.
+    int64_t durationMs = 0;
+    // The skill run that produced this message ("skill-<epoch-ms>"), stamped on
+    // every role message the run writes. Display only -- it is what lets the chat
+    // fold a whole debate into one block, and being persisted it regroups a
+    // replayed session exactly as the live one was grouped.
+    std::string skillRunId;
     // Constructor helpers
     static Message System(std::string content);
     static Message User(std::string content);
@@ -342,6 +354,11 @@ struct AgentStatus {
     std::string reasoningText; // reasoning_content (thinking mode)
     std::string errorMessage;
     std::string statusMessage; // "Working...", "Thinking...", etc.
+
+    // The user asked for the turn to stop and the worker has not finished unwinding
+    // yet. Both front-ends show it (status_line renders "Stopping..."), so pressing
+    // Esc has a visible effect on the very next frame instead of looking ignored.
+    bool cancelling = false;
 
     // Tool execution progress (updated per-tool during ExecutingTool)
     int toolProgressCurrent = 0; // index of the tool currently executing (1-based)

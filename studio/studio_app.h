@@ -1,0 +1,410 @@
+// proJV studio -- the ImGui front-end's state and actions (design 08.5).
+//
+// Same split as the TUI: SessionRuntime owns the work, this class owns what is on
+// screen. It never calls Agent or SkillRunner internals; it submits lines, drives
+// the runtime's actions, and projects the result through view_model.
+//
+// The one rule that keeps the two front-ends honest: nothing here invents text.
+// Every label, colour reference and derived string about a conversation comes back
+// from view_model::build(), which is the same derivation the TUI is pinned to.
+//
+// Since the left column landed, a window can own SEVERAL panes. A pane is one
+// SessionRuntime plus the state that belongs to it alone (its chat, its prompt
+// line, its derived Screen); the chrome (header, footer, modals, the file tree, the
+// resource gauges) is shared and reads the ACTIVE pane. `runtime_` is a cached
+// pointer to the active pane's runtime, which is why the turn-driving code still
+// reads like the single-pane version it grew out of.
+#pragma once
+
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "core/config.h"
+#include "core/session_runtime.h"
+#include "core/view_model.h"
+#include "design/file_tree.h"
+#include "design/work_clock.h"
+#include "models.h"
+#include "tui/slash_menu.h"
+
+struct IProcessRunner;
+class ISystemStats;
+struct StatsSnapshot;
+struct GroupSample;
+
+namespace studio {
+
+// Keys the app itself owns. Everything else (text, Enter, mouse) belongs to the
+// widget under the cursor, so the platform layer maps only these and hands them
+// over before any widget sees them -- the same order the TUI uses, where the
+// input component's CatchEvent runs before the Input widget.
+enum class GKey {
+    None,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    Tab,
+    Escape,
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+};
+
+// The config dialog edits a COPY, exactly like tui/config_view.cpp: nothing is
+// written until Save, so a half-typed number can never reach config.toml.
+struct ConfigForm {
+    AppConfig cfg;
+    std::string apiKey;
+    std::string baseUrl;
+    std::string model;
+    std::string maxTokens;
+    std::string temperature;
+    std::string contextWindow;
+    std::string cppCompiler;
+    std::string python;
+    std::string clangFormat;
+    std::string snapGb;
+    std::string snapDays;
+    std::string theme;
+    int effortIndex = 2;
+    int modeIndex = 1;
+    bool osc = true;
+};
+
+// One owned session: its runtime, and everything about it that is not shared.
+struct Pane {
+    std::unique_ptr<SessionRuntime> rt;
+    std::vector<bubble_model::Bubble> chat;
+    // One fold key per bubble, appended and trimmed with it. Bubble is the TUI's
+    // type and has no room for an id, so the identity a click needs lives here:
+    // "<msgId>:<k>", the k-th bubble of that message.
+    std::vector<std::string> chatKeys;
+    int keySeq = 0; // keys of messages that are not persisted yet (notices)
+    int64_t lastMessageId = 0;
+    std::set<std::string> knownSpeakers;
+    std::string input;
+    std::string title;     // "proJV @ projV"
+    std::string workspace; // the directory its tools resolve against
+    view_model::Source source;
+    view_model::Screen screen;
+    bool followBottom = true;
+    int scrollRequest = 0;
+    // A pane is initialised on the UI thread (see App::newPane); there is no
+    // startup thread, so there is nothing to join and no hand-off to order.
+    enum class State { Starting, Ready, Failed };
+    std::atomic<State> state{State::Starting};
+    bool adopted = false; // tick() has seen this pane become ready
+    std::string error;
+    work_clock::Clock clock;
+    int tokensMark = 0; // prompt+completion when the current turn started
+    // Last frame's busy flag: a turn's END is the falling edge, which is what the
+    // TUI beeps on. Per pane, because every pane can finish a turn.
+    bool wasBusy = false;
+    // What the last click on THIS pane did. It used to be one string for the whole
+    // window, so a click on another pane's card showed up in this pane's bar.
+    std::string receipt;
+    long long receiptUntil = 0;
+    long long lastScrollMs = 0; // the reader last turned the wheel over this pane
+
+    // Notices arrive on the TURN thread of this pane: queued here, drained by the
+    // UI thread on its next tick. One queue per pane, so a message from a pane the
+    // user is not looking at cannot land in another pane's chat.
+    std::mutex noticeMutex;
+    std::vector<std::string> notices;
+};
+
+class App {
+  public:
+    App();
+    ~App();
+
+    bool initialize(IProcessRunner* runner);
+    void shutdown();
+    bool hasApiKey() const;
+
+    // --- per frame --------------------------------------------------------
+    // Pull new messages / notices from every runtime and rebuild the snapshot of
+    // the active pane.
+    void tick();
+    // Global keys (F1-F10, Tab, Esc, PgUp/PgDn, arrows). Returns true when the
+    // key was consumed by the app, false to let ImGui have it.
+    bool handleKey(GKey key);
+    void scrollChat(int rows);
+    // Rows requested by the keyboard since the last call (consumed on read).
+    int takeScrollRequest();
+    // Does the reader want the transcript to track its end? A LATCH, and only the
+    // reader sets it: the wheel, a scrollbar drag or a scroll key turns it off, and
+    // wheeling back to the bottom turns it on again. Content arriving never touches
+    // it -- that was the bug, in three different disguises: every "arm on new
+    // bubble" rule had to ask "is the reader far away", and ImGui reports the
+    // content height one frame late, so a view that was merely catching up looked
+    // far away and gave up.
+    bool followEnabled() const;
+    void setFollowBottom(bool on);
+
+    const view_model::Source& source() const { return active().source; }
+    const view_model::Screen& screen() const { return active().screen; }
+    std::string dumpJson() const { return view_model::toJson(active().screen); }
+
+    // --- panes ------------------------------------------------------------
+    int paneCount() const { return static_cast<int>(panes_.size()); }
+    int activePane() const { return active_; }
+    bool paneBusy(int index) const;
+    const std::string& paneTitle(int index) const;
+    const std::string& paneWorkspace(int index) const;
+    const view_model::Screen& screenOf(int index) const;
+    // ready / starting... / failed -- one word for the card's state column.
+    const std::string& paneStateName(int index) const;
+    bool paneReady(int index) const;
+    void activatePane(int index);
+    // False when the pane is running a turn: closing it would orphan the worker.
+    bool closePane(int index);
+    // Create a pane whose tools resolve against `workspace` ("" = launch dir).
+    // `syncNow` = do the (3-5 s) initialize right here: used for the first pane,
+    // before the window exists. Later panes queue it for the next tick, so the card
+    // is visible first.
+    bool newPane(const std::string& workspace, std::string* why, bool syncNow = false);
+
+    // --- input line -------------------------------------------------------
+    const std::string& inputText() const { return active().input; }
+    // Visual rows the composer holds this frame (set by the prompt widget).
+    void setPromptRows(int rows) { promptRows_ = rows > 0 ? rows : 1; }
+    int promptRows() const { return promptRows_; }
+    void commitInput(const char* text);
+    void onInputEdited();
+    bool slashOpen() const { return slashOpen_; }
+    int slashSelected() const { return slashSelected_; }
+    void slashMove(int delta);
+    void slashSelect(int index);
+    void slashFill();
+    void slashClose();
+
+    // A path or any other text sent from the left column. Goes through the same
+    // buffer comparison the slash fill uses: while the field owns the keyboard,
+    // only a reload makes it show the new text (see studio_input.cpp).
+    void injectPromptText(const std::string& text);
+    bool takePromptReload();
+
+    // --- the left column --------------------------------------------------
+    ftree::Tree& tree() { return tree_; }
+    // The roots the agent may touch: the tree marks rows outside them.
+    const ToolPaths& toolPaths() const;
+    void setTreeRoot(const std::string& dir);
+    int treeSelected() const { return treeSelected_; }
+    void setTreeSelected(int index) { treeSelected_ = index; }
+    bool leftOpen() const { return leftOpen_; }
+    void setLeftOpen(bool open) { leftOpen_ = open; }
+    float leftSplit() const { return leftSplit_; }
+    // One line saying what just happened, so a click never has a silent result.
+    // Per pane: the service bar it lands in belongs to one session.
+    void setReceipt(const std::string& text);
+    const std::string& receipt() const;
+    // The live phase of ONE pane ("Idle" / "ExecutingTools" / "starting...").
+    // The session cards used to read the pane's last Screen, and only the active
+    // pane's Screen is rebuilt each frame -- a background pane's card kept a phase
+    // from minutes ago.
+    std::string paneActivity(int index) const;
+    // A pane's turn just ended: true once, so the platform layer can make the same
+    // sound the TUI makes (tui::beepIdle).
+    bool takeBeep();
+
+    // Resource sampling (started by the window's main loop, never headless). By
+    // value: the sampler copies its last snapshot under a lock, and a reference
+    // into that would go stale the moment the thread took the next sample.
+    void startSampling();
+    void stopSampling();
+    StatsSnapshot stats() const;
+
+    // Right-click targets. One popup per frame is drawn for these, after the rows:
+    // a popup opened and queried once per row is an ImGui id conflict.
+    int contextPane() const { return contextPane_; }
+    void setContextPane(int index) { contextPane_ = index; }
+    const std::string& contextPath() const { return contextPath_; }
+    bool contextIsDir() const { return contextIsDir_; }
+    void setContextPath(std::string path, bool isDir) {
+        contextPath_ = std::move(path);
+        contextIsDir_ = isDir;
+    }
+    void clearContextPath() { contextPath_.clear(); }
+    // Start a pane whose tools resolve against `dir`. This is the ONLY way in
+    // (the reference panel works the same way): the directory comes from the file
+    // tree -- its root or a row you right-clicked -- never from a typed dialog.
+    void startPaneHere(const std::string& dir);
+    // The last sampled CPU/MEM/GPU of one pane (key = pane index).
+    GroupSample paneSample(int index) const;
+
+    // --- modals -----------------------------------------------------------
+    const std::string& modal() const { return modal_; }
+    int debugKeys() const { return debugKeys_; }
+    void openModal(const std::string& name);
+    void closeModal() { modal_ = "none"; }
+    ConfigForm& configForm() { return form_; }
+    std::string* configBufferAt(int index);
+    void saveConfigFromForm();
+    void clearGrants();
+    std::string& themeHex() { return themeHex_; }
+    int& themeField() { return themeField_; }
+    void themeSelect(int index);
+    void themeApply();
+    void themeSave();
+    int& listSelected() { return listSelected_; }
+    void listActivate();
+
+    // --- actions ----------------------------------------------------------
+    void send();
+    void cancelTurn();
+    void approveTool(int action);
+    void newChat();
+    void switchPromptNext();
+    void switchPrompt(int index);
+    void setModel(const std::string& id);
+    void switchToDialog(const std::string& dbPath);
+    void saveApiKey();
+    void setMcpEnabled(const std::string& name, bool on);
+    void restartMcp(const std::string& name);
+    void refreshModels();
+    void applyTheme(const std::string& name);
+    void toggleReasoning();
+    void toggleDock();
+    // Fold/unfold one chat row (a tool block). Keyed by view_model::ChatRow::key,
+    // never by row index: streaming appends and the oldest-200 trim both shift
+    // an index, and the row the user opened would become a different one.
+    void toggleRowCollapsed(const std::string& key);
+    // Fill the active pane with a fixed transcript (--demo-chat): the fold needs
+    // tool calls to show, and a screenshot must not depend on a live model.
+    void loadDemoChat();
+    // Append ONE more demo message, as if a turn were producing bubbles. Used by
+    // --demo-stream to reproduce the follow behaviour without a model.
+    void demoAppendOne();
+    void requestExit() { wantExit_ = true; }
+    bool wantExit() const { return wantExit_; }
+    void refuseIfBusy(std::string* why) const;
+
+    bool busy() const { return runtime_ && runtime_->isBusy(); }
+    bool approvedAlways() const;
+    const std::string& themeStatus() const { return themeStatus_; }
+    float dpiScale() const { return dpiScale_; }
+    void setDpiScale(float s) { dpiScale_ = s; }
+
+    // "12.4s - 34 tok/s - tool 2/3" for the active pane, or "" when it is idle.
+    // One derivation, so the status line and the System panel cannot disagree. The
+    // view model never reads a clock (its snapshots are golden tests), which is why
+    // this lives here.
+    std::string workSummary() const;
+
+  private:
+    Pane& active();
+    const Pane& active() const;
+    void bindActive();
+    void wireRuntime(Pane& pane);
+    // Called by tick(): a pane whose startup thread finished becomes usable here,
+    // on the UI thread (theme init, command table, welcome dialog on the first one).
+    void adoptFinishedPanes();
+    // Two panes in folders with the same name would read identically; the second one
+    // gets a suffix. Recomputed whenever the set of panes changes.
+    void refreshPaneTitles();
+    void fillSource();
+    void fillModalSource(view_model::Source& s);
+    void listMove(int delta);
+    // Append one message's bubbles AND their fold keys. The only place that knows
+    // which message produced which bubble, which is what a stable key needs.
+    void appendDerived(Pane& pane, const Message& msg);
+    void refreshChat(Pane& pane);
+    void drainNotices(Pane& pane);
+    void harvestSpeakers(Pane& pane);
+    float sourceCost() const;
+    void refreshModelRows();
+    void refreshThemeRows();
+    void openConfigModal();
+    void openWelcomeModal();
+    void openApprovalModal();
+    void openMcpModal();
+    void openOpenModal();
+    void openModelModal();
+    void openThemeModal();
+    void openThemeEditorModal();
+    void openHelpModal();
+    std::vector<std::string> sessionPaths() const;
+
+    // The active pane's runtime, cached by bindActive() so the turn-driving code
+    // reads exactly like the single-pane version it grew out of.
+    SessionRuntime* runtime_ = nullptr;
+    std::vector<std::unique_ptr<Pane>> panes_;
+    int active_ = 0;
+    IProcessRunner* runner_ = nullptr;
+
+    // Shared chrome state.
+    std::string modal_ = "none";
+    bool slashOpen_ = false;
+    int slashSelected_ = 0;
+    std::vector<help_text::CmdHint> slashAll_;
+    std::vector<help_text::CmdHint> slashRows_;
+    int promptRows_ = 1;
+    bool promptReload_ = false;
+    int spinnerFrame_ = 0;
+    bool reasoningExpanded_ = false;
+    // Tool blocks fold to one line by default: they are the bulk of a transcript
+    // and their results are read on demand, not while scrolling past.
+    // --demo-chat pretends a turn is running, so an acceptance image can show the
+    // spinner and the running state without a live model.
+    bool demoBusy_ = false;
+    // A growing "streamed answer" for --demo-stream: the only live signal of output
+    // while a real turn runs (the provider reports usage only at the end), so the
+    // throughput figure can be exercised without a model.
+    std::string demoStreamText_;
+    bool toolsCollapsed_ = true;
+    // Same rule for skill runs: a debate is the noisiest thing in a transcript.
+    bool skillsCollapsed_ = true;
+    std::set<std::string> expandedKeys_; // rows the user opened by hand
+    bool dock_ = true;
+    bool wantExit_ = false;
+    bool bannerShown_ = false;
+    float dpiScale_ = 1.0f;
+    int debugKeys_ = 0;
+    // One-time startup: the first pane to become ready initialises the theme, the
+    // "/" command table and the welcome dialog, because those used to run inside
+    // App::initialize() on the UI thread (which is now off it).
+    bool finishStartup_ = false;
+    bool firstPaneReady_ = false;
+    // Panes created this frame, waiting for their initialize() on the next tick.
+    // A queue, not a single slot: two clicks in one frame must both be initialised.
+    // It holds the Pane*, not its index: closing any pane shifts every index after
+    // it, and a queued index would then point at a different session.
+    std::vector<Pane*> pendingInit_;
+
+    // The left column.
+    ftree::Tree tree_;
+    int treeSelected_ = 0;
+    bool leftOpen_ = true;
+    float leftSplit_ = 0.55f;  // share of the column the session list gets
+    bool beepPending_ = false; // a pane's turn just ended; the platform layer beeps
+    int contextPane_ = -1;
+    std::string contextPath_;
+    bool contextIsDir_ = false;
+
+    ConfigForm form_;
+    std::string themeHex_;
+    int themeField_ = 0;
+    std::string themeStatus_;
+    int listSelected_ = 0;
+    std::vector<std::string> listPaths_;
+    std::vector<std::string> modelRows_;
+    std::vector<std::string> themeRows_;
+
+    ISystemStats* stats_ = nullptr;
+};
+
+} // namespace studio

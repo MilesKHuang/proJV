@@ -27,11 +27,13 @@
 #include "skill_runner.h"
 #include "task_registry.h"
 #include "turn_requests.h"
+#include "worker_wait.h"
 #include "tools/registry.h"
 #include "tools/tool_paths.h"
 #include "tools/python_tool_manager.h"
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -50,6 +52,19 @@ class SessionRuntime {
     // Platform layer: one process runner for the whole process (see
     // iprocess_runner.h). Must be set before initialize().
     void setProcessRunner(IProcessRunner* r) { procRunner_ = r; }
+
+    // The workspace this session's tools resolve against. Must be called before
+    // initialize(); the default is the launch directory (getWorkspaceDir), so the
+    // TUI and `projv run` keep exactly the behaviour they had.
+    //
+    // One window can host several sessions rooted in different directories, which
+    // is why this is a member and not a process-wide read: `chdir` would move every
+    // other session's tools (and its snapshot store) with it.
+    void setWorkspace(const std::string& dir);
+    const std::string& workspace() const { return workspace_; }
+    // The roots this session may touch. The studio's file tree marks rows outside
+    // them, so a refusal is visible before the click instead of after.
+    const ToolPaths& toolPaths() const { return paths_; }
 
     // Everything TuiApp::initialize() used to do, minus the theme, the terminal
     // status channel and the model list refresh trigger.
@@ -102,6 +117,8 @@ class SessionRuntime {
     mcp::Manager* mcpManager() { return mcpManager_.get(); }
     const std::vector<std::string>& promptFiles() const { return promptFiles_; }
     int activePromptIndex() const { return activePromptIndex_; }
+    // Whether /undo can work in this session's workspace (see snapshot.h).
+    bool snapshotsAvailable() const { return snapshot::isAvailable(snapshotStore_); }
     const std::string& skillsDir() const { return skillsDir_; }
     std::vector<bg_task::Snapshot> taskSnapshots() const;
     std::vector<std::string> installedSkills() const;
@@ -121,6 +138,11 @@ class SessionRuntime {
     void switchPrompt(int index);
     void newChat();
     void switchToDialog(const std::string& dbPath);
+    // Give the session a fixed database file, creating it when it is not there.
+    // The headless `run --session` front-end needs one session across two
+    // processes: the snapshot index and /undo are keyed on the database name, so
+    // without this a second run cannot undo the first one's turn.
+    bool useSessionFile(const std::string& dbPath);
     void setModel(const std::string& model);
     void setMcpEnabled(const std::string& name, bool enabled);
     void refreshModels();
@@ -148,6 +170,9 @@ class SessionRuntime {
                           const std::string& rawInput);
     void joinAgentThread();
     void joinModelsThread();
+    // Exit decision, not a deadline: join the worker when it has already finished,
+    // otherwise detach it and return false -- the caller then cleans up NOTHING.
+    bool stopAgentThread();
     std::string buildSharedContext();
 
     // Event + notice plumbing. notice() is what the old code did with a
@@ -173,6 +198,8 @@ class SessionRuntime {
     DeepSeekClient client_;
     ToolRegistry tools_;
     ToolPaths paths_;
+    std::string workspace_; // setWorkspace() or the launch directory
+    snapshot::Store snapshotStore_ = snapshot::kNoStore; // this workspace's /undo store
     std::optional<PythonToolManager> pytoolMgr_;
     std::unique_ptr<mcp::Manager> mcpManager_;
     std::atomic<bool> toolsReloadRequested_{false};
@@ -188,6 +215,9 @@ class SessionRuntime {
 
     std::vector<std::string> pendingQueue_;
     std::thread agentThread_;
+    // Signalled by the worker as its last statement, so an exit can tell "finished"
+    // from "stuck" instead of blocking in join() forever.
+    worker_wait::Latch agentLatch_;
     std::atomic<bool> busy_{false};
     std::atomic<bool> terminalStatusEnabled_{true};
 
@@ -205,7 +235,7 @@ class SessionRuntime {
     int skillCallsThisTurn_ = 0;
     std::string lastSkillThisTurn_;
 
-    std::unique_ptr<SkillRunner> skillRunner_;
+    std::shared_ptr<SkillRunner> skillRunner_;
     std::string skillStatus_;
     mutable std::mutex skillMutex_;
 

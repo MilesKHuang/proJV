@@ -25,6 +25,8 @@
 #include "debug_log.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -53,23 +55,34 @@ void SessionRuntime::notice(const std::string& text) {
 
 // ---- tools --------------------------------------------------------------
 
+void SessionRuntime::setWorkspace(const std::string& dir) {
+    // Stored, not applied: initialize() builds paths_ from it, so calling this
+    // after initialize() would leave the tools on the old root. That is why the
+    // header says "before initialize()".
+    workspace_ = dir;
+}
+
 void SessionRuntime::setupTools() {
     // Two roots, not one: the workspace is the launch directory (every file tool,
     // the shell CWD and the pytool sandbox root there), and projv_files sits next
     // to the exe. projv_files is writable -- that is what "add a skill" means --
     // except sessions/ and logs/, which are history and stay read-only.
-    paths_ = ToolPaths::forSession(getWorkspaceDir(), getProjvDir());
-    const std::string ws = getWorkspaceDir();
+    if (workspace_.empty()) workspace_ = getWorkspaceDir();
+    paths_ = ToolPaths::forSession(workspace_, getProjvDir());
+    const std::string ws = workspace_;
     if (agent_) agent_->setWorkspacePath(paths_.describe());
 
     // Snapshots (/undo). Best effort: an oversized workspace or a read-only
     // store turns undo off with a reason, and the rest of the app keeps going.
+    // The handle is per workspace: a second pane on the same folder gets the same
+    // one (one baseline, one index.db -- that is the sharing the studio needs), a
+    // pane on another folder gets its own and cannot see this one's files.
     {
         std::string snapErr;
-        if (!snapshot::open(ws, config_.snapshotsKeepDays, config_.snapshotsMaxWorkspaceGb,
-                            snapErr)) {
+        snapshotStore_ = snapshot::open(ws, config_.snapshotsKeepDays,
+                                        config_.snapshotsMaxWorkspaceGb, snapErr);
+        if (!snapshot::isAvailable(snapshotStore_) && !snapErr.empty())
             debugLogWarnf("[Runtime] undo disabled: %s", snapErr.c_str());
-        }
     }
 
     registerShellTool(tools_, paths_, procRunner_, &taskRegistry_);
@@ -240,6 +253,7 @@ bool SessionRuntime::initialize() {
     SkillRunner::ensureDefaultSkills(skillsDir_);
 
     agent_ = new Agent(client_, tools_);
+    agent_->setSnapshotStore(snapshotStore_);
     agent_->onTokenUsage = [this](int p, int c) {
         totalPromptTokens_.fetch_add(p, std::memory_order_relaxed);
         totalCompletionTokens_.fetch_add(c, std::memory_order_relaxed);
@@ -298,6 +312,8 @@ bool SessionRuntime::initialize() {
     agent_->setContextWindow(config_.contextWindow);
 
     // Prompt files from projv_files/prompts/.
+    // ensureDefaultPrompts() is the ONLY thing that creates that directory and
+    // seeds the default role, so it must run before anything reads the list.
     promptFiles_ = ensureDefaultPrompts();
     // compactor.md is the /compress prompt, not a role. Every other file here is
     // a role, whatever it is called -- no name is reserved.
@@ -306,7 +322,10 @@ bool SessionRuntime::initialize() {
     activePromptIndex_ = defaultPromptIndex(promptFiles_);
     agent_->setSystemPrompt(activePromptContent());
 
-    // Sessions dir (lazy-create DB on first message).
+    // Sessions dir (lazy-create DB on first message). Without this assignment the
+    // directory name is empty: the DB path collapses to "/session_<ts>.db" (the
+    // root of the current drive on Windows) and listSessions() iterates "" -- so
+    // F4/Open came up blank and a new conversation was never persisted.
     sessionsDir_ = getSessionsDir();
     std::error_code ec;
     fs::create_directories(sessionsDir_, ec);
@@ -338,7 +357,11 @@ bool SessionRuntime::initialize() {
         }
     };
 
-    // Inject system prompt as first session message.
+    // Inject system prompt as first session message: P0 (role), so the fixed
+    // prefix is exactly three system messages. The index is what buildChatRequest
+    // and applyCompaction rely on to keep P0/P1/P2 at [0, 3) -- with this line
+    // missing the prefix shrank to two, and the capability map plus the compaction
+    // summary were inserted one slot early.
     agent_->addPersistedMessage(Message::System(activePromptContent()));
 
     // Fixed prefix: P1 [ENVIRONMENT] + P2 [PROJECT] right after the role prompt.
@@ -351,7 +374,7 @@ bool SessionRuntime::initialize() {
     // are registered at the first turn boundary (see runTurnLoop), which is also
     // where the capability map that names them is built.
     mcpManager_ = std::make_unique<mcp::Manager>();
-    mcpManager_->setWorkDir(getWorkspaceDir());
+    mcpManager_->setWorkDir(workspace_);
     mcp::ensureConfigFile(mcp::configPath());
     if (!mcpManager_->loadFromJson(mcp::configPath()))
         debugLogWarnf("[Runtime] mcp.json: %s", mcpManager_->configError().c_str());
@@ -393,7 +416,7 @@ bool SessionRuntime::submit(const std::string& text) {
 
     // /workspace: display only, no turn.
     if (trimmed == "/workspace") {
-        notice("[Workspace] " + getWorkspaceDir());
+        notice("[Workspace] " + workspace_);
         return false;
     }
 
@@ -563,7 +586,7 @@ bool SessionRuntime::submit(const std::string& text) {
     std::string turnText = trimmed;
     std::vector<ImageAttachment> images;
     {
-        auto parsed = image_input::parseMarkers(trimmed, getWorkspaceDir());
+        auto parsed = image_input::parseMarkers(trimmed, workspace_);
         if (!parsed.ok()) {
             notice(parsed.error + "\n(message not sent)");
             return false;
@@ -597,10 +620,14 @@ void SessionRuntime::run() {
 void SessionRuntime::startAsync() {
     if (busy_.exchange(true)) return;
     joinAgentThread();
+    agentLatch_.reset();
     agentThread_ = std::thread([this] {
         doWork();
         busy_.store(false);
         if (onTurnComplete) onTurnComplete();
+        // Last statement of the worker: an exit waiting on this latch now knows the
+        // turn really finished instead of guessing with a timeout.
+        agentLatch_.signal();
     });
 }
 
@@ -845,6 +872,15 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
     // Empty == agent-triggered (run_skill): the user never typed anything, so do
     // not invent a user bubble -- the "[Role] ..." narration is the evidence.
     if (!rawInput.empty()) agent_->addPersistedMessage(Message::User(rawInput));
+    // One id per run, stamped on every message the run writes: that is what lets
+    // the chat fold a whole debate into one block, and because it is persisted a
+    // replay regroups exactly as the live session did. Wall-clock based rather
+    // than an in-process counter -- a counter restarts at zero and would collide
+    // with the ids already sitting in the database.
+    const std::string skillRunId =
+        "skill-" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count());
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         skillStatus_ = "Preparing skill...";
@@ -856,8 +892,8 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
 
     SkillRunner::Callbacks cbs;
     int events = 0;
-    cbs.onEvent = [this, &events](const std::string& role, const std::string& kind,
-                                  const std::string& text) {
+    cbs.onEvent = [this, &events, skillRunId](const std::string& role, const std::string& kind,
+                                              const std::string& text) {
         ++events;
         std::string content;
         if (kind == "vote")
@@ -866,7 +902,11 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
             content = text;
         else
             content = "**[" + role + "]** " + text; // message / system
-        if (agent_) agent_->addPersistedMessage(Message::Assistant(content));
+        if (agent_) {
+            Message m = Message::Assistant(content);
+            m.skillRunId = skillRunId;
+            agent_->addPersistedMessage(m);
+        }
 
         events::Event e(events::Kind::SkillEvent, nextSeq());
         e.role = role;
@@ -883,7 +923,7 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
     };
 
     auto runner =
-        std::make_unique<SkillRunner>(config_, &tools_, cbs, buildSharedContext(), skillsDir_);
+        std::make_shared<SkillRunner>(config_, &tools_, cbs, buildSharedContext(), skillsDir_);
     runner->setCancelProbe([this]() { return tools_.isCancelled(); });
 
     SkillRunner* r = runner.get();
@@ -944,6 +984,7 @@ void SessionRuntime::startSkill(const std::string& name, const std::string& topi
 }
 
 void SessionRuntime::cancel() {
+    std::shared_ptr<SkillRunner> runner;
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         pendingQueue_.clear();
@@ -951,8 +992,12 @@ void SessionRuntime::cancel() {
         pendingImages_.reset();
         pendingSkillRun_.reset();
         turnRequest_.release();
-        if (skillRunner_) skillRunner_->cancel();
+        // Take a reference, cancel OUTSIDE the lock: cancel() reaches into every
+        // sub-agent's HTTP call, and holding skillMutex_ while doing that is how an
+        // ESC on the UI thread ended up waiting behind a status publish.
+        runner = skillRunner_;
     }
+    if (runner) runner->cancel();
     pendingTurn_.reset();
     if (agent_) agent_->cancel();
 }
@@ -1015,7 +1060,7 @@ std::string SessionRuntime::buildSharedContext() {
 
 void SessionRuntime::injectFixedBlocks() {
     if (!agent_) return;
-    const std::string ws = getWorkspaceDir();
+    const std::string ws = workspace_;
     const std::string projv = getProjvDir();
     // P1: fixed for the session. Written even when every field is empty (the
     // builder always emits every line), because the fixed prefix must keep a
@@ -1033,7 +1078,7 @@ void SessionRuntime::injectFixedBlocks() {
 
 void SessionRuntime::refreshEnvironmentBlock() {
     if (!agent_) return;
-    const std::string ws = getWorkspaceDir();
+    const std::string ws = workspace_;
     const std::string env = ctx::buildEnvironment(ws, getProjvDir(), ws, config_.cppCompilerPath,
                                                   config_.pythonPath, config_.clangFormatPath);
     if (agent_->replaceEnvironmentBlock(env))
@@ -1097,6 +1142,35 @@ void SessionRuntime::reinitConversation(bool keepStorage) {
     // A front-end redraws from the database; "/clear" keeps the rows, F3 starts a
     // new one, and either way the view is rebuilt from scratch.
     if (onSessionReset) onSessionReset();
+}
+
+bool SessionRuntime::useSessionFile(const std::string& dbPath) {
+    if (!agent_ || dbPath.empty()) return false;
+
+    std::error_code ec;
+    if (fs::is_regular_file(dbPath, ec)) {
+        switchToDialog(dbPath); // existing session: open it and load its history
+        return true;
+    }
+    // A file that is only here because somebody typed the flag wrong would send
+    // every turn into a session nobody can find again.
+    fs::path parent = fs::path(dbPath).parent_path();
+    if (!parent.empty()) fs::create_directories(parent, ec);
+
+    const std::string oldPath = storage_.currentPath();
+    agent_->cancel();
+    agent_->clearSession();
+    storage_.closeDatabase();
+    if (!storage_.createDatabase(dbPath)) {
+        debugLogWarnf("[Runtime] cannot create the session database '%s'", dbPath.c_str());
+        if (!oldPath.empty()) storage_.openDatabase(oldPath);
+        agent_->setStorage(&storage_);
+        return false;
+    }
+    agent_->setStorage(&storage_);
+    debugLogInfof("[Runtime] session database: %s", dbPath.c_str());
+    if (onSessionReset) onSessionReset();
+    return true;
 }
 
 void SessionRuntime::switchToDialog(const std::string& dbPath) {
@@ -1192,6 +1266,7 @@ void SessionRuntime::saveApiKeyAndConnect(const std::string& apiKey) {
 void SessionRuntime::saveFullConfig(const AppConfig& next) {
     // One source of truth: the dialog edits a copy of AppConfig and hands it back,
     // so a key that exists in AppConfig cannot be silently dropped by the panel.
+    const std::string previousPython = config_.pythonPath;
     config_.apiKey = next.apiKey;
     config_.baseUrl = next.baseUrl;
     config_.model = next.model;
@@ -1214,6 +1289,9 @@ void SessionRuntime::saveFullConfig(const AppConfig& next) {
     if (!saveConfig(config_)) config_.loadError = "Failed to save config file!";
 
     client_.setConfig(config_);
+    // The auto-detection cache is keyed on nothing; a changed python path must
+    // invalidate it, or the new setting is ignored for the rest of the process.
+    if (previousPython != config_.pythonPath) PythonToolManager::resetPythonCache();
     // Tool-table writes must not race the agent thread: ToolRegistry's maps are a
     // bare unordered_map and the Agent iterates them in buildChatRequest() ->
     // getFilteredToolDefinitions(). While a turn (or a skill -- it sets the same
@@ -1268,13 +1346,30 @@ void SessionRuntime::joinAgentThread() {
     }
 }
 
+bool SessionRuntime::stopAgentThread() {
+    // No deadline. Either the worker has finished (then it is joined and the caller
+    // may clean up), or it has not -- and then the caller must skip every cleanup
+    // step, because the thread may still be writing the session database. Walking
+    // away is safe; closing the database under a live writer is not.
+    const bool finished = worker_wait::tryJoin(agentThread_, agentLatch_);
+    if (!finished) debugLogWarn("[runtime] worker still running at exit; leaving without cleanup");
+    return finished;
+}
+
 void SessionRuntime::shutdown() {
+    std::shared_ptr<SkillRunner> runner;
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
-        if (skillRunner_) skillRunner_->cancel();
+        runner = skillRunner_;
     }
+    if (runner) runner->cancel();
     if (agent_) agent_->cancel();
-    joinAgentThread();
+    // ONE question, no deadline: has the worker finished? If it has, everything
+    // below is safe. If it has not, NONE of it is safe -- the thread may be writing
+    // the session database, and deleting the agent or closing the DB under it is a
+    // use-after-free. So: leave the process to the OS, which reclaims the address
+    // space atomically, and let SQLite replay its write-ahead log next start.
+    if (!stopAgentThread()) return;
     joinModelsThread();    // Detached children: kill them and join their monitor thread. A background build
     // that outlives the process would keep writing to a file nobody reads. The Job
     // Object (KILL_ON_JOB_CLOSE) is the second line of defence for a hard crash.
@@ -1291,16 +1386,19 @@ void SessionRuntime::shutdown() {
 }
 
 void SessionRuntime::emergencyShutdown() {
+    std::shared_ptr<SkillRunner> runner;
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
-        if (skillRunner_) skillRunner_->cancel();
+        runner = skillRunner_;
     }
+    if (runner) runner->cancel();
     if (agent_) agent_->cancel();
-    joinAgentThread();
-    // Do not join the models thread: it never touches the DB and might be
-    // blocked on the network. Close the DB now; the OS reclaims the rest.
+    // Closing the window is a request to leave, not to wait. If the worker is still
+    // unwinding there is nothing safe to do except go: no DB close, no agent delete.
+    if (!stopAgentThread()) return;
+    // It DID finish, so the clean path is available (and free): checkpoint the WAL
+    // and leave `error` as the last record instead of a silent clear, so an
+    // interrupted run stays visible in the host's list.
     storage_.closeDatabase();
-    // Ctrl-C / window close: leave `error` as the last record instead of a
-    // silent clear, so an interrupted run is visible in the host's list.
     if (terminalStatusEnabled_) terminal_status::abandon("interrupted");
 }

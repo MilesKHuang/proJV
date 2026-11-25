@@ -34,8 +34,9 @@
 
 ## 三个不一样的地方
 
-- **原生 C++，约 4 MB，零包管理器。** FTXUI + libcurl + SQLite 全部内置，
-  一次 `cmake --build` 就得到一个能直接 scp 的单文件二进制。
+- **原生 C++，约 4 MB，零包管理器。** FTXUI + Dear ImGui + libcurl + SQLite 全部内置，
+  一次 `cmake --build` 就得到两个能直接 scp 的单文件二进制：终端版与窗口版
+  （Release 实测 4.02 MB / 4.00 MB）。
 - **多 agent 技能是数据，不是代码。** 一个技能就是一个文件夹：`config.json` +
   每个角色一个 `.md` + 动词级工具 schema。扔进去就能跑，一个调度者可以把一次
   回复派给十个并发执行的 worker。
@@ -47,14 +48,17 @@
 ## 三步用起来
 
 1. **下载**对应平台的发布包并解压
-   （[Releases](https://github.com/MilesKHuang/proJV/releases)；`proJV_tui` 和
-   `projv_files/` 必须放在一起）。
+   （[Releases](https://github.com/MilesKHuang/proJV/releases)；`proJV_tui` /
+   `proJV_studio` 和 `projv_files/` 必须放在一起）。
 2. **填 DeepSeek API Key**：首次启动的配置窗里粘贴
    （[在这里申请](https://platform.deepseek.com/api_keys)）。
 3. **发一条消息**：让它读文件、改 bug，或者跑 `/monica D:\path\to\project`。
 
+一套引擎、两个前端：`proJV_tui`（终端）与 `proJV_studio`（窗口）功能与键位一致，
+见 [studio](docs/zh/dev-guide/studio-gui.md)。
+
 Windows 可能提示二进制未签名（SmartScreen ->「更多信息」->「仍要运行」）。
-Linux 自行编译时需要 `libcurl4-openssl-dev`。
+Linux 自行编译时需要 `libcurl4-openssl-dev` 与 `libsdl2-dev`。
 
 想自己编译？-> [安装指南](docs/zh/user-guide/01-install.md)
 

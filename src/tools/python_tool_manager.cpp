@@ -9,8 +9,19 @@
 #include <fstream>
 #include <cstdio>
 #include <array>
+#include <mutex>
+#include <optional>
+#include <string>
 
 namespace fs = std::filesystem;
+
+namespace {
+// The detection cache. `tryWhere` is the expensive part (see autoDetectPython).
+// File scope rather than a function-local static so resetPythonCache() can clear
+// the same object the detector reads.
+std::mutex g_pythonMutex;
+std::optional<std::string> g_pythonCached;
+} // namespace
 
 // ============================================================================
 // Helper: get projv_pytool directory (exe-relative, same as projv_prompts)
@@ -52,16 +63,35 @@ static std::string tryWhere(const std::string& name) {
 }
 
 std::string PythonToolManager::autoDetectPython() {
+    // Process-wide, and computed at most once. `tryWhere` starts a shell (cmd.exe
+    // on Windows) with NO timeout: on a PATH that reaches a network share, or with
+    // an endpoint agent intercepting child processes, one probe costs seconds.
+    // The studio called this constructor for EVERY new pane, so opening the second
+    // tab paid that bill again -- that is the freeze this cache removes.
+    std::lock_guard<std::mutex> lk(g_pythonMutex);
+    if (g_pythonCached) return *g_pythonCached;
+
     const char* candidates[] = {"python", "python3", "py"};
+    std::string found;
     for (const auto* c : candidates) {
         std::string path = tryWhere(c);
         if (!path.empty()) {
-            debugLogf("[PyTool] auto-detected python: %s", path.c_str());
-            return path;
+            found = path;
+            debugLogf("[PyTool] auto-detected python: %s", found.c_str());
+            break;
         }
     }
-    debugLog("[PyTool] Python not found via 'where'");
-    return "";
+    if (found.empty()) debugLog("[PyTool] Python not found via 'where'");
+
+    g_pythonCached = found; // an empty result is cached too: "not found" is worth one probe
+    return *g_pythonCached;
+}
+
+void PythonToolManager::resetPythonCache() {
+    // Called when the configured python path changes: the next detection must not
+    // reuse a probe taken before that edit.
+    std::lock_guard<std::mutex> lk(g_pythonMutex);
+    g_pythonCached.reset();
 }
 
 // ============================================================================

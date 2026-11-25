@@ -90,6 +90,54 @@ TEST_CASE("storage: the diff column survives an insert/query round trip") {
     s.closeDatabase();
 }
 
+TEST_CASE("storage: the tool clock and the skill run id survive a round trip") {
+    const fs::path path = freshDbPath("timing");
+
+    Storage s;
+    REQUIRE(s.createDatabase(path.string()));
+    REQUIRE(s.isOpen());
+
+    Message t = Message::Tool("call_1", "exec_shell", "done");
+    t.durationMs = 12400;
+    t.skillRunId = "skill-1761226800000";
+    CHECK(s.insertMessage(t) > 0);
+    // A message without either keeps defaults, not NULL.
+    CHECK(s.insertMessage(Message::User("plain")) > 0);
+
+    const std::vector<Message> rows = s.queryMessages(0);
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].durationMs == 12400);
+    CHECK(rows[0].skillRunId == "skill-1761226800000");
+    CHECK(rows[1].durationMs == 0);
+    CHECK(rows[1].skillRunId.empty());
+    s.closeDatabase();
+}
+
+TEST_CASE("storage: a database without the timing columns is migrated on open") {
+    const fs::path path = freshDbPath("migrate_timing");
+    createLegacyDb(path); // no diff, no duration_ms, no skill_run_id
+
+    Storage s;
+    REQUIRE(s.openDatabase(path.string()));
+    REQUIRE(s.isOpen());
+
+    const std::vector<Message> rows = s.queryMessages(0);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].durationMs == 0);   // an older row says "unknown", not "instant"
+    CHECK(rows[0].skillRunId.empty());
+
+    Message t = Message::Assistant("**[Analyst]** hello");
+    t.skillRunId = "skill-1";
+    t.durationMs = 42;
+    CHECK(s.insertMessage(t) > 0);
+
+    const std::vector<Message> after = s.queryMessages(rows[0].id);
+    REQUIRE(after.size() == 1);
+    CHECK(after[0].skillRunId == "skill-1");
+    CHECK(after[0].durationMs == 42);
+    s.closeDatabase();
+}
+
 TEST_CASE("storage: a database without the diff column is migrated on open") {
     const fs::path path = freshDbPath("migrate");
     createLegacyDb(path);

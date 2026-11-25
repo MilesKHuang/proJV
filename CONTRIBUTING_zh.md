@@ -20,7 +20,7 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Windows：在 x64 Native Tools 命令行里跑（VS 2019+）。
-Linux：先 `sudo apt-get install -y libcurl4-openssl-dev`。
+Linux：先 `sudo apt-get install -y libcurl4-openssl-dev libsdl2-dev`。
 
 只有 `proJV_tests` 全绿才可合并。新行为要配新测试；修 bug 要先有能复现的测试。
 

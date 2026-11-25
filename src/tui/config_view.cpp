@@ -2,7 +2,6 @@
 #include "config_view.h"
 
 #include "approval_logic.h"
-#include "core/snapshot.h"
 #include "theme_map.h"
 #include "theme_manager.h"
 
@@ -277,7 +276,7 @@ Component makeApprovalDialog(TuiApp& app, std::function<void()> onClose) {
                                : "strict mode: nothing is remembered; NO drops the whole batch.") |
                       dim);
         els.push_back(
-            text(snapshot::isAvailable()
+            text(app.snapshotsAvailable()
                      ? "[Undo available] the files this turn changes can be restored with /undo"
                      : "[Undo unavailable] a deletion here cannot be reverted") |
             dim);

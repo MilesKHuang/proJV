@@ -34,6 +34,7 @@ WSL2) with CMake 3.22 and g++ 11:
 
 ```bash
 sudo apt-get install -y libcurl4-openssl-dev     # Debian / Ubuntu
+sudo apt-get install -y libsdl2-dev              # the GUI (proJV_studio)
 # sudo dnf install libcurl-devel                 # Fedora
 ```
 

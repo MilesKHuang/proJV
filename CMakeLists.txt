@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(proJV VERSION 0.7.10 LANGUAGES C CXX)
+project(proJV VERSION 0.8.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -120,6 +120,9 @@ set(COMMON_SOURCES
     # SessionRuntime: the whole orchestration with no view attached (design 08).
     # The TUI and the `run` subcommand both drive it through submit/run/cancel.
     ${SRC_DIR}/core/session_runtime.cpp
+    # Bounded join (worker_wait.h): a worker that ignores its cancel flag must not
+    # be able to keep the process — or the window — alive at exit.
+    ${SRC_DIR}/core/worker_wait.cpp
     # The one command table (/help, the "/" menu, F1). In the lib so the unit test
     # can link it without pulling in the TUI.
     ${SRC_DIR}/core/help_text.cpp
@@ -131,6 +134,28 @@ set(COMMON_SOURCES
     # Paste detection: pure timing/boolean logic, no FTXUI. Lives in the lib (not
     # in proJV_tui) because the unit test links proJV_lib only.
     ${SRC_DIR}/tui/paste_flatten.cpp
+    # --- Front-end-neutral view logic (design 08.5, D5) --------------------
+    # These translation units live under src/tui for historical reasons but
+    # contain no FTXUI type (verified: no ftxui include in any of them). They sit
+    # in the lib so proJV_tui, proJV_studio and the unit tests share ONE copy of
+    # the derivation rules instead of three that drift. The TUI's own rendering
+    # (chat_view, markdown_view, theme_map, the dialogs) stays in proJV_tui.
+    ${SRC_DIR}/tui/bubble_model.cpp
+    ${SRC_DIR}/tui/markdown_text.cpp
+    ${SRC_DIR}/tui/status_line.cpp
+    ${SRC_DIR}/tui/status_bar.cpp
+    ${SRC_DIR}/tui/approval_logic.cpp
+    ${SRC_DIR}/tui/slash_menu.cpp
+    ${SRC_DIR}/tui/theme_colors.cpp
+    ${SRC_DIR}/tui/theme_manager.cpp
+    # The whole-screen view model (design 08.5, D4): Source -> Screen -> one JSON
+    # object. The contract both front-ends render from.
+    ${SRC_DIR}/core/view_model.cpp
+    # Unified diff -> aligned rows: the pairing/trim/cap rule the TUI and the
+    # studio both draw (design 08.5, D5).
+    ${SRC_DIR}/core/diff_rows.cpp
+    # Palette slots for speaker accents: the table the TUI and the studio share.
+    ${SRC_DIR}/core/speaker_slots.cpp
     # MCP client (stdio JSON-RPC): framing, three-pipe child control, config,
     # resident server pool. Platform-agnostic; the #ifdefs live in mcp_process.
     ${SRC_DIR}/core/mcp_protocol.cpp
@@ -143,6 +168,7 @@ set(COMMON_SOURCES
     ${SRC_DIR}/platform/install_shim.cpp
     ${SRC_DIR}/platform/cli_args.cpp
     ${SRC_DIR}/platform/log_files.cpp
+    ${SRC_DIR}/platform/system_stats.cpp
     ${EXTERNAL_DIR}/loguru.cpp
 )
 
@@ -185,6 +211,10 @@ set(HEADERS
     # they need no COMMON_SOURCES entry; listed for the IDE view.
     ${SRC_DIR}/core/events.h
     ${SRC_DIR}/core/session_runtime.h
+    # Whole-screen view model + the shared diff alignment (design 08.5).
+    ${SRC_DIR}/core/view_model.h
+    ${SRC_DIR}/core/speaker_slots.h
+    ${SRC_DIR}/core/diff_rows.h
     # Deliverable text rules shared by SkillRunner and SubAgent.
     ${SRC_DIR}/core/skill_text.h
 )
@@ -196,6 +226,7 @@ if(WIN32)
         ${SRC_DIR}/tools/python_tool_manager.cpp
         ${SRC_DIR}/platform/process_runner_win.cpp
         ${SRC_DIR}/platform/system_util_win.cpp
+        ${SRC_DIR}/platform/system_stats_win.cpp
     )
 else()
     set(PLATFORM_SOURCES
@@ -203,6 +234,7 @@ else()
         ${SRC_DIR}/tools/python_tool_manager.cpp
         ${SRC_DIR}/platform/process_runner_linux.cpp
         ${SRC_DIR}/platform/system_util_linux.cpp
+        ${SRC_DIR}/platform/system_stats_linux.cpp
     )
 endif()
 
@@ -226,6 +258,7 @@ target_include_directories(proJV_lib PRIVATE
 if(WIN32)
     target_link_libraries(proJV_lib PRIVATE
         crypt32 ole32 shell32 comctl32 comdlg32 gdi32 user32 dbghelp advapi32
+        pdh psapi
         ${CURL_LIBRARY}
         SQLiteCpp
     )
@@ -250,26 +283,22 @@ else()
 endif()
 
 # --- TUI frontend --------------------------------------------------------
+# Only the files that return an ftxui::Element / build a Component are here.
+# Everything front-end-neutral (bubble_model, markdown_text, status_line,
+# status_bar, approval_logic, slash_menu, theme_colors, theme_manager) is in
+# proJV_lib; listing it twice would be a duplicate-symbol link error.
 add_executable(proJV_tui
     ${SRC_DIR}/tui/main_tui.cpp
-    ${SRC_DIR}/tui/slash_menu.cpp
     ${SRC_DIR}/tui/terminal.cpp
     ${SRC_DIR}/tui/app_tui.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp
-    ${SRC_DIR}/tui/bubble_model.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
-    ${SRC_DIR}/tui/markdown_text.cpp
     ${SRC_DIR}/tui/markdown_view.cpp
-    ${SRC_DIR}/tui/status_line.cpp
-    ${SRC_DIR}/tui/status_bar.cpp
     ${SRC_DIR}/tui/todo_view.cpp
-    ${SRC_DIR}/tui/approval_logic.cpp
     ${SRC_DIR}/tui/config_view.cpp
     ${SRC_DIR}/tui/mcp_view.cpp
     ${SRC_DIR}/tui/theme_map.cpp
-    ${SRC_DIR}/tui/theme_colors.cpp
-    ${SRC_DIR}/tui/theme_manager.cpp
     ${SRC_DIR}/tui/theme_editor_view.cpp
     ${SRC_DIR}/tui/clipboard.cpp
 )
@@ -304,6 +333,115 @@ add_custom_command(TARGET proJV_tui POST_BUILD
     COMMENT "Deploying example skills -> projv_files/skills/"
 )
 
+# --- Dear ImGui (docking branch), vendored: the studio's only GUI dependency --
+# Version + commit are recorded in AGENTS.md's vendored table. Only the core
+# library and the two backends each platform needs are compiled; the demo and the
+# example backends stay out of the build (they are not shipped).
+set(IMGUI_DIR "${EXTERNAL_DIR}/imgui-1.93.0-docking")
+add_library(projv_imgui STATIC
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    # std::string overloads for InputText: the config form edits std::string.
+    ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
+)
+target_include_directories(projv_imgui SYSTEM PUBLIC
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+    ${IMGUI_DIR}/misc/cpp
+)
+if(MSVC)
+    target_compile_options(projv_imgui PRIVATE /utf-8)
+endif()
+
+# --- studio: the GUI front-end (design 08.5 D3) ------------------------------
+# Always built. It links proJV_lib for everything that is not drawing, so the
+# TUI and the window share one orchestration (SessionRuntime) and one view model.
+set(STUDIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/studio")
+set(STUDIO_SOURCES
+    ${STUDIO_DIR}/studio_app.cpp
+    ${STUDIO_DIR}/studio_theme.cpp
+    ${STUDIO_DIR}/studio_markdown.cpp
+    ${STUDIO_DIR}/studio_text.cpp
+    ${STUDIO_DIR}/studio_input.cpp
+    ${STUDIO_DIR}/studio_ui.cpp
+    ${STUDIO_DIR}/studio_leftbar.cpp
+    ${STUDIO_DIR}/studio_modals.cpp
+    ${STUDIO_DIR}/png_writer.cpp
+    # tui::beepIdle(): the studio makes the TUI's own "a turn ended" sound, and one
+    # implementation is better than a second MessageBeep that can drift from it.
+    ${SRC_DIR}/tui/terminal.cpp
+    # The design system: pure tokens + layout + text fitting (no ImGui), then the
+    # widget kit that paints them.
+    ${STUDIO_DIR}/design/tokens.cpp
+    ${STUDIO_DIR}/design/layout.cpp
+    ${STUDIO_DIR}/design/fit.cpp
+    ${STUDIO_DIR}/design/actions.cpp
+    ${STUDIO_DIR}/design/file_tree.cpp
+    ${STUDIO_DIR}/design/path_text.cpp
+    ${STUDIO_DIR}/design/gauges.cpp
+    ${STUDIO_DIR}/design/work_clock.cpp
+    ${STUDIO_DIR}/ui/ui.cpp
+)
+set(STUDIO_BACKEND_SOURCES
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+)
+
+if(WIN32)
+    # D1: Win32 has the only complete IME pipeline. No SDL2 on this platform.
+    list(APPEND STUDIO_SOURCES ${STUDIO_DIR}/main_studio.cpp
+                               ${IMGUI_DIR}/backends/imgui_impl_win32.cpp)
+    find_package(OpenGL REQUIRED)
+else()
+    # D1: SDL2, because GLFW has no IME support at all. System library, the same
+    # treatment libcurl gets on Linux (see docs/en/user-guide/01-install.md).
+    # CONFIG mode: SDL2 ships sdl2-config.cmake in libsdl2-dev; CMake itself has
+    # no FindSDL2 module, so the explicit form says what is actually looked for.
+    find_package(SDL2 CONFIG REQUIRED)
+    list(APPEND STUDIO_SOURCES ${STUDIO_DIR}/main_studio_sdl.cpp
+                               ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp)
+    find_package(OpenGL REQUIRED)
+endif()
+
+add_executable(proJV_studio ${STUDIO_SOURCES} ${STUDIO_BACKEND_SOURCES})
+target_include_directories(proJV_studio PRIVATE
+    ${EXTERNAL_DIR}
+    ${SRC_DIR}
+    ${SRC_DIR}/client
+    ${STUDIO_DIR}
+)
+target_link_libraries(proJV_studio PRIVATE proJV_lib projv_imgui)
+
+if(WIN32)
+    target_link_libraries(proJV_studio PRIVATE OpenGL::GL imm32 dwmapi gdi32 shell32)
+    target_compile_definitions(proJV_studio PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+    )
+    if(MSVC)
+        target_compile_options(proJV_studio PRIVATE /utf-8)
+        # No console window behind the GUI: the entry point is wWinMain.
+        target_link_options(proJV_studio PRIVATE /SUBSYSTEM:WINDOWS)
+    endif()
+else()
+    target_link_libraries(proJV_studio PRIVATE OpenGL::GL)
+    if(TARGET SDL2::SDL2)
+        target_link_libraries(proJV_studio PRIVATE SDL2::SDL2)
+    else()
+        target_include_directories(proJV_studio PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(proJV_studio PRIVATE ${SDL2_LIBRARIES})
+    endif()
+endif()
+
+# The studio reads the same projv_files/ layout; a build tree has to carry the
+# example skills next to BOTH binaries or the two front-ends see different worlds.
+add_custom_command(TARGET proJV_studio POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/skills"
+            "$<TARGET_FILE_DIR:proJV_studio>/projv_files/skills"
+    COMMENT "Deploying example skills -> projv_files/skills/ (studio)"
+)
+
 # --- Tests ---------------------------------------------------------------
 option(PROJV_BUILD_TESTS "Build proJV unit tests" ON)
 option(PROJV_BUILD_E2E "Build the headless end-to-end harness (dev only)" OFF)
@@ -314,19 +452,12 @@ if(PROJV_BUILD_E2E)
         ${SRC_DIR}/tui/app_tui.cpp
         ${SRC_DIR}/tui/chat_view.cpp
         ${SRC_DIR}/tui/diff_view.cpp
-        ${SRC_DIR}/tui/bubble_model.cpp
         ${SRC_DIR}/tui/speaker_colors.cpp
-        ${SRC_DIR}/tui/markdown_text.cpp
         ${SRC_DIR}/tui/markdown_view.cpp
-        ${SRC_DIR}/tui/status_line.cpp
-        ${SRC_DIR}/tui/status_bar.cpp
         ${SRC_DIR}/tui/todo_view.cpp
-        ${SRC_DIR}/tui/approval_logic.cpp
         ${SRC_DIR}/tui/config_view.cpp
         ${SRC_DIR}/tui/mcp_view.cpp
         ${SRC_DIR}/tui/theme_map.cpp
-        ${SRC_DIR}/tui/theme_colors.cpp
-        ${SRC_DIR}/tui/theme_manager.cpp
         ${SRC_DIR}/tui/theme_editor_view.cpp
         ${SRC_DIR}/tui/clipboard.cpp
     )
@@ -375,7 +506,7 @@ endif()
 # this install set is exactly what ships.
 # NOTE: projv_files/prompts/ and projv_files/sessions/ are created and seeded
 # by the exe on first launch, so they are intentionally not shipped.
-install(TARGETS proJV_tui RUNTIME DESTINATION .)
+install(TARGETS proJV_tui proJV_studio RUNTIME DESTINATION .)
 
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/projv_files/"
         DESTINATION projv_files

@@ -23,6 +23,16 @@ struct Bubble {
     bool hasReasoning = false;
     std::string speaker; // skill role: "Sheldon" | "Penny" | "Leonard" (else empty)
     bool isVote = false; // true for a "**[Role vote]**" line
+    // The body a compact `content` stands for: a tool result's full text, which
+    // `content` reduces to "name (N bytes) -> first line". Display only, and the
+    // TUI never reads it -- it draws `content`, so its rendering is unchanged.
+    // Without it there is nothing for a folded row to open: the summary is all
+    // that ever reached a front-end.
+    std::string body;
+    // Carried over from the Message for the front-end that draws a tool row's
+    // clock and groups a skill run. The TUI reads neither.
+    int64_t durationMs = 0;
+    std::string skillRunId;
     // The framework injected this user message (view_image round), not the user.
     bool synthetic = false;
 };

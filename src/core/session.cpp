@@ -18,6 +18,57 @@ size_t Session::estimateImageTokens(size_t imageCount) {
     return image_input::imageTokens(imageCount);
 }
 
+// -- Vision: the request-side image budget (see session.h) --------------------
+namespace {
+// Replace one message's attachments with a text note naming what was dropped.
+// A message that was nothing but an image must not end up with empty content:
+// the API answers 400 and the model would see a blank turn instead of history.
+void dropAttachments(Message& msg, size_t& dropped) {
+    if (msg.images.empty()) return;
+
+    std::string names;
+    for (const auto& img : msg.images) {
+        if (!names.empty()) names += ", ";
+        names += img.path.empty() ? std::string("(path unknown)") : img.path;
+    }
+    dropped += msg.images.size();
+    msg.images.clear();
+
+    // Attachments are only legal on user messages; to_json() already drops them
+    // everywhere else, so only a user message is rewritten here.
+    if (msg.role != "user") return;
+    if (!msg.content.empty()) msg.content += "\n";
+    msg.content += "[image omitted from this request: " + names +
+                   " -- already analyzed earlier in this conversation; call the image tool "
+                   "again if it must be looked at]";
+}
+} // namespace
+
+size_t Session::stripAllImages(std::vector<Message>& msgs) {
+    size_t dropped = 0;
+    for (auto& m : msgs)
+        dropAttachments(m, dropped);
+    return dropped;
+}
+
+size_t Session::stripOldImages(std::vector<Message>& msgs) {
+    // Newest first: the first message still carrying attachments is the one the
+    // model most recently saw (the user's paste, or the view_image round).
+    size_t keep = msgs.size();
+    for (size_t i = msgs.size(); i-- > 0;) {
+        if (msgs[i].role == "user" && !msgs[i].images.empty()) {
+            keep = i;
+            break;
+        }
+    }
+
+    size_t dropped = 0;
+    for (size_t i = 0; i < msgs.size(); ++i) {
+        if (i != keep) dropAttachments(msgs[i], dropped);
+    }
+    return dropped;
+}
+
 // -- Token estimation: see core/token_estimate.h (official 0.3 / 0.6 per char) --
 size_t Session::estimateTokens(const std::string& text) {
     return estimateTokensForText(text);

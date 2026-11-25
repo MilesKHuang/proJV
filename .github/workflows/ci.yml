@@ -23,7 +23,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev
+          # libcurl: the HTTP client. libsdl2-dev: proJV_studio's window on Linux
+          # (D1 -- GLFW has no IME, so SDL2 is required, not optional).
+          sudo apt-get install -y libcurl4-openssl-dev libsdl2-dev
 
       # Windows builds libcurl from source (external/curl-8.21.0); that is the
       # slow part of the job, so cache the build tree.

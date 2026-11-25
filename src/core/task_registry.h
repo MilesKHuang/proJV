@@ -43,6 +43,9 @@ struct Snapshot {
     size_t outputBytes = 0;
     std::string lastLine; // latest non-empty output line, for the dock
     long long startedAtMs = 0;
+    // The child's pid, for a host that samples resource use per task (the studio's
+    // System panel). 0 when the platform could not report it or the task is over.
+    int pid = 0;
 };
 
 // Latest non-empty line of `s` (trailing \r\n trimmed, cut to `maxCols` bytes at a

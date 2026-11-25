@@ -25,10 +25,16 @@ struct BusyFlag {
 class Semaphore {
   public:
     explicit Semaphore(int n) : slots_(n < 1 ? 1 : n) {}
-    void acquire() {
+    // Returns false when `cancelled` became true while waiting: a worker parked here
+    // used to sleep without ever looking at the cancel flag, so Esc could not reach
+    // it and the turn looked unstoppable. Waiting and cancellation are the same
+    // condition now -- this is the shape every blocking wait in the turn path needs.
+    bool acquire(const std::function<bool()>& cancelled) {
         std::unique_lock<std::mutex> lk(m_);
-        cv_.wait(lk, [this] { return slots_ > 0; });
+        cv_.wait(lk, [this, &cancelled] { return slots_ > 0 || (cancelled && cancelled()); });
+        if (slots_ <= 0) return false;
         --slots_;
+        return true;
     }
     void release() {
         {
@@ -37,6 +43,7 @@ class Semaphore {
         }
         cv_.notify_one();
     }
+    void wakeAll() { cv_.notify_all(); }
 
   private:
     std::mutex m_;
@@ -322,7 +329,13 @@ std::string SubAgent::turn(const std::string& message, const std::string& verb, 
             std::vector<std::thread> workers;
             workers.reserve(groups.size());
             for (auto& kv : groups) {
-                slots.acquire();
+                // Waiting for a slot is cancellable: if the user asked to stop while
+                // this loop was parked here, stop spawning instead of waiting for a
+                // slot that may only free up after the rest of the round finishes.
+                const bool gotSlot = slots.acquire([this] {
+                    return tools_ != nullptr && tools_->isCancelled();
+                });
+                if (!gotSlot) break;
                 const std::vector<int> idxs = kv.second;
                 workers.emplace_back([this, &calls, &sideResults, idxs, &slots]() {
                     try {

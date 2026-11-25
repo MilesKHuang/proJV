@@ -308,6 +308,15 @@ std::vector<bg_task::Snapshot> TaskRegistry::snapshots() const {
         s.startedAtMs = t->startedAtMs;
         s.outputBytes = fileBytes(t->path);
         s.lastLine = bg_task::latestLine(readTail(t->path, 4096), 120);
+#ifdef _WIN32
+        // The child's pid, for the studio's System panel. The handle is the process
+        // itself, so it is the direct answer; a finished task reports 0 (its pid may
+        // already be recycled).
+        if (t->state == bg_task::State::Running && t->proc)
+            s.pid = static_cast<int>(GetProcessId(t->proc));
+#else
+        if (t->state == bg_task::State::Running) s.pid = static_cast<int>(t->pid);
+#endif
         out.push_back(std::move(s));
     }
     return out;

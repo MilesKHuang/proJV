@@ -2,6 +2,7 @@
 #include "models.h"
 #include "session.h"
 #include "storage.h"
+#include "snapshot.h"
 #include "delete_guard.h"
 #include "client/deepseek.h"
 #include "tools/registry.h"
@@ -25,6 +26,9 @@ class Agent {
     ~Agent();
 
     void setStorage(Storage* s) { storage = s; }
+    // The workspace's snapshot store (see snapshot.h): one per workspace, shared
+    // by every session in it. kNoStore leaves /undo off and nothing else.
+    void setSnapshotStore(snapshot::Store s) { snapshotStore_ = s; }
     std::function<void(std::function<void()>)> enqueueWrite;
     std::function<void()> ensureStorage;
     void addPersistedMessage(const Message& msg);
@@ -51,7 +55,9 @@ class Agent {
     std::optional<ToolCall> pendingApproval() const;
     void cancel();
     AgentStatus getStatus() const;
-    AgentPhase getPhase() const { return phase_.load(); }
+    // True between Agent::cancel() and the next turn start. The status line reads
+    // it through AgentStatus::cancelling so both front-ends can show "Stopping...".
+    bool isCancelling() const;    AgentPhase getPhase() const { return phase_.load(); }
     const Session& getSession() const { return session; }
     void clearSession();
     void newTurn();
@@ -246,6 +252,7 @@ class Agent {
     DeepSeekClient& client;
     ToolRegistry& toolRegistry;
     Storage* storage = nullptr;
+    snapshot::Store snapshotStore_ = snapshot::kNoStore;
     Session session;
 
     std::atomic<AgentPhase> phase_{AgentPhase::Idle};

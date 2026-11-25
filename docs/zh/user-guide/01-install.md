@@ -33,6 +33,7 @@ libcurl 用系统的。已在 Ubuntu 22.04（含 WSL2）上用 CMake 3.22 + g++ 
 
 ```bash
 sudo apt-get install -y libcurl4-openssl-dev     # Debian / Ubuntu
+sudo apt-get install -y libsdl2-dev              # 图形界面（proJV_studio）需要
 # sudo dnf install libcurl-devel                 # Fedora
 ```
 
