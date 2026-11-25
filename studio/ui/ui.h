@@ -180,6 +180,10 @@ float scrollMax();
 // 0 when there is nothing to scroll). Read it before endScroll(): ImGui knows the
 // real content height only once this frame's items have been laid out.
 float scrollFromBottom();
+// Jump to the bottom. Call it every frame for as long as the view should follow:
+// ImGui's content height is one frame behind the rows drawn this frame, so a single
+// call at the moment content arrives is clamped to the old bottom and stays short.
+void scrollToBottom();
 // Call before EndChild. `follow` requests a jump to the bottom (new content);
 // the return value reports whether the view sits at the bottom now, which is
 // what the caller stores as the next frame's sticky-bottom state.

@@ -393,15 +393,7 @@ void App::fillSource() {
     if (runtime_ && runtime_->agent()) {
         Agent* a = runtime_->agent();
         s.status = a->getStatus();
-        // Streaming text grows BETWEEN messages, so an appended bubble is not the
-        // only "content arrived" event: each growth is a pulse too, or the chase
-        // would stop in the middle of an answer. It only ever asks; drawChat decides
-        // from the reader's distance and whether they are moving.
-        const size_t streamed = s.status.streamingText.size() + s.status.reasoningText.size();
-        if (streamed != streamedChars_) {
-            streamedChars_ = streamed;
-            if (streamed > 0) active().followBottom = true;
-        }
+
         s.msgCount = a->getSession().messageCount();
         int toolCount = 0;
         for (const auto& m : a->getSession().getContextMessages()) {
@@ -975,7 +967,7 @@ void App::send() {
     const std::string text = active().input;
     active().input.clear();
     slashOpen_ = false;
-    active().followBottom = true;
+    // (the follow latch is the reader's: send/newChat no longer move the view)
     if (runtime_->submit(text)) runtime_->startAsync();
 }
 
@@ -994,7 +986,7 @@ bool App::approvedAlways() const {
 
 void App::newChat() {
     if (runtime_) runtime_->newChat();
-    active().followBottom = true;
+    // (the follow latch is the reader's: send/newChat no longer move the view)
 }
 
 void App::switchPromptNext() {
@@ -1013,7 +1005,7 @@ void App::setModel(const std::string& id) {
 
 void App::switchToDialog(const std::string& dbPath) {
     if (runtime_) runtime_->switchToDialog(dbPath);
-    active().followBottom = true;
+    // (the follow latch is the reader's: send/newChat no longer move the view)
 }
 
 void App::saveApiKey() {
@@ -1057,9 +1049,7 @@ int App::takeScrollRequest() {
     return n;
 }
 
-bool App::followPending() const { return active().followBottom; }
-
-void App::clearFollowPending() { active().followBottom = false; }
+bool App::followEnabled() const { return active().followBottom; }
 
 void App::refuseIfBusy(std::string* why) const {
     if (busy() && why) *why = "refused: a turn is running";
@@ -1241,7 +1231,7 @@ void App::appendDerived(Pane& pane, const Message& msg) {
     // A bubble was appended: that is the moment to decide whether the view should
     // follow (drawChat checks the distance and whether the reader is moving). Only
     // for the pane on screen -- a background pane's growth must not move this one.
-    if (!derived.empty() && &pane == &active()) pane.followBottom = true;
+    // Content does NOT touch the follow latch: only the reader does (see App::followEnabled).
 }
 
 void App::refreshChat(Pane& pane) {
@@ -1380,7 +1370,35 @@ void App::loadDemoChat() {
             "验收写成可数的：一屏 4 个回合、折叠行看得出 ok/failed 与改动量、展开不缺行。");
 
     say("链接通过。折叠默认打开：一屏能看到 4-5 个完整回合，点标题行展开完整结果和 diff。");
-    pane.followBottom = true;
+    // (the follow latch is the reader's)
+}
+
+void App::demoAppendOne() {
+    Pane& pane = active();
+    static int n = 0;
+    ++n;
+    const bool tool = (n % 3) == 0;
+    if (tool) {
+        Message call = Message::Assistant("再看一处。");
+        ToolCall tc;
+        tc.id = "call_demo_" + std::to_string(n);
+        tc.name = "read_file";
+        tc.arguments = "{\"path\":\"src/demo_" + std::to_string(n) + ".cpp\"}";
+        call.toolCalls.push_back(tc);
+        call.id = 1000 + n;
+        appendDerived(pane, call);
+        Message r = Message::Tool(tc.id, "read_file",
+                                  "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n", false);
+        r.durationMs = 120;
+        r.id = 1000 + n + 500;
+        appendDerived(pane, r);
+        return;
+    }
+    Message m = Message::Assistant(
+        "第二条：`ChatRow` 的 key 来自 msg.id，折叠状态放在 Source 里，"
+        "所以追加气泡不会打乱任何人的身份。这一条用来观察跟随行为。");
+    m.id = 1000 + n;
+    appendDerived(pane, m);
 }
 
 void App::drainNotices(Pane& pane) {
@@ -1397,7 +1415,7 @@ void App::drainNotices(Pane& pane) {
         pane.chatKeys.push_back("n" + std::to_string(++pane.keySeq) + ":0");
         pane.chat.push_back(std::move(cb));
     }
-    pane.followBottom = true;
+    // (the follow latch is the reader's)
 }
 
 void App::tick() {
@@ -1597,11 +1615,7 @@ bool App::takeBeep() {
     return pending;
 }
 
-void App::noteReaderScroll() { active().lastScrollMs = monotonicMs(); }
 
-bool App::readerMovedRecently() const {
-    return monotonicMs() - active().lastScrollMs < 400;
-}
 
 void App::injectPromptText(const std::string& text) {
     if (text.empty()) return;

@@ -309,14 +309,17 @@ out of the stack above the prompt into the column beside it (state on top, the
 turn's own clock or the skill pill under it), which is what bought the prompt its
 second row: `composerRowCount` never returns less than two.
 
-Scrolling is decided ONCE per arriving bubble, never per frame: the app raises a
-pulse when a bubble is appended, a message is sent, a notice arrives or the
-streaming answer grows, and `drawChat` honours it only when the reader is not
-moving (a wheel turn or a scrollbar drag in the last 400 ms) and is within three
-lines of the bottom. A frame without a pulse never touches the scroll position, so
-the wheel always wins. Both earlier rules were wrong in one direction each: a
-binary "was at the bottom last frame" stopped the chase for good after one notch,
-and a per-frame proximity test fought the wheel inside its own band.
+Following the end of the transcript is a LATCH the reader owns (`App::followEnabled`):
+a wheel turn away from the end or a scrollbar drag turns it off, wheeling back to
+the end turns it on, and nothing else touches it. While it is on, the chat tracks
+the bottom on every frame (`ui::scrollToBottom`). Content arriving never arms
+anything -- three earlier designs did, and each died the same way: they had to ask
+"is the reader far away?" on a frame where ImGui reports the content height one
+frame stale (imgui.cpp, "Update contents size from last frame"), so a view that was
+merely catching up to a new bubble looked far away and gave up for good. A frame
+trace showed the transcript 1.3 screens short after a minute of streaming.
+`--demo-stream N` appends a demo bubble every N frames, which is how that was
+reproduced without a model.
 
 The service bar is per pane: its workspace comes from `Pane::workspace` (it used
 to print the window's launch folder), the receipt lives on the pane, and a session

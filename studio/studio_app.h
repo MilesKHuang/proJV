@@ -146,13 +146,14 @@ class App {
     void scrollChat(int rows);
     // Rows requested by the keyboard since the last call (consumed on read).
     int takeScrollRequest();
-    // A bubble arrived and the chat should look at the bottom -- but only when the
-    // reader allows it. PEEKED, not consumed: on a session's first frames ImGui
-    // still reports a content height of 0, so a request consumed then is a request
-    // wasted. drawChat clears it once it has actually pinned, or once the reader is
-    // somewhere else.
-    bool followPending() const;
-    void clearFollowPending();
+    // Does the reader want the transcript to track its end? A LATCH, and only the
+    // reader sets it: the wheel, a scrollbar drag or a scroll key turns it off, and
+    // wheeling back to the bottom turns it on again. Content arriving never touches
+    // it -- that was the bug, in three different disguises: every "arm on new
+    // bubble" rule had to ask "is the reader far away", and ImGui reports the
+    // content height one frame late, so a view that was merely catching up looked
+    // far away and gave up.
+    bool followEnabled() const;
     void setFollowBottom(bool on);
 
     const view_model::Source& source() const { return active().source; }
@@ -222,10 +223,6 @@ class App {
     // A pane's turn just ended: true once, so the platform layer can make the same
     // sound the TUI makes (tui::beepIdle).
     bool takeBeep();
-    // The reader turned the wheel / dragged the scrollbar this frame. Auto-follow
-    // backs off for a moment afterwards, so a scroll is never fought.
-    void noteReaderScroll();
-    bool readerMovedRecently() const;
 
     // Resource sampling (started by the window's main loop, never headless). By
     // value: the sampler copies its last snapshot under a lock, and a reference
@@ -290,6 +287,9 @@ class App {
     // Fill the active pane with a fixed transcript (--demo-chat): the fold needs
     // tool calls to show, and a screenshot must not depend on a live model.
     void loadDemoChat();
+    // Append ONE more demo message, as if a turn were producing bubbles. Used by
+    // --demo-stream to reproduce the follow behaviour without a model.
+    void demoAppendOne();
     void beginQuit() { openModal("quit"); }
     void requestExit() { wantExit_ = true; }
     bool wantExit() const { return wantExit_; }
@@ -394,7 +394,6 @@ class App {
     bool leftOpen_ = true;
     float leftSplit_ = 0.55f; // share of the column the session list gets
     bool beepPending_ = false; // a pane's turn just ended; the platform layer beeps
-    size_t streamedChars_ = 0; // size of the last streamed answer (growth = pulse)
     int contextPane_ = -1;
     std::string contextPath_;
     bool contextIsDir_ = false;

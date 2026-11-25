@@ -588,6 +588,8 @@ float scrollFromBottom() {
     return std::max(0.0f, ImGui::GetScrollMaxY() - ImGui::GetScrollY());
 }
 
+void scrollToBottom() { ImGui::SetScrollY(ImGui::GetScrollMaxY()); }
+
 bool endScroll(bool follow) {
     // Careful: GetScrollMaxY() here is the PREVIOUS frame's content height
     // (imgui.cpp: "Update contents size from last frame"), so a jump issued from

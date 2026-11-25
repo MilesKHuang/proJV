@@ -552,6 +552,7 @@ void drawChat(App& app, const Frame& f) {
     // the rows are added, a newly arrived bubble has already pushed the distance
     // past any sane threshold, and the pulse would be refused one frame too late.
     const float distBefore = open ? ui::scrollFromBottom() : 0.0f;
+
     if (open) {
         if (req != 0) ui::scrollBy(-static_cast<float>(req) * tokens::linePx(m, Type::Body));
         const float avail = ImGui::GetContentRegionAvail().x;
@@ -609,28 +610,23 @@ void drawChat(App& app, const Frame& f) {
     // reader is not moving and is close to the last message -- otherwise the view
     // stays exactly where it was. A frame without a pulse never calls SetScrollY,
     // so the wheel always wins and nothing is "locked to the bottom".
-    const bool armed = open && app.followPending();
-    if (open && armed) {
-        // "Moving" is a wheel turn or a scrollbar drag in the last 400 ms, not
-        // "the prompt has keyboard focus" (it always does).
-        if (ImGui::GetIO().MouseWheel != 0.0f || ImGui::IsMouseDragging(ImGuiMouseButton_Left))
-            app.noteReaderScroll();
-        const float near = 3.0f * tokens::linePx(m, Type::Body);
-        if (!app.readerMovedRecently() && distBefore <= near) {
-            // SetScrollHereY(1.0f) targets the line the cursor is on -- the end of
-            // the content just drawn -- and ImGui resolves it in the next Begin.
-            // GetScrollMaxY() cannot be used here: it reports the PREVIOUS frame's
-            // content height, which is why the old jump landed one bubble short.
-            ImGui::SetScrollHereY(1.0f);
-            // A session's first frames have no content height at all (max == 0) and
-            // a target aimed there is lost. Stay armed until there is something to
-            // reach, or the request dies on the frame it was made.
-            if (ui::scrollMax() > 0.0f) app.clearFollowPending();
-        } else {
-            // The reader is somewhere else (or was a moment ago): drop the request
-            // instead of yanking them down the moment they stop moving.
-            app.clearFollowPending();
+    // Following is the READER's decision, and only a wheel turn or a scrollbar drag
+    // changes it: wheeling away stops it, wheeling back to the end resumes it. No
+    // amount of arriving content turns it on -- that is the rule three earlier
+    // versions got wrong, each time by asking "is the reader far away?" on a frame
+    // where ImGui reported a content height one frame stale, so a view that was
+    // merely catching up looked far away and gave up for good.
+    if (open) {
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            app.setFollowBottom(false); // a drag is a deliberate position
+        } else if (ImGui::GetIO().MouseWheel != 0.0f) {
+            const float near = 3.0f * tokens::linePx(m, Type::Body);
+            app.setFollowBottom(distBefore <= near);
         }
+        // While it is on, track the end every frame: a single jump at the moment
+        // content arrives is clamped to the old bottom (measured: 1.3 screens short
+        // after a minute of streaming), and repeating it costs one call.
+        if (app.followEnabled()) ui::scrollToBottom();
     }
     ui::endScroll(false);
 }
@@ -774,6 +770,12 @@ GKey keyFor(actions::Id id) {
 // is where the fill and the shortcut appear anyway.
 const ui::Btn kHeaderButton = ui::Btn::Ghost;
 
+// The product line: name + version, ONE spelling for the header's reserve and the
+// header's draw (a drift between the two is a header that overlaps its buttons).
+std::string wordmark(const view_model::Screen& s) {
+    return s.version.empty() ? std::string("proJV studio") : "proJV studio " + s.version;
+}
+
 actions::State headerState(const App& app) {
     const view_model::Screen& s = app.screen();
     actions::State st;
@@ -808,10 +810,11 @@ HeaderPlan planHeaderActions(const App& app, const Metrics& m, float rowW) {
     }
     // The wordmark keeps its room; the pills and the spinner give way first, and
     // the buttons never do. Row 0 fits next to the title, later rows get the width.
-    // The wordmark is drawn as a filled box: its measured text plus its padding, or
-    // the packing and the drawing would disagree about how much room it takes.
-    const float reserve = ui::measure(m, "proJV studio", Type::Title, false) +
-                          2.0f * tokens::spacePx(m, Space::Md) + tokens::spacePx(m, Space::Lg);
+    // The wordmark is a small pill now: name + version at the Small tier plus its
+    // padding. The packing and the drawing read the same string and tier, so the
+    // buttons can never land on top of it.
+    const float reserve = ui::measure(m, wordmark(app.screen()), Type::Small, false) +
+                          2.0f * tokens::spacePx(m, Space::Sm) + tokens::spacePx(m, Space::Lg);
     plan.rows = actions::pack(plan.widths, plan.gap, std::max(0.0f, rowW - reserve), rowW);
     if (!plan.rows.empty()) plan.firstRowW = rowWidth(plan.widths, plan.rows[0], plan.gap);
     const float n = static_cast<float>(plan.rows.size());
@@ -865,42 +868,28 @@ void drawHeader(App& app, const Frame& f) {
     // Title: the largest tier that fits the space that is left, MEASURED so the
     // pills can follow the text instead of floating at the right edge of a box
     // that is mostly empty.
-    // ONE highlighted wordmark: "proJV studio". It used to be the name in plain
-    // text plus a grey "studio" pill, which read as two unrelated things where the
-    // product name belongs.
-    const std::string titleText = "proJV studio";
-    // No phase pill beside the wordmark: the state is already in the status line and
-    // on the session card, and its 60 px was exactly what the wordmark needed to
-    // stop reading "proJV...".
+    // The product line, one muted pill: "proJV studio 0.7.10". It is a LABEL, not a
+    // button -- the buttons beside it are Body tier and the accent belongs to the
+    // one action on the row, so this sits one tier down, in the dim text colour on
+    // the plain surface. (It was an accent-filled Display-tier block: the loudest
+    // thing in the window, for the one word nobody needs to click.)
+    const std::string titleText = wordmark(s);
+    // No phase pill beside it either: the state already lives in the status line and
+    // on the session card.
     const float spinnerW = s.busy ? m.iconSize + tokens::spacePx(m, Space::Xs) : 0.0f;
-    const float pillsW = spinnerW;
     const float minTitleW = 72.0f * m.factor;
-    const float titlePadX = tokens::spacePx(m, Space::Md);
-
-    Type titleTier = Type::Display;
-    float titleW = ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX;
-    const float budget = leftW - pillsW - tokens::spacePx(m, Space::Lg);
-    if (titleW > budget) {
-        titleTier = Type::Title;
-        titleW = ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX;
-    }
-    if (titleW > budget) {
-        titleTier = Type::Heading;
-        titleW = ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX;
-    }
-    titleW = std::min(titleW, std::max(minTitleW, budget));
+    const float titlePadX = tokens::spacePx(m, Space::Sm);
+    const Type titleTier = Type::Small;
+    const float budget = leftW - spinnerW - tokens::spacePx(m, Space::Lg);
+    const float titleW = std::min(ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX,
+                                  std::max(minTitleW, budget));
 
     const bool showPills = budget >= minTitleW;
-    // The wordmark sits in its own filled box: the accent surface and contrast text
-    // make it the one element the eye lands on first, which is what a product name
-    // is for. The box is one step taller than the glyphs, centred in the row.
-    const float markH = titleH + 2.0f * tokens::spacePx(m, Space::Xs);
+    const float markH = tokens::linePx(m, titleTier) + 2.0f * tokens::spacePx(m, Space::Xs);
     const layout::Rect titleBox{row.x, row.y + (row0H - markH) * 0.5f, titleW, markH};
-    ui::fillRound(titleBox, p.accent, tokens::radiusPx(m, Radius::Sm));
-    ui::textAt(m, layout::Rect{titleBox.x + titlePadX, titleBox.y,
-                               std::max(1.0f, titleBox.w - 2.0f * titlePadX), titleBox.h},
-               ui::fitLine(m, titleText, titleBox.w - 2.0f * titlePadX, titleTier, false),
-               ui::contrastOn(p.accent), titleTier, false, 0.0f, 0.5f);
+    ui::badge(m, titleBox,
+              ui::fitLine(m, titleText, titleBox.w - 2.0f * titlePadX, titleTier, false),
+              p.textDim, p.surface);
     if (showPills) {
         float x = titleBox.right() + tokens::spacePx(m, Space::Lg);
         const float pillH =

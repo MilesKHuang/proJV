@@ -71,6 +71,7 @@ struct ShotArgs {
     bool demo = false;
     std::string expandKey; // open ONE folded row, to prove the open state renders
     int scrollUp = 0;      // rows to scroll back before the frame is captured
+    int streamEvery = 0;   // append a demo bubble every N frames (follow behaviour)
 };
 
 ShotArgs shotWanted(int argc, char** argv) {
@@ -89,6 +90,8 @@ ShotArgs shotWanted(int argc, char** argv) {
             if (i + 1 < argc) a.expandKey = argv[i + 1];
         } else if (std::strcmp(argv[i], "--scroll-up") == 0) {
             if (i + 1 < argc) a.scrollUp = std::atoi(argv[i + 1]);
+        } else if (std::strcmp(argv[i], "--demo-stream") == 0) {
+            if (i + 1 < argc) a.streamEvery = std::atoi(argv[i + 1]);
         }
     }
     return a;
@@ -461,6 +464,7 @@ int runStudio(int argc, char** argv) {
         if (key != studio::GKey::None) app.handleKey(key);
 
         app.tick();
+        if (shot.streamEvery > 0 && (frames % shot.streamEvery) == 0) app.demoAppendOne();
         // The TUI's own cue, on the same edge it uses (a turn ending): a window with
         // no sound left the user watching for a change instead of being told.
         if (app.takeBeep()) tui::beepIdle();
