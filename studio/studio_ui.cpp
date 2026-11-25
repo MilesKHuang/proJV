@@ -264,18 +264,116 @@ void drawRowBody(const Metrics& m, const view_model::ChatRow& row, int blockId, 
                                 row.markdown ? 0 : fld(row.textColor));
         }
     }
-    if (!row.extra.empty())
-        g_surface.drawBlock(blockId + 3, row.extra, false, textW, fld(row.extraColor));
+    // An expanded tool row shows the results UNCAPPED (`extraFull`); `extra` is
+    // the five-line cap the TUI draws, kept so the two front-ends stay comparable.
+    const std::string& results = row.extraFull.empty() ? row.extra : row.extraFull;
+    if (!results.empty())
+        g_surface.drawBlock(blockId + 3, results, false, textW, fld(row.extraColor));
+    // The diff belongs to the call that produced it, so it is drawn inside the
+    // same card, under its results -- not as a card of its own.
+    if (!row.diffText.empty()) {
+        ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+        drawDiff(row.diffText, textW);
+    }
 }
 
-void drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, int index) {
+// Outcome colour: the same three words a status line would use.
+ImU32 statusColour(const std::string& status) {
+    if (status == "failed") return studio_theme::field(&ThemeColors::statusError);
+    if (status == "pending") return studio_theme::field(&ThemeColors::textDisabled);
+    return studio_theme::field(&ThemeColors::todoDone);
+}
+
+// A folded tool block: the disclosure triangle, the first call of the message, the
+// outcome and the size of the change -- one line where the block used to be a card
+// with five lines of result text in it. Calls 2..N of the same message stay
+// visible under it: the call list is the audit trail, the results are the noise.
+void drawFoldedTool(const Metrics& m, const view_model::ChatRow& row) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    const float lh = ImGui::GetTextLineHeight();
+    const float rowW = ImGui::GetContentRegionAvail().x;
+    const float arrow = lh * 0.34f;
+    const float cx = p.x + lh * 0.38f;
+    const float cy = p.y + lh * 0.5f;
+    dl->AddTriangleFilled(ImVec2(cx - arrow * 0.55f, cy - arrow), ImVec2(cx + arrow, cy),
+                          ImVec2(cx - arrow * 0.55f, cy + arrow),
+                          studio_theme::field(&ThemeColors::toolTitleColor));
+    // Right edge, in order: the outcome, the call's own clock, then the size of
+    // what is folded away (a diff's line counts when the call changed a file, the
+    // result's length otherwise). Each part keeps its own colour and the whole
+    // group is laid out from the right, so the left text can be fitted to the room
+    // that is actually left -- "ok 12.4s 43 lines" must not sit on the call name.
+    std::string size = row.diffSummary;
+    if (size.empty() && row.lines > 1) size = std::to_string(row.lines) + " lines";
+    const std::string* parts[3] = {&row.status, &row.durationText, &size};
+    const ImU32 colours[3] = {statusColour(row.status),
+                              studio_theme::field(&ThemeColors::textDisabled),
+                              studio_theme::field(&ThemeColors::toolResultText)};
+    const float pad = lh * 0.5f;
+    float right = 0.0f;
+    int shownParts = 0;
+    for (int k = 0; k < 3; ++k) {
+        if (parts[k]->empty()) continue;
+        right += ImGui::CalcTextSize(parts[k]->c_str()).x;
+        ++shownParts;
+    }
+    if (shownParts > 1) right += static_cast<float>(shownParts - 1) * pad;
+    const float leftRoom = std::max(lh * 2.0f, rowW - lh * 1.1f - right - lh * 0.6f);
+    const std::string shown = ui::fitLine(m, row.summary, leftRoom, Type::Body, true);
+    ImGui::Dummy(ImVec2(lh * 1.1f, lh));
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_Text, studio_theme::field(&ThemeColors::toolTitleColor));
+    ImGui::TextUnformatted(shown.c_str());
+    ImGui::PopStyleColor();
+
+    float x = std::max(lh * 1.1f, rowW - right);
+    for (int k = 0; k < 3; ++k) {
+        if (parts[k]->empty()) continue;
+        ImGui::SameLine(x);
+        ImGui::PushStyleColor(ImGuiCol_Text, colours[k]);
+        ImGui::TextUnformatted(parts[k]->c_str());
+        ImGui::PopStyleColor();
+        x += ImGui::CalcTextSize(parts[k]->c_str()).x + pad;
+    }
+
+    // The rest of the call list, one indented line each.
+    const float indent = lh * 1.1f;
+    size_t nl = row.text.find('\n');
+    while (nl != std::string::npos) {
+        const size_t end = row.text.find('\n', nl + 1);
+        const std::string line = row.text.substr(
+            nl + 1, (end == std::string::npos ? row.text.size() : end) - (nl + 1));
+        if (!line.empty()) {
+            ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+            ImGui::Indent(indent);
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  studio_theme::field(&ThemeColors::toolResultText));
+            ImGui::TextUnformatted(ui::fitLine(m, line, rowW - indent, Type::Body, true).c_str());
+            ImGui::PopStyleColor();
+            ImGui::Unindent(indent);
+        }
+        nl = end;
+    }
+}
+
+// Returns true when the row consumed the click this frame: the text-selection
+// surface listens to the same press and must stay out of it.
+bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, int index,
+                 App& app, int& blockSeq) {
     const Metrics& m = f.metrics;
     const float padX = tokens::spacePx(m, Space::Md);
     const float padY = tokens::spacePx(m, Space::Sm);
     // A row that carries a label is a message: it gets a card. A bare text row is
     // a continuation of the one above it and stays on the surface.
     const bool carded = !row.label.empty() || row.kind == "tool" || row.kind == "result" ||
-                        row.kind == "diff" || row.kind == "system";
+                        row.kind == "diff" || row.kind == "system" ||
+                        row.kind == "skillrun";
+    // A frame-local counter, not the row index: a container's children need ids
+    // that cannot collide with the next row's, and index*10 ran out of room the
+    // moment a block could hold children of its own.
+    const int blockId = blockSeq++ * 10;
+    bool clicked = false;
     ImGui::PushID(index);
     if (carded) {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, bubbleBg(row));
@@ -290,20 +388,71 @@ void drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, in
         // not work" report.
         if (ImGui::BeginChild("##bubble", ImVec2(width, 0.0f), flags,
                               ImGuiWindowFlags_NoScrollWithMouse)) {
-            if (!row.label.empty()) {
-                ui::text(m, displayLabel(row.label), labelAccent(row), Type::Caption);
-                ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+            if (row.kind == "skillrun") {
+                // A skill run's role block. The header stays in BOTH states: it is
+                // the fold's own hit target, and a header that disappears when the
+                // block opens leaves no way back.
+                drawFoldedTool(m, row);
+                if (!row.collapsed) {
+                    const float indent = ImGui::GetTextLineHeight() * 1.1f;
+                    for (const auto& child : row.children) {
+                        ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+                        ImGui::Indent(indent);
+                        if (!child.label.empty())
+                            ui::text(m, displayLabel(child.label), labelAccent(child),
+                                     Type::Caption);
+                        drawRowBody(m, child, blockSeq++ * 10, false);
+                        ImGui::Unindent(indent);
+                    }
+                }
+            } else if (row.collapsed) {
+                drawFoldedTool(m, row);
+            } else {
+                if (!row.label.empty()) {
+                    ui::text(m, displayLabel(row.label), labelAccent(row), Type::Caption);
+                    // Outcome, clock and change size ride on the label line: a
+                    // settled tool block says whether it worked without being opened.
+                    std::string right = row.status;
+                    for (const std::string* part : {&row.durationText, &row.diffSummary}) {
+                        if (part->empty()) continue;
+                        right += (right.empty() ? "" : "  ") + *part;
+                    }
+                    if (!right.empty()) {
+                        ImGui::SameLine();
+                        ui::text(m, right,
+                                 row.status.empty() ? fld(row.extraColor) : statusColour(row.status),
+                                 Type::Caption);
+                    }
+                    ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+                }
+                drawRowBody(m, row, blockId, false);
             }
-            drawRowBody(m, row, index * 10, false);
         }
         ImGui::EndChild();
+        // The hit box is taken AFTER EndChild, which makes the child the last
+        // item: its rect is known here, on the same frame the mouse position is.
+        // An InvisibleButton inside the card would be an item in the flow -- with
+        // AutoResizeY it would change the height the child just computed, and it
+        // would have to be kept out of the wheel again.
+        if (row.collapsible) {
+            const ImVec2 p0 = ImGui::GetItemRectMin();
+            const ImVec2 p1 = ImGui::GetItemRectMax();
+            const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+                                 ImGui::IsMouseHoveringRect(p0, p1, false);
+            if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (hovered && !row.key.empty() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                app.toggleRowCollapsed(row.key);
+                clicked = true;
+            }
+        }
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor();
     } else {
-        drawRowBody(m, row, index * 10, false);
+        drawRowBody(m, row, blockId, false);
     }
     ImGui::PopID();
     ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+    return clicked;
 }
 
 void drawStreaming(const Frame& f, const view_model::StreamingView& st, float width) {
@@ -366,8 +515,10 @@ void drawChat(App& app, const Frame& f) {
         // Monospace inside the reading column: code, tables and box drawing must
         // align, and a terminal chat log is the one place a mono face is right.
         ui::pushType(m, Type::Mono, true);
+        bool rowClick = false;
+        int blockSeq = 0;
         for (int i = 0; i < static_cast<int>(s.chat.size()); ++i)
-            drawChatRow(f, s.chat[static_cast<size_t>(i)], colW, i);
+            rowClick |= drawChatRow(f, s.chat[static_cast<size_t>(i)], colW, i, app, blockSeq);
         drawStreaming(f, s.streaming, colW);
         ui::popType();
         if (s.chat.empty() && !s.streaming.visible) {
@@ -386,8 +537,11 @@ void drawChat(App& app, const Frame& f) {
             ImGui::PopTextWrapPos();
             ImGui::PopStyleColor();
         }
-        // Mouse selection and Ctrl+C over everything drawn above.
-        g_surface.handleInput();
+        // Mouse selection and Ctrl+C over everything drawn above -- but NOT on the
+        // frame a tool block was opened or closed: the selection hit-tests raw
+        // mouse clicks (studio_text.cpp), so without this one press would both
+        // toggle the row and start selecting a line inside it.
+        if (!rowClick) g_surface.handleInput();
         if (inset > 0.0f) ImGui::Unindent(inset);
     }
     // Sticky bottom: follow new content only while the view sits at the bottom.

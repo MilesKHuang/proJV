@@ -872,6 +872,15 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
     // Empty == agent-triggered (run_skill): the user never typed anything, so do
     // not invent a user bubble -- the "[Role] ..." narration is the evidence.
     if (!rawInput.empty()) agent_->addPersistedMessage(Message::User(rawInput));
+    // One id per run, stamped on every message the run writes: that is what lets
+    // the chat fold a whole debate into one block, and because it is persisted a
+    // replay regroups exactly as the live session did. Wall-clock based rather
+    // than an in-process counter -- a counter restarts at zero and would collide
+    // with the ids already sitting in the database.
+    const std::string skillRunId =
+        "skill-" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::system_clock::now().time_since_epoch())
+                                      .count());
     {
         std::lock_guard<std::mutex> lk(skillMutex_);
         skillStatus_ = "Preparing skill...";
@@ -883,8 +892,8 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
 
     SkillRunner::Callbacks cbs;
     int events = 0;
-    cbs.onEvent = [this, &events](const std::string& role, const std::string& kind,
-                                  const std::string& text) {
+    cbs.onEvent = [this, &events, skillRunId](const std::string& role, const std::string& kind,
+                                              const std::string& text) {
         ++events;
         std::string content;
         if (kind == "vote")
@@ -893,7 +902,11 @@ bool SessionRuntime::runSkillBlocking(const std::string& name, const std::string
             content = text;
         else
             content = "**[" + role + "]** " + text; // message / system
-        if (agent_) agent_->addPersistedMessage(Message::Assistant(content));
+        if (agent_) {
+            Message m = Message::Assistant(content);
+            m.skillRunId = skillRunId;
+            agent_->addPersistedMessage(m);
+        }
 
         events::Event e(events::Kind::SkillEvent, nextSeq());
         e.role = role;

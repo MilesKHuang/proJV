@@ -20,9 +20,13 @@
 namespace image_input {
 
 // Hard limits from the DeepSeek vision docs, with a conservative product cap.
-inline constexpr size_t kMaxImagesPerMessage = 8;                    // global per message
-inline constexpr size_t kMaxImageBytes = 30ull * 1024 * 1024;        // 30 MiB per file
-inline constexpr size_t kMaxTotalEncodedBytes = 44ull * 1024 * 1024; // 44 MiB encoded
+inline constexpr size_t kMaxImagesPerMessage = 8;             // global per message
+inline constexpr size_t kMaxImageBytes = 30ull * 1024 * 1024; // 30 MiB per file
+// The gateway rejects ANY request body over 48 MiB with HTTP 413, and that body
+// also carries the text transcript. 32 MiB of encoded images leaves 16 MiB for
+// the text, so a single message can never push a request over the line on its
+// own. The history side of the same budget is Session::stripOldImages().
+inline constexpr size_t kMaxTotalEncodedBytes = 32ull * 1024 * 1024; // 32 MiB encoded
 inline constexpr int kImageTokens = 1024;                            // per image, upper bound
 
 struct ParseResult {

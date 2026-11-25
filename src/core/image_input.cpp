@@ -125,7 +125,11 @@ bool addImage(const std::string& fullPath, std::vector<ImageAttachment>& images,
     for (const auto& existing : images)
         total += existing.dataUrl.size();
     if (total > kMaxTotalEncodedBytes) {
-        err = "[image] total image payload exceeds 44 MiB; remove some images";
+        err = "[image] this message's images encode to " +
+              std::to_string(total / (1024 * 1024)) + " MiB, over the " +
+              std::to_string(kMaxTotalEncodedBytes / (1024 * 1024)) +
+              " MiB one request may carry (the gateway stops at 48 MiB). "
+              "Send fewer images, or look at them one at a time with the image tool.";
         return false;
     }
 

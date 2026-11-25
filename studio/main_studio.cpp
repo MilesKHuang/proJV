@@ -14,8 +14,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "imgui.h"
+
+#include "png_writer.h"
 
 #include "core/config.h"
 #include "debug_log.h"
@@ -55,6 +58,39 @@ bool dumpWanted(int argc, char** argv, std::string* outPath) {
         }
     }
     return false;
+}
+
+// `--screenshot out.png [--frames N] [--demo-chat]`: render N frames through the
+// real draw path, read the back buffer back and write a PNG, then exit. The
+// acceptance half of --dump-view-model: that one says what the derivation
+// produced, this one says what a reader actually sees.
+struct ShotArgs {
+    std::string path;
+    int frames = 4;
+    bool demo = false;
+    std::string expandKey; // open ONE folded row, to prove the open state renders
+    int scrollUp = 0;      // rows to scroll back before the frame is captured
+};
+
+ShotArgs shotWanted(int argc, char** argv) {
+    ShotArgs a;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--screenshot") == 0) {
+            if (i + 1 < argc) a.path = argv[i + 1];
+        } else if (std::strcmp(argv[i], "--frames") == 0) {
+            if (i + 1 < argc) {
+                const int n = std::atoi(argv[i + 1]);
+                if (n > 0 && n <= 600) a.frames = n;
+            }
+        } else if (std::strcmp(argv[i], "--demo-chat") == 0) {
+            a.demo = true;
+        } else if (std::strcmp(argv[i], "--expand") == 0) {
+            if (i + 1 < argc) a.expandKey = argv[i + 1];
+        } else if (std::strcmp(argv[i], "--scroll-up") == 0) {
+            if (i + 1 < argc) a.scrollUp = std::atoi(argv[i + 1]);
+        }
+    }
+    return a;
 }
 
 } // namespace
@@ -266,6 +302,7 @@ int runStudio(int argc, char** argv) {
     if (const int meta = printMetaIfAsked(argc, argv); meta >= 0) return meta;
     std::string dumpPath;
     const bool dumpOnly = dumpWanted(argc, argv, &dumpPath);
+    const ShotArgs shot = shotWanted(argc, argv);
 
     ISystemUtil* sys = CreateSystemUtil();
     SystemUtil::Init(sys);
@@ -292,6 +329,18 @@ int runStudio(int argc, char** argv) {
         std::fputs("proJV studio: initialize() failed (see projv_files/logs)\n", stderr);
         delete runner;
         return 1;
+    }
+    // A fixed transcript for a screenshot run: the fold has nothing to show on an
+    // empty session, and an acceptance image must not depend on a live model.
+    if (shot.demo) {
+        app.loadDemoChat();
+        // A demo run must show the chat, not the first-run key dialog.
+        app.closeModal();
+        // The dock's width belongs to the transcript in an acceptance image, and
+        // no "starting ..." receipt either.
+        app.toggleDock();
+        app.setReceipt(std::string());
+        if (!shot.expandKey.empty()) app.toggleRowCollapsed(shot.expandKey);
     }
 
     if (dumpOnly) {
@@ -322,6 +371,12 @@ int runStudio(int argc, char** argv) {
         app.shutdown();
         delete runner;
         return 1;
+    }
+    if (!shot.path.empty()) {
+        // A fixed client size (a maximized window depends on the monitor) and no
+        // window on screen while it renders.
+        ShowWindow(g_hwnd, SW_HIDE);
+        SetWindowPos(g_hwnd, nullptr, 0, 0, 1600, 1100, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     IMGUI_CHECKVERSION();
@@ -385,6 +440,7 @@ int runStudio(int argc, char** argv) {
         std::fprintf(stderr, "proJV studio: font: %s\n", fontErr.c_str());
 
     bool done = false;
+    int frames = 0; // --screenshot only
     while (!done && !app.wantExit()) {
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -405,6 +461,9 @@ int runStudio(int argc, char** argv) {
         if (key != studio::GKey::None) app.handleKey(key);
 
         app.tick();
+        // One scroll request, once the layout has settled: an acceptance image of
+        // an opened row has to show the row's own header, not the bottom of it.
+        if (!shot.path.empty() && shot.scrollUp > 0 && frames == 3) app.scrollChat(shot.scrollUp);
         studio::drawFrame(app);
 
         ImGui::Render();
@@ -422,7 +481,31 @@ int runStudio(int argc, char** argv) {
                      ((bg >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        SwapBuffers(g_hdc);
+        if (!shot.path.empty()) {
+            // The back buffer holds this frame until the swap, so read here, then
+            // flip (OpenGL hands rows bottom-up) and write. No swap in shot mode:
+            // a hidden window has nothing to present and vsync could block.
+            if (++frames >= shot.frames) {
+                const int w = static_cast<int>(fb.x * fbScale.x);
+                const int h = static_cast<int>(fb.y * fbScale.y);
+                std::vector<unsigned char> px(static_cast<size_t>(w) * static_cast<size_t>(h) * 3u);
+                glFinish();
+                glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+                std::vector<unsigned char> flipped(px.size());
+                const size_t stride = static_cast<size_t>(w) * 3u;
+                for (int y = 0; y < h; ++y)
+                    std::memcpy(flipped.data() + stride * static_cast<size_t>(y),
+                                px.data() + stride * static_cast<size_t>(h - 1 - y), stride);
+                const bool ok = studio::writePng(shot.path, w, h, flipped.data());
+                std::printf("screenshot -> %s (%dx%d) %s\n", shot.path.c_str(), w, h,
+                            ok ? "ok" : "WRITE FAILED");
+                done = true;
+                break;
+            }
+        } else {
+            SwapBuffers(g_hdc);
+        }
 
         // 60 fps ceiling: the turn thread posts nothing, so the loop redraws and
         // picks up streamed text without an event to wait for.

@@ -71,7 +71,10 @@ set(TEST_SOURCES
     # button table) is plain C++ with no ImGui include, so the geometry the window
     # is built from is pinned here without a GPU, a window or a frame.
     unit/test_studio_design.cpp
+    # --screenshot writes a PNG with no image library; the bytes are pinned here.
+    unit/test_png_writer.cpp
     unit/test_worker_wait.cpp
+    ${CMAKE_SOURCE_DIR}/studio/png_writer.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/tokens.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/layout.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/fit.cpp

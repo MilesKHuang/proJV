@@ -76,6 +76,30 @@ struct ChatRow {
     bool vote = false;
     bool dissent = false;
     bool synthetic = false; // "[auto]" user round
+
+    // -- folding (design 08.6, batch 1) --------------------------------------
+    // A tool block is one assistant message, and its results are the bulk of the
+    // transcript. These fields let a front-end draw it as one line and open it on
+    // demand. The TUI reads none of them (chat_view.cpp is untouched), but the
+    // derivation lives HERE so a snapshot can pin it and the fold cannot become a
+    // second, drifting copy of the merge rule.
+    std::string key;          // stable identity ("m<msgId>:<k>"), "" when unknown
+    bool collapsible = false; // the row hides something worth opening
+    bool collapsed = false;   // drawn as one line because the fold is on
+    std::string summary;      // the line a folded row shows (first call)
+    std::string status;       // "ok" | "failed" | "pending" | ""
+    std::string diffSummary;  // "+12 -3" when the row carries diffs, "" otherwise
+    std::string diffText;     // the diffs themselves, shown under the results
+    std::string extraFull;    // results, uncapped (`extra` stays capped for the TUI)
+    int lines = 0;            // result line count, 0 = unknown
+    std::string durationText; // "12.4s" of tool time, "" when unknown
+
+    // -- nesting (design 08.6, batch 2) --------------------------------------
+    // A skill run's messages from ONE role fold into a container (`kind ==
+    // "skillrun"`): `summary` is its header line, `children` the role blocks it
+    // holds. One level deep on purpose -- a container of containers would need a
+    // second fold state and buys nothing.
+    std::vector<ChatRow> children;
 };
 
 // The live, still-streaming bubble (not yet a persisted message).
@@ -254,6 +278,18 @@ struct Source {
 
     // chat
     std::vector<bubble_model::Bubble> bubbles;
+    // The fold key of each bubble, in the same order ("" = no key). Bubble is
+    // shared with the TUI and carries no id, so the key travels beside it: the
+    // caller builds "<msgId>:<k>" where it appends the derived bubbles, the one
+    // place that still knows which message produced which bubble.
+    std::vector<std::string> bubbleKeys;
+    // Fold a tool block to one line. `expandedKeys` are the rows the user opened
+    // by hand. Same shape as reasoningExpanded: state a front-end owns, handed in
+    // at derivation time, so build() stays a pure function of Source.
+    bool toolsCollapsed = false;
+    // The same switch for skill runs: a debate is the noisiest thing in a chat.
+    bool skillsCollapsed = false;
+    std::vector<std::string> expandedKeys;
     bool reasoningExpanded = false;
     AgentStatus status;
     int chatWidth = 0; // cells; 0 = not measured yet

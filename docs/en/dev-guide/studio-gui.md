@@ -270,6 +270,36 @@ ISystemStats is fed one group of pids per session, so a card's CPU/MEM/GPU belon
 - **The tool child is attributed only while one session is busy.** IProcessRunner is one child at a time by design (src/platform/iprocess_runner.h); with two sessions queued for it, the running child belongs to the one whose turn executes it.
 - **GPU is - on Linux.** The kernel exposes per-card utilisation (amdgpu's gpu_busy_percent), not per-process; claiming a session's share out of a card number would be a guess dressed as a measurement. On Windows the PDH instance names carry pid_<n>, so the figure is real there.
 
+### A tool block folds to one line
+
+The chat draws a tool call as one line -- a triangle, the first call, the outcome
+and the size of what is folded away -- and opens on click. The rule that decides
+which bubble belongs to which row already lived in the derivation, so the fold is
+derived there too (`view_model::ChatRow`: `key`, `collapsible`, `collapsed`,
+`summary`, `status`, `diffSummary`, `diffText`, `extraFull`, `lines`).
+
+- A row is identified by `key` (`"<msgId>:<k>"`, built in `studio_app.cpp` where
+  the bubbles are appended), never by its index: a streaming append and the
+  oldest-200 trim both shift an index.
+- `view_model::Source::toolsCollapsed` is the switch, `expandedKeys` the rows the
+  user opened -- the same shape as `reasoningExpanded`, so `build()` stays a pure
+  function and the snapshot stays a golden test.
+- A writing tool's diff is absorbed into its own row. It used to stop the merge
+  loop, so with two calls in one turn the second result fell out as a "Result"
+  card and each diff became a card of its own. The TUI still draws the diff as a
+  separate block; the same change there is a separate decision.
+- `extraFull` carries the result body (`Bubble::body`); `extra` keeps the TUI's
+  five-line cap of the compact display string.
+- The click is hit-tested AFTER `EndChild` (the child's rect is known there), and
+  the frame it consumes never reaches `TextSurface::handleInput`, or one press
+  would both fold the row and start selecting text in it.
+
+`proJV_studio --screenshot out.png [--frames N] [--demo-chat] [--expand KEY]
+[--scroll-up N]` renders through the real draw path, reads the back buffer and
+writes a PNG. No image library is involved: `studio/png_writer.cpp` writes stored
+deflate blocks (see `tests/unit/test_png_writer.cpp`). `--demo-chat` fills a fixed
+transcript, so an acceptance image never depends on a live model.
+
 ## What is deliberately different
 
 - **A window owns several sessions.** The TUI is one session per process; the studio

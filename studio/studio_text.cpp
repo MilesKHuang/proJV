@@ -91,6 +91,19 @@ bool allOfStyle(const markdown_text::Line& line, markdown_text::Style style) {
     return true;
 }
 
+// A fenced-code line is ALL CodeBlock, with no tolerance for Normal. The tolerant
+// test above is right for a quote or a bullet, whose wrapped runs may carry plain
+// segments -- but for code it made every PROSE paragraph a code line: its segs are
+// all Normal, and Normal counted as "same style". Each paragraph was therefore
+// drawn as a fenced block: a full-width mdCodeBg band and the code hang indent
+// (the dark strip behind ordinary sentences in a screenshot).
+bool isCodeLine(const markdown_text::Line& line) {
+    if (line.segs.empty()) return false;
+    for (const auto& s : line.segs)
+        if (s.style != markdown_text::Style::CodeBlock) return false;
+    return true;
+}
+
 int tierOf(const markdown_text::Line& line) {
     if (line.segs.empty()) return 0;
     const auto st = line.segs[0].style;
@@ -262,9 +275,9 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
         }
 
         // ---- fenced code: one band, padded ----
-        if (allOfStyle(line, markdown_text::Style::CodeBlock)) {
+        if (isCodeLine(line)) {
             size_t j = i;
-            while (j < lines.size() && allOfStyle(lines[j], markdown_text::Style::CodeBlock)) {
+            while (j < lines.size() && isCodeLine(lines[j])) {
                 VisualLine vl;
                 vl.block = blockId;
                 vl.line = lineNo++;
@@ -381,6 +394,11 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
         }
         const float ind = vl.indent;
         if (ind > 0.0f) ImGui::Indent(ind);
+        // ONE decision, used by the pop at the bottom of this loop. tier 1 (###
+        // H3) is bold at body size: it pushes no face. Popping on `tier != 0`
+        // while pushing only 2 and 3 popped a font that was never pushed, which
+        // is the "Calling PopFont() too many times" assert -- once per H3 line.
+        const bool facePushed = vl.tier == 3 || vl.tier == 2;
         if (vl.tier == 3)
             studio_theme::pushText(studio_theme::TextRole::Title);
         else if (vl.tier == 2)
@@ -407,6 +425,11 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             vl.x1 = std::max(p1.x, p0.x + 1.0f);
             vl.y1 = std::max(p1.y, p0.y + 1.0f);
             frameLines_.push_back(vl);
+            // This branch leaves the loop early, so it must unwind the face push
+            // itself: a heading that turned out to be a table line would otherwise
+            // leak one font onto the stack for every frame it stayed on screen.
+            if (facePushed) studio_theme::popText();
+            if (ind > 0.0f) ImGui::Unindent(ind); // same early exit, same unwind
             continue;
         }
 
@@ -476,7 +499,7 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
                         studio_theme::field(&ThemeColors::separator));
         }
         frameLines_.push_back(vl);
-        if (vl.tier != 0) studio_theme::popText();
+        if (facePushed) studio_theme::popText();
         if (ind > 0.0f) ImGui::Unindent(ind);
     }
 }

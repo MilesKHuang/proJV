@@ -88,6 +88,11 @@ struct ConfigForm {
 struct Pane {
     std::unique_ptr<SessionRuntime> rt;
     std::vector<bubble_model::Bubble> chat;
+    // One fold key per bubble, appended and trimmed with it. Bubble is the TUI's
+    // type and has no room for an id, so the identity a click needs lives here:
+    // "<msgId>:<k>", the k-th bubble of that message.
+    std::vector<std::string> chatKeys;
+    int keySeq = 0; // keys of messages that are not persisted yet (notices)
     int64_t lastMessageId = 0;
     std::set<std::string> knownSpeakers;
     std::string input;
@@ -250,6 +255,13 @@ class App {
     void applyTheme(const std::string& name);
     void toggleReasoning();
     void toggleDock();
+    // Fold/unfold one chat row (a tool block). Keyed by view_model::ChatRow::key,
+    // never by row index: streaming appends and the oldest-200 trim both shift
+    // an index, and the row the user opened would become a different one.
+    void toggleRowCollapsed(const std::string& key);
+    // Fill the active pane with a fixed transcript (--demo-chat): the fold needs
+    // tool calls to show, and a screenshot must not depend on a live model.
+    void loadDemoChat();
     void beginQuit() { openModal("quit"); }
     void requestExit() { wantExit_ = true; }
     bool wantExit() const { return wantExit_; }
@@ -286,9 +298,11 @@ class App {
     void fillSource();
     void fillModalSource(view_model::Source& s);
     void listMove(int delta);
+    // Append one message's bubbles AND their fold keys. The only place that knows
+    // which message produced which bubble, which is what a stable key needs.
+    void appendDerived(Pane& pane, const Message& msg);
     void refreshChat(Pane& pane);
-    void drainNotices(Pane& pane);
-    void harvestSpeakers(Pane& pane);
+    void drainNotices(Pane& pane);    void harvestSpeakers(Pane& pane);
     float sourceCost() const;
     void refreshModelRows();
     void refreshThemeRows();
@@ -320,6 +334,12 @@ class App {
     bool promptReload_ = false;
     int spinnerFrame_ = 0;
     bool reasoningExpanded_ = false;
+    // Tool blocks fold to one line by default: they are the bulk of a transcript
+    // and their results are read on demand, not while scrolling past.
+    bool toolsCollapsed_ = true;
+    // Same rule for skill runs: a debate is the noisiest thing in a transcript.
+    bool skillsCollapsed_ = true;
+    std::set<std::string> expandedKeys_; // rows the user opened by hand
     bool dock_ = true;
     bool wantExit_ = false;
     bool bannerShown_ = false;

@@ -119,10 +119,16 @@ std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string
             out.push_back(textBubble);
         }
 
-        // Tool call/result bubble.
+        // Tool call/result bubble. `content` is the compact one-liner; for a
+        // result the full text rides along in `body` so a front-end that folds
+        // the row has something to open.
         Bubble cb;
         cb.role = role;
         cb.content = display;
+        if (msg.role == "tool") {
+            cb.body = msg.content;
+            cb.durationMs = msg.durationMs;
+        }
         out.push_back(cb);
 
         // A file-writing tool carries the unified diff of what it changed. It
@@ -151,6 +157,7 @@ std::vector<Bubble> deriveBubbles(const Message& msg, const std::set<std::string
     cb.role = msg.role;
     cb.content = msg.content;
     cb.synthetic = msg.synthetic;
+    cb.skillRunId = msg.skillRunId;
     // Vision: list the attached images under the user's text, e.g.
     //   "what is this?\n[Image] a.png\n[Image] b.png"
     if (msg.role == "user" && !msg.images.empty()) {

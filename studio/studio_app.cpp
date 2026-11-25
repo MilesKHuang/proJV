@@ -122,6 +122,7 @@ void App::wireRuntime(Pane& pane) {
     };
     pane.rt->onSessionReset = [p, self] {
         p->chat.clear();
+        p->chatKeys.clear();
         p->lastMessageId = 0;
         p->followBottom = true;
         if (self->runtime_ && self->runtime_ == p->rt.get()) self->promptReload_ = false;
@@ -400,6 +401,11 @@ void App::fillSource() {
         s.windowTokens = a->getContextWindowSize();
     }
     s.bubbles = active().chat;
+    s.bubbleKeys = active().chatKeys;
+    s.toolsCollapsed = toolsCollapsed_;
+    s.skillsCollapsed = skillsCollapsed_;
+    // std::set, so the order is sorted: build() must stay deterministic.
+    s.expandedKeys.assign(expandedKeys_.begin(), expandedKeys_.end());
     s.reasoningExpanded = reasoningExpanded_;
 
     // Agent strip: the same cells the TUI lays out, from the same snapshot.
@@ -1207,17 +1213,158 @@ std::string* App::configBufferAt(int index) {
 
 // ---- panes: projection, receipts, injection, sampling --------------------
 
+// One message -> its bubbles, plus the key of each. The key is "<msgId>:<k>",
+// msg.id being the database row and k the bubble's position inside THAT message's
+// derivation: both survive every streaming append and the oldest-200 trim, which
+// a row index does not. A message that is not persisted yet (a notice, id 0) gets
+// a per-pane counter instead -- it is appended at the tail and never re-ordered.
+void App::appendDerived(Pane& pane, const Message& msg) {
+    auto derived = bubble_model::deriveBubbles(msg, pane.knownSpeakers);
+    const std::string base =
+        msg.id > 0 ? ("m" + std::to_string(msg.id)) : ("n" + std::to_string(++pane.keySeq));
+    for (size_t k = 0; k < derived.size(); ++k) {
+        pane.chatKeys.push_back(base + ":" + std::to_string(k));
+        pane.chat.push_back(std::move(derived[k]));
+    }
+    if (msg.id > pane.lastMessageId) pane.lastMessageId = msg.id;
+}
+
 void App::refreshChat(Pane& pane) {
     if (!pane.rt || pane.state.load() != Pane::State::Ready || !pane.rt->agent()) return;
     pane.chat.clear();
+    pane.chatKeys.clear();
     pane.lastMessageId = 0;
     harvestSpeakers(pane);
     auto msgs = pane.rt->agent()->getNewMessagesSince(0);
-    for (const auto& msg : msgs) {
-        auto derived = bubble_model::deriveBubbles(msg, pane.knownSpeakers);
-        pane.chat.insert(pane.chat.end(), derived.begin(), derived.end());
-        if (msg.id > pane.lastMessageId) pane.lastMessageId = msg.id;
+    for (const auto& msg : msgs) appendDerived(pane, msg);
+}
+
+void App::toggleRowCollapsed(const std::string& key) {
+    if (key.empty()) return;
+    const auto it = expandedKeys_.find(key);
+    if (it == expandedKeys_.end())
+        expandedKeys_.insert(key);
+    else
+        expandedKeys_.erase(it);
+}
+
+// A fixed transcript for --demo-chat. It is appended through the SAME path a live
+// session uses (appendDerived -> deriveBubbles -> view_model::build), so what a
+// screenshot shows is the real derivation, not a mock of it. Five turns, one file
+// write with a diff, a long shell result and one failed call.
+void App::loadDemoChat() {
+    Pane& pane = active();
+    pane.chat.clear();
+    pane.chatKeys.clear();
+    pane.lastMessageId = 0;
+
+    int64_t id = 0;
+    auto push = [&](Message m) {
+        m.id = ++id;
+        appendDerived(pane, m);
+    };
+    auto user = [&](std::string text) { push(Message::User(std::move(text))); };
+    auto say = [&](std::string text) { push(Message::Assistant(std::move(text))); };
+    auto call = [&](int index, const std::string& name, const std::string& argKey,
+                    const std::string& argValue, const std::string& text = std::string()) {
+        Message m = Message::Assistant(text);
+        ToolCall tc;
+        tc.id = "call_" + std::to_string(index);
+        tc.name = name;
+        tc.arguments = "{\"" + argKey + "\":\"" + argValue + "\"}";
+        tc.index = index;
+        m.toolCalls.push_back(std::move(tc));
+        push(std::move(m));
+    };
+    auto result = [&](const std::string& name, const std::string& content, const std::string& diff,
+                      bool failed) {
+        Message m = Message::Tool("call_" + name, name, content, failed);
+        m.diff = diff;
+        // A real ToolResult carries the wall time the agent measured around the
+        // registry call; the demo values are in the same range as the real ones.
+        m.durationMs = name == "read_file"     ? 850
+                       : name == "grep_files"  ? 240
+                       : name == "write_file"  ? 1400
+                       : name == "exec_shell"  ? 12400
+                                               : 780;
+        push(std::move(m));
+    };
+
+    user("把 studio 聊天区的工具调用折叠成一行，点开再看完整结果。");
+    say("先看合并循环和卡片的绘制位置，确认改动落在哪一层。");
+    call(1, "read_file", "path", "src/core/view_model.cpp");
+    {
+        std::string body;
+        for (int i = 0; i < 30; ++i) body += "  // line " + std::to_string(i + 250) + "\n";
+        result("read_file", body, "", false);
     }
+    call(2, "grep_files", "pattern", "tool_result");
+    result("grep_files",
+           "D:\\ws\\proJV\\src\\core\\view_model.cpp:311: } else if (b.role == \"tool_call\") {\n"
+           "D:\\ws\\proJV\\src\\core\\view_model.cpp:318: while (i + 1 < total && ...)\n"
+           "D:\\ws\\proJV\\src\\tui\\chat_view.cpp:224: while (i + 1 < total && ...)\n",
+           "", false);
+    say("合并循环只有一个落点：`view_model.cpp:318`。diff 会让这个循环提前退出，所以同一次回合里第二个结果会掉出来变成独立卡片。");
+
+    user("把它做出来，然后发我看效果。");
+    say("先加结构字段，再把 diff 吸进工具行，最后加点击。");
+    call(3, "write_file", "path", "src/core/view_model.cpp");
+    result("write_file", "Wrote 421 lines to src/core/view_model.cpp",
+           "--- a/src/core/view_model.cpp\n"
+           "+++ b/src/core/view_model.cpp\n"
+           "@@ -310,5 +318,7 @@\n"
+           "     row.kind = \"tool\";\n"
+           "-    while (i + 1 < total && bubbles[i + 1].role == \"tool_result\") {\n"
+           "-        results += bubbles[i + 1].content;\n"
+           "+    while (i + 1 < total) {\n"
+           "+        const auto& next = bubbles[i + 1];\n"
+           "+        if (next.role == \"tool_result\" || next.role == \"diff\") {\n"
+           "+            merge(next);\n"
+           "+        } else {\n"
+           "+            break;\n"
+           "+        }\n",
+           false);
+    call(4, "exec_shell", "command", "cmake --build build --config Release");
+    {
+        std::string out;
+        for (int i = 0; i < 40; ++i)
+            out += "view_model.cpp.obj : warning C4996 deprecated function " + std::to_string(i) +
+                   "\n";
+        out += "proJV_lib.lib -> build/Release/proJV_lib.lib\n";
+        out += "Build succeeded.\n";
+        result("exec_shell", out, "", false);
+    }
+    call(5, "format_file", "path", "src/core/view_model.cpp");
+    result("format_file", "path outside the workspace: src/core/view_model.cpp", "", true);
+    call(6, "format_file", "path", "find . -name view_model.cpp");
+    result("format_file", "formatted src/core/view_model.cpp (3 lines changed)", "", false);
+    // One skill run: three roles, two rounds, one dissent. The run id is what a
+    // real SkillRunner stamps on every message it writes, and the names have to be
+    // in knownSpeakers or the bubble model (rightly) refuses to read "**[X]**" as
+    // a role rather than as bold markdown.
+    pane.knownSpeakers.insert("Analyst");
+    pane.knownSpeakers.insert("Critic");
+    pane.knownSpeakers.insert("Writer");
+    const std::string run = "skill-1761226800000";
+    auto roleMsg = [&](const std::string& role, const std::string& kind, const std::string& text) {
+        Message m = Message::Assistant("**[" + role + (kind == "vote" ? " vote" : "") + "]** " + text);
+        m.skillRunId = run;
+        push(std::move(m));
+    };
+    roleMsg("Analyst", "message",
+            "拆成两层：推导负责合并与折叠状态，前端只负责画和收点击。\n\n"
+            "- 合并循环顺带吸收 diff\n"
+            "- 折叠 key 由 msg.id 派生，不用行号");
+    roleMsg("Analyst", "message", "第二轮补充：`extraFull` 必须存正文，否则展开没有内容可看。");
+    roleMsg("Critic", "message",
+            "反对同批改 TUI：`chat_view.cpp:224` 和 `view_model.cpp` 是两份独立循环，"
+            "一次验收覆盖两个呈现层，出问题分不清是谁的。");
+    roleMsg("Critic", "vote", "DISSENT: 这一批不要动 TUI。");
+    roleMsg("Writer", "message",
+            "验收写成可数的：一屏 4 个回合、折叠行看得出 ok/failed 与改动量、展开不缺行。");
+
+    say("链接通过。折叠默认打开：一屏能看到 4-5 个完整回合，点标题行展开完整结果和 diff。");
+    pane.followBottom = true;
 }
 
 void App::drainNotices(Pane& pane) {
@@ -1231,6 +1378,7 @@ void App::drainNotices(Pane& pane) {
         bubble_model::Bubble cb;
         cb.role = "system";
         cb.content = std::move(n);
+        pane.chatKeys.push_back("n" + std::to_string(++pane.keySeq) + ":0");
         pane.chat.push_back(std::move(cb));
     }
     pane.followBottom = true;
@@ -1271,15 +1419,15 @@ void App::tick() {
         harvestSpeakers(pane);
         if (Agent* a = pane.rt->agent()) {
             auto newMsgs = a->getNewMessagesSince(pane.lastMessageId);
-            for (const auto& msg : newMsgs) {
-                auto derived = bubble_model::deriveBubbles(msg, pane.knownSpeakers);
-                pane.chat.insert(pane.chat.end(), derived.begin(), derived.end());
-                if (msg.id > pane.lastMessageId) pane.lastMessageId = msg.id;
-            }
+            for (const auto& msg : newMsgs) appendDerived(pane, msg);
         }
         if (pane.chat.size() > kMaxBubbles) {
-            pane.chat.erase(pane.chat.begin(),
-                            pane.chat.begin() + static_cast<long>(pane.chat.size() - kMaxBubbles));
+            const long drop = static_cast<long>(pane.chat.size() - kMaxBubbles);
+            pane.chat.erase(pane.chat.begin(), pane.chat.begin() + drop);
+            // The keys are a parallel array: trimming one without the other would
+            // hand every remaining row its neighbour's fold key.
+            const size_t n = std::min<size_t>(static_cast<size_t>(drop), pane.chatKeys.size());
+            pane.chatKeys.erase(pane.chatKeys.begin(), pane.chatKeys.begin() + static_cast<long>(n));
         }
         // The turn clock: started when the pane becomes busy, stopped when it is not.
         const int tokens = pane.rt->promptTokens() + pane.rt->completionTokens();

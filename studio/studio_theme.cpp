@@ -304,12 +304,19 @@ float fontPx(TextRole role) {
     }
 }
 
+// Every push is matched by exactly one popText(), so a face that failed to load
+// must still push SOMETHING. A guarded push with an unguarded pop is precisely
+// the "Calling PopFont() too many times" assert: when the chrome face was
+// missing, every caller popped a font it never pushed and the stack went
+// negative. Falling back to the font already in use keeps push and pop equal.
 void pushText(TextRole role) {
-    if (g_ui) ImGui::PushFont(g_ui, fontPx(role));
+    ImFont* face = g_ui ? g_ui : ImGui::GetFont();
+    ImGui::PushFont(face, fontPx(role));
 }
 
 void pushMono(TextRole role) {
-    if (g_mono) ImGui::PushFont(g_mono, fontPx(role));
+    ImFont* face = g_mono ? g_mono : ImGui::GetFont();
+    ImGui::PushFont(face, fontPx(role));
 }
 
 void popText() {

@@ -79,3 +79,17 @@ TEST_CASE("R2: cleared TodoData produces no injected system messages") {
     CHECK(buildTodoSystemMessage(td).empty());
     CHECK(buildUserRequestSystemMessage(td).empty());
 }
+
+TEST_CASE("models: display-only fields never reach the request body") {
+    // duration_ms, skill_run_id and diff exist to be looked at. to_json builds its
+    // keys explicitly, so they cannot leak into a request and quietly cost tokens.
+    Message t = Message::Tool("call_1", "exec_shell", "done");
+    t.durationMs = 12400;
+    t.skillRunId = "skill-1761226800000";
+    t.diff = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n";
+    const nlohmann::json j = t;
+    CHECK(j.contains("role"));
+    CHECK_FALSE(j.contains("duration_ms"));
+    CHECK_FALSE(j.contains("skill_run_id"));
+    CHECK_FALSE(j.contains("diff"));
+}

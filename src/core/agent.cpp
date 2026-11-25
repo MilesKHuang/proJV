@@ -8,6 +8,7 @@
 #include "tools/diff_capture.h"
 #include <cstdio>
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <filesystem>
 #include <iterator>
@@ -322,6 +323,16 @@ void Agent::run() {
                             doCompaction(true);
                         }
                         req = buildChatRequest();
+                        // 413 = the body is over the gateway's 48 MiB limit. The
+                        // image budget above makes that nearly impossible, so this
+                        // is the belt: one attempt with every attachment replaced by
+                        // a note. The text history is untouched -- that is what keeps
+                        // the in-flight edit alive instead of losing the turn.
+                        if (err.find("HTTP 413") != std::string::npos) {
+                            const size_t n = Session::stripAllImages(req.messages);
+                            debugLogWarnf("[Image] HTTP 413: retrying with %zu attachment(s) dropped",
+                                          n);
+                        }
                         currentContent_.clear();
                         currentReasoning_.clear();
                         currentToolCalls_.clear();
@@ -349,6 +360,13 @@ void Agent::run() {
                                     break;
                                 }
                             if (hasImages) failMsg += IMAGE_400_HINT;
+                        } else if (err.find("HTTP 413") != std::string::npos) {
+                            // The fuse already dropped every attachment, so the text
+                            // is what is too big: only a new session can recover.
+                            failMsg +=
+                                "\nHint: the request body is over the 48 MiB gateway limit even "
+                                "with every image dropped. Start a new session (/clear) -- this "
+                                "history cannot shrink any further.";
                         }
                         addPersistedMessage(Message::Assistant(failMsg));
                         turnFailed_ = true;
@@ -522,6 +540,7 @@ void Agent::run() {
                 // bubble silently and no tool-level test would notice.
                 Message toolMsg = Message::Tool(r.toolCallId, r.name, r.content, r.isError);
                 toolMsg.diff = r.diff;
+                toolMsg.durationMs = r.durationMs;
                 addPersistedMessage(toolMsg);
             }
             if (hasWV) {
@@ -1021,7 +1040,13 @@ ToolResult Agent::executeTool(const ToolCall& call) {
         r.isError = true;
         return r;
     }
+    // Wall time of the call itself: the chat puts "12.4s" on the tool row, and the
+    // model never sees it (to_json writes its keys explicitly).
+    const auto startedAt = std::chrono::steady_clock::now();
     r.content = toolRegistry.execute(call.name, call.arguments);
+    r.durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - startedAt)
+                       .count();
     r.isError = (r.content.compare(0, 6, "Error:") == 0);
     // A wish pass counts as progress when the model did anything at all -- reading,
     // grepping and running commands are work. Only a pass with no tool call is idle.
@@ -1116,6 +1141,16 @@ bool Agent::awaitApproval(const ToolCall& call) {
 ChatRequest Agent::buildChatRequest() const {
     ChatRequest req;
     req.messages = session.getContextMessages();
+    // Vision: the history's attachments would otherwise be re-encoded and
+    // re-sent on every single request (see Session::stripOldImages). Only the
+    // newest image message keeps its bytes; this copy is what leaves the process,
+    // so the transcript and the DB are untouched.
+    {
+        const size_t dropped = Session::stripOldImages(req.messages);
+        if (dropped > 0)
+            debugLogf("[Image] request: dropped %zu older attachment(s), newest kept",
+                      dropped);
+    }
     req.stream = true;
     req.model = model_;
     req.maxTokens = configMaxTokens;

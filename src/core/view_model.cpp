@@ -243,11 +243,66 @@ std::string phaseColorOf(AgentPhase p) {
     }
 }
 
+// The line a folded row shows: the first call of the block.
+// "850ms" / "12.4s" / "3m12s" -- a tool row's own clock, never a wall clock.
+std::string formatDuration(int64_t ms) {
+    if (ms <= 0) return std::string();
+    if (ms < 1000) return std::to_string(ms) + "ms";
+    if (ms < 60000) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.1fs", static_cast<double>(ms) / 1000.0);
+        return buf;
+    }
+    return std::to_string(ms / 60000) + "m" + std::to_string((ms % 60000) / 1000) + "s";
+}
+
+std::string firstLine(const std::string& text) {
+    const size_t nl = text.find('\n');
+    return nl == std::string::npos ? text : text.substr(0, nl);
+}
+
+// "+12 -3" for the diffs a tool row carries. File headers ("--- a/x", "+++ b/x")
+// are not line changes and a hunk header is not one either, so only a leading
+// '+'/'-' that is not a three-dash header counts.
+std::string diffSummaryOf(const std::string& diffs) {
+    if (diffs.empty()) return std::string();
+    int added = 0, removed = 0, files = 0;
+    size_t pos = 0;
+    while (pos <= diffs.size()) {
+        size_t nl = diffs.find('\n', pos);
+        if (nl == std::string::npos) nl = diffs.size();
+        const std::string line = diffs.substr(pos, nl - pos);
+        if (line.rfind("+++ ", 0) == 0)
+            ++files;
+        else if (line.rfind("--- ", 0) == 0)
+            ; // the other half of the same header, already counted
+        else if (!line.empty() && line[0] == '+')
+            ++added;
+        else if (!line.empty() && line[0] == '-')
+            ++removed;
+        if (nl == diffs.size()) break;
+        pos = nl + 1;
+    }
+    std::string s = "+" + std::to_string(added) + " -" + std::to_string(removed);
+    if (files > 1) s += std::string(" ") + kMidDot + " " + std::to_string(files) + " files";
+    return s;
+}
+
+bool containsKey(const std::vector<std::string>& keys, const std::string& key) {
+    if (key.empty()) return false;
+    return std::find(keys.begin(), keys.end(), key) != keys.end();
+}
+
 // The bubble -> chat-row mapping. This is chat_view.cpp's renderBubbles(), rule
 // for rule: the same labels, the same colour reference for each, the same
 // merging of tool results into the call that produced them, the same caps.
-std::vector<ChatRow> deriveChat(const std::vector<bubble_model::Bubble>& bubbles,
-                                bool reasoningExpanded) {
+//
+// The folding fields are derived HERE, not in the front-end: the merge rule that
+// decides which bubble belongs to which row lives in this function, so a second
+// copy of it in studio/ would be the drift this file exists to prevent.
+std::vector<ChatRow> deriveChat(const Source& src) {
+    const std::vector<bubble_model::Bubble>& bubbles = src.bubbles;
+    const bool reasoningExpanded = src.reasoningExpanded;
     std::vector<ChatRow> rows;
     const std::string cText = fieldName(&ThemeColors::text);
     const std::string cBorder = fieldName(&ThemeColors::border);
@@ -256,6 +311,29 @@ std::vector<ChatRow> deriveChat(const std::vector<bubble_model::Bubble>& bubbles
     const std::string cReasoning = fieldName(&ThemeColors::reasoningTextColor);
     const std::string cReasoningBody = fieldName(&ThemeColors::reasoningBodyText);
     const std::string cWarning = fieldName(&ThemeColors::todoInProgress);
+
+    // One speaker block, shared by the flat branch and by a skill-run container's
+    // children: two copies of "which role, vote, colour" would drift apart.
+    const auto fillSpeaker = [&](ChatRow& row, const bubble_model::Bubble& b) {
+        row.kind = "speaker";
+        row.speaker = b.speaker;
+        row.vote = b.isVote;
+        row.label = label(b.speaker, b.isVote ? std::string(" ") + kMidDot + " vote" : "");
+        row.labelColor = paletteFieldName(b.speaker);
+        row.borderColor = paletteFieldName(b.speaker);
+        row.text = b.content;
+        if (b.isVote) {
+            row.dissent = b.content.rfind("DISSENT", 0) == 0;
+            row.bold = true;
+            row.textColor = row.dissent ? fieldName(&ThemeColors::phaseError)
+                                        : fieldName(&ThemeColors::todoDone);
+        } else {
+            row.markdown = true;
+        }
+    };
+    // Which skill run a container belongs to, counted in transcript order: the
+    // header says "run #2" without anything extra being persisted.
+    std::vector<std::string> runOrder;
 
     const int total = static_cast<int>(bubbles.size());
     for (int i = 0; i < total; ++i) {
@@ -266,6 +344,62 @@ std::vector<ChatRow> deriveChat(const std::vector<bubble_model::Bubble>& bubbles
         row.labelColor = cText;
         row.extraColor = cToolResult;
         row.synthetic = b.synthetic;
+        // The key travels beside `bubbles`: a front-end that folds rows needs an
+        // identity that survives streaming appends and the oldest-200 trim, and a
+        // row index is neither.
+        row.key = i < static_cast<int>(src.bubbleKeys.size())
+                      ? src.bubbleKeys[static_cast<size_t>(i)]
+                      : std::string();
+
+        // A skill run's role messages: consecutive ones from the same run and the
+        // same role become ONE collapsible block. The grouping key is the id the
+        // run stamped on every message it wrote, so a replayed session groups
+        // exactly as the live one did -- and the id is not an index, so streaming
+        // appends cannot re-group what is already on screen.
+        if (b.role == "assistant" && !b.speaker.empty() && !b.skillRunId.empty()) {
+            ChatRow box;
+            box.borderColor = paletteFieldName(b.speaker);
+            box.labelColor = paletteFieldName(b.speaker);
+            box.textColor = cText;
+            box.extraColor = cToolResult;
+            box.kind = "skillrun";
+            box.speaker = b.speaker;
+            box.key = "s:" + b.skillRunId + ":" + b.speaker;
+            int j = i;
+            while (j < total) {
+                const auto& c = bubbles[j];
+                if (c.role != "assistant" || c.speaker != b.speaker || c.skillRunId != b.skillRunId)
+                    break;
+                ChatRow child;
+                child.borderColor = paletteFieldName(c.speaker);
+                child.textColor = cText;
+                child.labelColor = paletteFieldName(c.speaker);
+                child.extraColor = cToolResult;
+                child.key = j < static_cast<int>(src.bubbleKeys.size())
+                                ? src.bubbleKeys[static_cast<size_t>(j)]
+                                : std::string();
+                fillSpeaker(child, c);
+                box.children.push_back(std::move(child));
+                ++j;
+            }
+            // "run #2" is counted in transcript order: nothing extra to persist.
+            if (std::find(runOrder.begin(), runOrder.end(), b.skillRunId) == runOrder.end())
+                runOrder.push_back(b.skillRunId);
+            const int ordinal = static_cast<int>(std::find(runOrder.begin(), runOrder.end(),
+                                                           b.skillRunId) -
+                                                 runOrder.begin()) +
+                                1;
+            box.label = label(b.speaker);
+            box.summary = b.speaker + std::string(" ") + kMidDot + " run #" +
+                          std::to_string(ordinal) + std::string(" ") + kMidDot + " " +
+                          std::to_string(box.children.size()) +
+                          (box.children.size() == 1 ? " msg" : " msgs");
+            box.collapsible = true;
+            box.collapsed = src.skillsCollapsed && !containsKey(src.expandedKeys, box.key);
+            i = j - 1;
+            rows.push_back(std::move(box));
+            continue;
+        }
 
         if (b.role == "user") {
             row.kind = "user";
@@ -278,21 +412,7 @@ std::vector<ChatRow> deriveChat(const std::vector<bubble_model::Bubble>& bubbles
             row.textColor = cReasoningBody;
             addThinking(row, b.reasoningText, reasoningExpanded);
         } else if (b.role == "assistant" && !b.speaker.empty()) {
-            row.kind = "speaker";
-            row.speaker = b.speaker;
-            row.vote = b.isVote;
-            row.label = label(b.speaker, b.isVote ? std::string(" ") + kMidDot + " vote" : "");
-            row.labelColor = paletteFieldName(b.speaker);
-            row.borderColor = paletteFieldName(b.speaker);
-            row.text = b.content;
-            if (b.isVote) {
-                row.dissent = b.content.rfind("DISSENT", 0) == 0;
-                row.bold = true;
-                row.textColor = row.dissent ? fieldName(&ThemeColors::phaseError)
-                                            : fieldName(&ThemeColors::todoDone);
-            } else {
-                row.markdown = true;
-            }
+            fillSpeaker(row, b);
         } else if (b.role == "assistant") {
             row.kind = "assistant";
             if (b.hasReasoning) addThinking(row, b.reasoningText, reasoningExpanded);
@@ -314,13 +434,51 @@ std::vector<ChatRow> deriveChat(const std::vector<bubble_model::Bubble>& bubbles
             row.labelColor = cTool;
             row.text = b.content;
             row.textColor = cTool;
-            std::string results;
-            while (i + 1 < total && bubbles[i + 1].role == "tool_result") {
-                if (!results.empty()) results += kToolResultSep;
-                results += bubbles[i + 1].content;
-                ++i;
+            // Absorb BOTH kinds that belong to this call: its results and the
+            // diff a writing tool produced. Absorbing only tool_result stopped
+            // the loop dead on the diff, so with two calls in one turn the
+            // second result fell out as a stray "Result" card and each diff
+            // became a card of its own -- one call turned into four cards.
+            std::string results; // the compact one-liners (what the TUI draws)
+            std::string bodies;  // the real result texts (what an open row shows)
+            std::string diffs;
+            bool anyError = false;
+            int resultCount = 0;
+            int64_t totalMs = 0;
+            while (i + 1 < total) {
+                const auto& next = bubbles[i + 1];
+                if (next.role == "tool_result") {
+                    if (!results.empty()) results += kToolResultSep;
+                    results += next.content;
+                    if (!bodies.empty()) bodies += kToolResultSep;
+                    bodies += next.body.empty() ? next.content : next.body;
+                    if (next.durationMs > 0) totalMs += next.durationMs;
+                    // The persistence layer writes "[Error] " for a failed call
+                    // (models.cpp, Message::Tool), and storage keeps the content,
+                    // so the marker survives a replay.
+                    if (next.content.find("[Error]") != std::string::npos) anyError = true;
+                    ++resultCount;
+                    ++i;
+                } else if (next.role == "diff") {
+                    if (!diffs.empty()) diffs += "\n";
+                    diffs += next.content;
+                    ++i;
+                } else {
+                    break;
+                }
             }
             row.extra = capToolResult(results);
+            row.extraFull = bodies;
+            row.lines = resultCount > 0 ? countLines(bodies) : 0;
+            row.diffText = diffs;
+            row.diffSummary = diffSummaryOf(diffs);
+            row.durationText = formatDuration(totalMs);
+            row.status = resultCount == 0 ? std::string("pending")
+                                          : (anyError ? std::string("failed") : std::string("ok"));
+            row.summary = firstLine(b.content);
+            row.collapsible = resultCount > 0 || !diffs.empty();
+            if (row.collapsible)
+                row.collapsed = src.toolsCollapsed && !containsKey(src.expandedKeys, row.key);
         } else if (b.role == "tool_result") {
             row.kind = "result";
             row.label = label("Result");
@@ -339,6 +497,11 @@ std::vector<ChatRow> deriveChat(const std::vector<bubble_model::Bubble>& bubbles
         }
         rows.push_back(std::move(row));
     }
+    // A run that is still writing messages is the last block on screen and the
+    // agent is busy: that is the only "in progress" the view model can state
+    // without reading a clock.
+    if (src.busy && !rows.empty() && rows.back().kind == "skillrun")
+        rows.back().status = "running";
     return rows;
 }
 
@@ -379,7 +542,7 @@ Screen build(const Source& src) {
     s.promptFiles = src.promptFiles;
     s.queued = src.queued;
 
-    s.chat = deriveChat(src.bubbles, src.reasoningExpanded);
+    s.chat = deriveChat(src);
     s.streaming = deriveStreaming(src.phase, src.status);
 
     s.input = src.input;
@@ -476,6 +639,21 @@ nlohmann::json chatRowJson(const ChatRow& r) {
     j["vote"] = r.vote;
     j["dissent"] = r.dissent;
     j["synthetic"] = r.synthetic;
+    j["key"] = r.key;
+    j["collapsible"] = r.collapsible;
+    j["collapsed"] = r.collapsed;
+    j["summary"] = r.summary;
+    j["status"] = r.status;
+    j["diff_summary"] = r.diffSummary;
+    j["diff_text"] = r.diffText;
+    j["extra_full"] = r.extraFull;
+    j["lines"] = r.lines;
+    j["duration_text"] = r.durationText;
+    if (!r.children.empty()) {
+        nlohmann::json kids = nlohmann::json::array();
+        for (const auto& c : r.children) kids.push_back(chatRowJson(c));
+        j["children"] = kids;
+    }
     return j;
 }
 

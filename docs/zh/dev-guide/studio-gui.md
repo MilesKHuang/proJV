@@ -203,6 +203,18 @@ bottomHeight` 的原因——那类上一帧残留状态在这个文件里已经
 - **工具子进程只在恰好一个会话在跑时归属。** `IProcessRunner` 按设计一次一个子进程（`src/platform/iprocess_runner.h`）；两个会话排队时，正在跑的那个属于执行它的会话。
 - **Linux 上 GPU 是 `-`。** 内核只暴露整卡占用（amdgpu 的 `gpu_busy_percent`），没有按进程的；从整卡数字里分一份给会话，是把猜测包装成测量。Windows 的 PDH 实例名带 `pid_<n>`，那里的数字是真的。
 
+### 工具块折叠成一行
+
+聊天区把一次工具调用画成一行——三角、第一个调用、结果状态、被折起来的内容有多大——点击展开。哪个气泡属于哪一行的规则本来就在推导里，所以折叠也在那里算（`view_model::ChatRow` 的 `key`、`collapsible`、`collapsed`、`summary`、`status`、`diffSummary`、`diffText`、`extraFull`、`lines`）。
+
+- 一行由 `key`（`"<msgId>:<k>"`，在 `studio_app.cpp` 追加气泡处生成）识别，绝不用行号：流式追加和最旧 200 条的裁剪都会让行号错位。
+- `view_model::Source::toolsCollapsed` 是总开关，`expandedKeys` 是用户手工打开过的行——和 `reasoningExpanded` 同一个形状，所以 `build()` 仍是纯函数，快照仍可做基准测试。
+- 写文件工具的 diff 被吸进它自己那一行。它以前会让合并循环提前退出：一次回合两个调用时，第二个结果掉出来变成 "Result" 卡片，每份 diff 再各自成卡片。TUI 仍把 diff 画成独立块，那边同步改是另一个决定。
+- `extraFull` 存结果正文（`Bubble::body`）；`extra` 保留 TUI 的五条上限（截的是压缩后的展示串）。
+- 点击命中在 `EndChild` 之后判定（那里才拿得到该子窗口的矩形），并且消费点击的那一帧不再进 `TextSurface::handleInput`，否则一次按下既折叠行又开始选字。
+
+`proJV_studio --screenshot out.png [--frames N] [--demo-chat] [--expand KEY] [--scroll-up N]` 走真实绘制路径渲染，再读回帧缓冲写成 PNG。不引入图像库：`studio/png_writer.cpp` 直接写 stored deflate 块（见 `tests/unit/test_png_writer.cpp`）。`--demo-chat` 灌一份固定对话，验收图因此不依赖在线模型。
+
 ## 有意保留的差异
 
 - **一个窗口拥有多个会话。** TUI 是一进程一会话；studio 能并排多个 pane，各带自己的工作目录。这是 studio 的特性而不是共享推导：pane 状态住在 `studio/studio_app.h`，`view_model` 一个字段都没加。

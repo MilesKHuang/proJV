@@ -368,6 +368,7 @@ set(STUDIO_SOURCES
     ${STUDIO_DIR}/studio_ui.cpp
     ${STUDIO_DIR}/studio_leftbar.cpp
     ${STUDIO_DIR}/studio_modals.cpp
+    ${STUDIO_DIR}/png_writer.cpp
     # The design system: pure tokens + layout + text fitting (no ImGui), then the
     # widget kit that paints them.
     ${STUDIO_DIR}/design/tokens.cpp

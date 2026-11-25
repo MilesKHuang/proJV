@@ -146,6 +146,8 @@ bool Storage::ensureTables() {
                 image_paths       TEXT DEFAULT '',
                 synthetic         INTEGER DEFAULT 0,
                 diff              TEXT DEFAULT '',
+                duration_ms       INTEGER DEFAULT 0,
+                skill_run_id      TEXT DEFAULT '',
                 created_at        TEXT NOT NULL DEFAULT (datetime('now'))
             );
         )");
@@ -172,6 +174,20 @@ bool Storage::ensureTables() {
         // its own TUI bubble on replay). Display only -- never sent to the API.
         try {
             writeDb_->exec("ALTER TABLE messages ADD COLUMN diff TEXT DEFAULT ''");
+        } catch (const SQLite::Exception&) {
+            // Column already exists -- safe to ignore
+        }
+        // Migration: duration_ms (wall time of the tool call, shown on the tool
+        // row). Display only -- never sent to the API.
+        try {
+            writeDb_->exec("ALTER TABLE messages ADD COLUMN duration_ms INTEGER DEFAULT 0");
+        } catch (const SQLite::Exception&) {
+            // Column already exists -- safe to ignore
+        }
+        // Migration: skill_run_id (which skill run wrote this role message, so a
+        // replayed session folds the same way the live one did). Display only.
+        try {
+            writeDb_->exec("ALTER TABLE messages ADD COLUMN skill_run_id TEXT DEFAULT ''");
         } catch (const SQLite::Exception&) {
             // Column already exists -- safe to ignore
         }
@@ -235,8 +251,8 @@ int64_t Storage::insertMessage(const Message& msg) {
 
         SQLite::Statement stmt(*writeDb_, "INSERT INTO messages (role, content, reasoning_content, "
                                           "tool_call_id, name, token_count, image_paths, "
-                                          "synthetic, diff) "
-                                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                                          "synthetic, diff, duration_ms, skill_run_id) "
+                                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         stmt.bind(1, msg.role);
         stmt.bind(2, msg.content);
         stmt.bind(3, msg.reasoningContent);
@@ -246,6 +262,8 @@ int64_t Storage::insertMessage(const Message& msg) {
         stmt.bind(7, imagePathsToJson(msg.images));
         stmt.bind(8, msg.synthetic ? 1 : 0);
         stmt.bind(9, msg.diff);
+        stmt.bind(10, msg.durationMs);
+        stmt.bind(11, msg.skillRunId);
         stmt.exec();
 
         int64_t messageId = writeDb_->execAndGet("SELECT last_insert_rowid()").getInt64();
@@ -275,7 +293,8 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
         SQLite::Statement stmt(*readDb_,
                                "SELECT id, role, content, reasoning_content, tool_call_id, name, "
                                "COALESCE(image_paths, ''), COALESCE(synthetic, 0), "
-                               "COALESCE(diff, '') "
+                               "COALESCE(diff, ''), COALESCE(duration_ms, 0), "
+                               "COALESCE(skill_run_id, '') "
                                "FROM messages WHERE id > ? ORDER BY id");
         stmt.bind(1, sinceId);
 
@@ -291,6 +310,8 @@ std::vector<Message> Storage::queryMessages(int64_t sinceId) {
             msg.images = imagePathsFromJson(stmt.getColumn(6).getString());
             msg.synthetic = stmt.getColumn(7).getInt() != 0;
             msg.diff = stmt.getColumn(8).getString();
+            msg.durationMs = stmt.getColumn(9).getInt64();
+            msg.skillRunId = stmt.getColumn(10).getString();
 
             // Load tool calls for assistant messages
             if (msg.role == "assistant") {

@@ -51,6 +51,29 @@ struct Session {
     // drift apart (they used to be two separate 1024s).
     static size_t estimateImageTokens(size_t imageCount);
 
+    // --- Request-side image budget (vision) ---------------------------------
+    //
+    // A request carries the WHOLE history, and an attachment is re-encoded from
+    // its path on the way out (models.cpp imageUrlFor), so a pasted screenshot
+    // rides along on every later turn. Sixteen references to one 5 MB shot build
+    // a ~100 MB body and the gateway answers HTTP 413; the history cannot shrink,
+    // so no retry and no fresh session message can recover -- the turn is dead.
+    //
+    // The fix is here because it is a fact about the wire format, not about the
+    // transcript: these work on the REQUEST copy of the history
+    // (Agent::buildChatRequest), never on what is stored. The bubble list keeps
+    // its images, the DB keeps its rows, and only the outgoing body loses bytes.
+    //
+    // stripOldImages: the newest message that carries attachments keeps ALL of
+    // them; every older message has them replaced by one text note. The rule keys
+    // on "newest message WITH images", not "the last message": a turn interleaves
+    // tool results after the user's screenshot, and keying on the last message
+    // would drop the image the user just sent.
+    //
+    // Both return how many attachments were dropped, for the debug log.
+    static size_t stripOldImages(std::vector<Message>& msgs);
+    static size_t stripAllImages(std::vector<Message>& msgs);
+
     // Quick detection: returns true if orphaned tool messages exist (O(n) scan).
     // Does NOT modify messages. Call before buildRequestBody as a cheap check.
     bool hasOrphanedTools() const;

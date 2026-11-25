@@ -249,3 +249,78 @@ TEST_CASE("model support: vision is a Flash-line capability") {
     CHECK(modelSupportsVision("deepseek-v4-flash-vision-exp"));
     CHECK_FALSE(modelSupportsVision("deepseek-v4-pro"));
 }
+
+// -- Request-side image budget (Session::stripOldImages) ---------------------
+//
+// Regression: a request carries the whole history and every attachment is
+// re-encoded from its path (models.cpp imageUrlFor), so 16 references to one
+// 4.9 MB screenshot built a ~100 MB body against the gateway's 48 MiB limit and
+// the session could never send anything again -- every retry was 413.
+
+TEST_CASE("image budget: one message can never reach the 48 MiB gateway limit") {
+    constexpr size_t kGatewayBodyLimit = 48ull * 1024 * 1024;
+    CHECK(image_input::kMaxTotalEncodedBytes < kGatewayBodyLimit);
+    // A long transcript must still fit next to a full image message.
+    CHECK(image_input::kMaxTotalEncodedBytes + 16ull * 1024 * 1024 <= kGatewayBodyLimit);
+    // The per-file cap stays under the documented per-image cap (32 MiB).
+    CHECK(image_input::kMaxImageBytes <= 32ull * 1024 * 1024);
+}
+
+namespace {
+
+Message withImages(const std::string& text, size_t n) {
+    Message m = Message::User(text);
+    for (size_t i = 0; i < n; ++i) {
+        ImageAttachment img;
+        img.path = "D:/ws/shots/img" + std::to_string(i) + ".png";
+        img.dataUrl = "data:image/png;base64,AAAA";
+        m.images.push_back(std::move(img));
+    }
+    return m;
+}
+
+} // namespace
+
+TEST_CASE("stripOldImages: only the newest image-carrying message keeps its bytes") {
+    std::vector<Message> msgs;
+    msgs.push_back(withImages("first look", 1));
+    msgs.push_back(Message::Assistant("ok"));
+    msgs.push_back(withImages("second look", 2));
+    // A tool result lands AFTER the screenshot: keying the rule on "the last
+    // message" instead of "the last message WITH images" would drop the picture
+    // the user just sent.
+    msgs.push_back(Message::Tool("call-1", "exec_shell", "done"));
+    msgs.push_back(Message::Assistant("all set"));
+
+    CHECK(Session::stripOldImages(msgs) == 1);
+    CHECK(msgs[0].images.empty());
+    CHECK(msgs[0].content.find("[image omitted") != std::string::npos);
+    CHECK(msgs[2].images.size() == 2);       // the newest image message survives
+    CHECK(msgs[2].content == "second look"); // and its text is untouched
+    CHECK(msgs[3].content == "done");        // tool results are never rewritten
+
+    // Idempotent: the retry path rebuilds the request and finds nothing to drop.
+    CHECK(Session::stripOldImages(msgs) == 0);
+}
+
+TEST_CASE("stripOldImages: an image-only message stays a legal, non-empty turn") {
+    std::vector<Message> msgs;
+    msgs.push_back(withImages("", 1));
+    msgs.push_back(withImages("later", 1));
+
+    CHECK(Session::stripOldImages(msgs) == 1);
+    CHECK(msgs[0].images.empty());
+    CHECK_FALSE(msgs[0].content.empty()); // empty content is an HTTP 400
+}
+
+TEST_CASE("stripAllImages: the 413 fuse leaves no attachment behind") {
+    std::vector<Message> msgs;
+    msgs.push_back(withImages("a", 2));
+    msgs.push_back(withImages("b", 3));
+
+    CHECK(Session::stripAllImages(msgs) == 5);
+    for (const auto& m : msgs) {
+        CHECK(m.images.empty());
+        CHECK_FALSE(m.content.empty());
+    }
+}

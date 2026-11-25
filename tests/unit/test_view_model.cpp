@@ -316,3 +316,146 @@ TEST_CASE("speaker_slots: stable slot per name, six theme fields") {
     // Out of range clamps instead of reading past the table.
     CHECK(fieldName(speaker_slots::paletteField(99)) == "phaseStreaming");
 }
+
+// ---- folding (design 08.6, batch 1) --------------------------------------
+
+TEST_CASE("view_model: a diff belongs to the tool row that produced it") {
+    // One call writes a file and reads another: result+diff, result+diff. The
+    // merge loop used to stop on the first diff, so call 2's result fell out as a
+    // stray "Result" row and each diff became a row of its own -- one turn drew
+    // four cards for one tool block.
+    const std::vector<Bubble> bubbles = {
+        mk("tool_call", "write_file: a.cpp\nread_file: b.cpp"),
+        mk("tool_result", "wrote a.cpp"),
+        mk("diff", "--- a/a.cpp\n+++ b/a.cpp\n@@ -1 +1,2 @@\n-old\n+new\n+more\n"),
+        mk("tool_result", "b.cpp body"),
+        mk("diff", "--- a/b.cpp\n+++ b/b.cpp\n@@ -1 +1 @@\n-x\n+y\n"),
+    };
+    const auto chat = rows(bubbles);
+    REQUIRE(chat.size() == 1); // no stray "Result", no separate "Diff"
+    CHECK(chat[0].kind == "tool");
+    CHECK(chat[0].status == "ok");
+    // "--- a/..." is a file header, not a removed line; "+++" counts the file.
+    CHECK(chat[0].diffSummary == std::string("+3 -2 \xc2\xb7 2 files"));
+    CHECK(chat[0].diffText.find("+more") != std::string::npos);
+    CHECK(chat[0].extraFull.find("wrote a.cpp") != std::string::npos);
+    CHECK(chat[0].extraFull.find("b.cpp body") != std::string::npos);
+    CHECK(chat[0].collapsible);
+}
+
+TEST_CASE("view_model: the open body is uncapped while `extra` keeps the TUI's cap") {
+    Bubble call = mk("tool_call", "exec_shell: dump");
+    // `content` is the compact display string the TUI draws (and caps at five
+    // lines); `body` is the result itself, which only an opened row shows.
+    Bubble res = mk("tool_result", "exec_shell (400 bytes)  -> row0\nrow1\nrow2\nrow3\nrow4\n"
+                                   "row5\nrow6");
+    for (int i = 0; i < 40; ++i) res.body += "row" + std::to_string(i) + "\n";
+    const auto chat = rows({call, res});
+    REQUIRE(chat.size() == 1);
+    CHECK(chat[0].extra.find("row4") != std::string::npos);
+    CHECK(chat[0].extra.find("row6") == std::string::npos);      // the five-line cap
+    CHECK(chat[0].extraFull.find("row39") != std::string::npos); // what opening shows
+    CHECK(chat[0].lines >= 40);
+}
+
+TEST_CASE("view_model: a tool row's status comes from the results it absorbed") {
+    Source src;
+    src.bubbles = {mk("tool_call", "exec_shell: make")};
+    Screen s = build(src);
+    REQUIRE(s.chat.size() == 1);
+    CHECK(s.chat[0].status == "pending"); // the call is out, the result is not in
+    CHECK(!s.chat[0].collapsible);        // nothing hidden yet: it stays a line
+
+    Bubble call = mk("tool_call", "write_file: a.cpp");
+    Bubble failed = mk("tool_result", "write_file (12 bytes)  -> [Error] denied");
+    src.bubbles = {call, failed};
+    s = build(src);
+    REQUIRE(s.chat.size() == 1);
+    CHECK(s.chat[0].status == "failed");
+    CHECK(s.chat[0].collapsible);
+}
+
+TEST_CASE("view_model: a skill run folds into one block per role") {
+    const auto ran = [](const std::string& role, const std::string& text, const std::string& run,
+                        bool vote = false) {
+        Bubble b = mkSpeaker(role, text, vote);
+        b.skillRunId = run;
+        return b;
+    };
+    Source src;
+    src.bubbles = {
+        ran("Analyst", "first", "run-a"),      ran("Analyst", "second", "run-a"),
+        ran("Critic", "objection", "run-a"),   ran("Critic", "DISSENT: no", "run-a", true),
+        ran("Writer", "plan", "run-a"),        ran("Analyst", "next run", "run-b"),
+    };
+    Screen s = build(src);
+    REQUIRE(s.chat.size() == 4); // three role blocks for run-a, one for run-b
+    CHECK(s.chat[0].kind == "skillrun");
+    CHECK(s.chat[0].speaker == "Analyst");
+    CHECK(s.chat[0].children.size() == 2);
+    CHECK(s.chat[1].children.size() == 2); // the vote is a child, not a block of its own
+    CHECK(s.chat[2].children.size() == 1);
+    CHECK(s.chat[0].summary.find("run #1") != std::string::npos);
+    CHECK(s.chat[3].summary.find("run #2") != std::string::npos);
+    // The key carries the persisted run id, so a replay regroups identically.
+    CHECK(s.chat[0].key == "s:run-a:Analyst");
+
+    src.skillsCollapsed = true;
+    s = build(src);
+    REQUIRE(s.chat.size() == 4);
+    CHECK(s.chat[0].collapsed);
+    src.expandedKeys = {"s:run-a:Analyst"};
+    s = build(src);
+    CHECK(!s.chat[0].collapsed);
+    CHECK(s.chat[1].collapsed);
+
+    // Without a run id the messages stay flat rows, exactly as before.
+    src.skillsCollapsed = false;
+    src.bubbles = {mkSpeaker("Analyst", "loose", false)};
+    REQUIRE(build(src).chat.size() == 1);
+    CHECK(build(src).chat[0].kind == "speaker");
+}
+
+TEST_CASE("view_model: a tool row carries its own clock") {
+    Bubble call = mk("tool_call", "exec_shell: build");
+    Bubble res = mk("tool_result", "exec_shell (9 bytes)  -> done");
+    res.durationMs = 12400;
+    const auto chat = rows({call, res});
+    REQUIRE(chat.size() == 1);
+    CHECK(chat[0].durationText == "12.4s");
+
+    Bubble fast = mk("tool_result", "x (1 bytes)  -> y");
+    fast.durationMs = 850;
+    CHECK(rows({call, fast})[0].durationText == "850ms");
+    // An older session has no timing: empty, not "0ms".
+    CHECK(rows({call, mk("tool_result", "x (1 bytes)  -> y")})[0].durationText.empty());
+}
+
+TEST_CASE("view_model: folding is keyed by the row, never by its index") {
+    Source src;
+    src.bubbles = {mk("tool_call", "read_file: a.cpp"), mk("tool_result", "body")};
+    src.bubbleKeys = {"m7:0", "m8:0"};
+    src.toolsCollapsed = true;
+
+    Screen s = build(src);
+    REQUIRE(s.chat.size() == 1);
+    CHECK(s.chat[0].key == "m7:0");
+    CHECK(s.chat[0].collapsed); // the default: tool blocks fold
+
+    src.expandedKeys = {"m7:0"}; // the user opened THIS row
+    s = build(src);
+    CHECK(!s.chat[0].collapsed);
+
+    // A key that is no longer in the list (the oldest rows were trimmed) must not
+    // open some other row by accident.
+    src.expandedKeys = {"m1:0"};
+    s = build(src);
+    CHECK(s.chat[0].collapsed);
+
+    // The global switch off is today's screen: everything open.
+    src.toolsCollapsed = false;
+    src.expandedKeys.clear();
+    s = build(src);
+    CHECK(!s.chat[0].collapsed);
+    CHECK(s.chat[0].collapsible); // still openable, just not folded now
+}
