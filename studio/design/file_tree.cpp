@@ -54,8 +54,10 @@ std::vector<Run> splitRuns(const std::string& name) {
             bool saturated = false;
             for (char c : digits) {
                 const unsigned long long digit = static_cast<unsigned long long>(c - '0');
-                if (!saturated && value > (~0ull - digit) / 10u) saturated = true;
-                else if (!saturated) value = value * 10u + digit;
+                if (!saturated && value > (~0ull - digit) / 10u)
+                    saturated = true;
+                else if (!saturated)
+                    value = value * 10u + digit;
             }
             r.value = saturated ? ~0ull : value;
             runs.push_back(std::move(r));
@@ -206,7 +208,9 @@ bool Tree::load(const std::string& dir, std::string* err) {
     return node->error.empty();
 }
 
-bool Tree::isExpanded(const std::string& dir) const { return expanded_.count(dir) != 0; }
+bool Tree::isExpanded(const std::string& dir) const {
+    return expanded_.count(dir) != 0;
+}
 
 void Tree::expand(const std::string& dir) {
     expanded_.insert(dir);
@@ -214,11 +218,15 @@ void Tree::expand(const std::string& dir) {
     load(dir, &err);
 }
 
-void Tree::collapse(const std::string& dir) { expanded_.erase(dir); }
+void Tree::collapse(const std::string& dir) {
+    expanded_.erase(dir);
+}
 
 void Tree::toggle(const std::string& dir) {
-    if (isExpanded(dir)) collapse(dir);
-    else expand(dir);
+    if (isExpanded(dir))
+        collapse(dir);
+    else
+        expand(dir);
 }
 
 void Tree::refresh() {
@@ -231,7 +239,8 @@ void Tree::refresh() {
         if (fs::is_directory(fs::path(dir), ec) && !ec) keep.push_back(dir);
     }
     expanded_.clear();
-    for (const std::string& dir : keep) expanded_.insert(dir);
+    for (const std::string& dir : keep)
+        expanded_.insert(dir);
 
     refreshNode(rootNode_);
     rootError_ = rootNode_.error;

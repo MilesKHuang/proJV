@@ -42,7 +42,8 @@ struct Selection {
         active = false;
     }
     // Normalised order: the earlier end first.
-    void ordered(int* blockA_, int* lineA_, int* colA_, int* blockB_, int* lineB_, int* colB_) const;
+    void ordered(int* blockA_, int* lineA_, int* colA_, int* blockB_, int* lineB_,
+                 int* colB_) const;
 };
 
 // Per-frame state: one drag in progress, the hit boxes of the last frame.

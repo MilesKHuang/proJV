@@ -9,7 +9,8 @@ void pushSample(Clock& c, long long nowMs, int tokens) {
     // Trim by time first: the window is about the last seconds, not the last N
     // events, so a fast stream and a slow one are averaged over the same span.
     int first = 0;
-    while (first + 1 < c.sampleCount && c.sampleMs[first] < nowMs - kWindowMs) ++first;
+    while (first + 1 < c.sampleCount && c.sampleMs[first] < nowMs - kWindowMs)
+        ++first;
     if (first > 0) {
         for (int i = first; i < c.sampleCount; ++i) {
             c.sampleMs[i - first] = c.sampleMs[i];
@@ -43,7 +44,9 @@ void begin(Clock& c, long long nowMs, int completionTokens) {
     pushSample(c, nowMs, c.tokensAtStart);
 }
 
-void end(Clock& c) { c.running = false; }
+void end(Clock& c) {
+    c.running = false;
+}
 
 double elapsedSeconds(const Clock& c, long long nowMs) {
     if (!c.running) return 0.0;
@@ -64,7 +67,8 @@ double tokensPerSecond(const Clock& c, long long nowMs) {
     // only on the next sample) is what makes the figure fall to 0 after the model
     // stops talking instead of freezing at its last value.
     int first = 0;
-    while (first + 1 < c.sampleCount && c.sampleMs[first] < nowMs - kWindowMs) ++first;
+    while (first + 1 < c.sampleCount && c.sampleMs[first] < nowMs - kWindowMs)
+        ++first;
     if (c.sampleCount - first < 2) return 0.0;
     const long long span = c.sampleMs[c.sampleCount - 1] - c.sampleMs[first];
     if (span < 300) return 0.0;

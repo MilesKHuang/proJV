@@ -68,9 +68,9 @@ void paintLabel(const std::string& label, const Rect& box, ImU32 color, Type tie
 // Black or white, whichever the fill is not: a label on the accent has to stay
 // legible on every theme, including a light one whose accent is pale.
 ImU32 contrastOn(ImU32 bg) {
-    const float lum =
-        0.2126f * ((bg >> IM_COL32_R_SHIFT) & 0xFF) + 0.7152f * ((bg >> IM_COL32_G_SHIFT) & 0xFF) +
-        0.0722f * ((bg >> IM_COL32_B_SHIFT) & 0xFF);
+    const float lum = 0.2126f * ((bg >> IM_COL32_R_SHIFT) & 0xFF) +
+                      0.7152f * ((bg >> IM_COL32_G_SHIFT) & 0xFF) +
+                      0.0722f * ((bg >> IM_COL32_B_SHIFT) & 0xFF);
     return lum < 150.0f ? IM_COL32(255, 255, 255, 255) : IM_COL32(17, 17, 17, 255);
 }
 
@@ -242,7 +242,8 @@ void fittedText(const Metrics& m, const Rect& box, const std::string& s, ImU32 c
     popType();
 
     float sizes[8] = {0.0f};
-    for (int i = 0; i < n; ++i) sizes[i] = tokens::typePx(m, tiers[i]);
+    for (int i = 0; i < n; ++i)
+        sizes[i] = tokens::typePx(m, tiers[i]);
     const int idx = fit::bestTier(s, box.w, sizes, n, unit);
     const Type chosen = tiers[std::min(idx, n - 1)];
 
@@ -456,8 +457,8 @@ int segmented(const Metrics& m, const std::vector<std::string>& options, int sel
     return chosen;
 }
 
-bool field(const Metrics& m, const char* id, std::string* text, const char* hintText,
-           bool password, float width) {
+bool field(const Metrics& m, const char* id, std::string* text, const char* hintText, bool password,
+           float width) {
     if (!text) return false;
     const Palette p = palette();
     const float lineH = tokens::linePx(m, Type::Body);
@@ -552,9 +553,11 @@ bool listRowAt(const Metrics& m, const Rect& box, const std::string& label, bool
     // A label starting with "##" is id-only, ImGui's own convention: the panels pass
     // a row's path there (unique and stable) and draw the row's text themselves.
     const bool drawLabel = !(label.size() >= 2 && label[0] == '#' && label[1] == '#');
-    if (drawLabel) textAt(m, textBox, label, disabled ? p.textDim : p.text, tier, false, 0.0f, 0.5f);
+    if (drawLabel)
+        textAt(m, textBox, label, disabled ? p.textDim : p.text, tier, false, 0.0f, 0.5f);
     return clicked && !disabled;
 }
+
 void badge(const Metrics& m, const Rect& box, const std::string& label, ImU32 fg, ImU32 bg) {
     if (box.empty()) return;
     fillRound(box, bg, tokens::radiusPx(m, Radius::Pill));
@@ -588,7 +591,9 @@ float scrollFromBottom() {
     return std::max(0.0f, ImGui::GetScrollMaxY() - ImGui::GetScrollY());
 }
 
-void scrollToBottom() { ImGui::SetScrollY(ImGui::GetScrollMaxY()); }
+void scrollToBottom() {
+    ImGui::SetScrollY(ImGui::GetScrollMaxY());
+}
 
 bool endScroll(bool follow) {
     // Careful: GetScrollMaxY() here is the PREVIOUS frame's content height

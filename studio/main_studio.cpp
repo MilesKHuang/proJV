@@ -38,7 +38,8 @@ namespace {
 // parser, so `projv-studio --version` prints the same version string.
 int printMetaIfAsked(int argc, char** argv) {
     std::vector<std::string> args;
-    for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+    for (int i = 1; i < argc; ++i)
+        args.emplace_back(argv[i]);
     std::string text;
     if (const auto exitCode = cli_args::parseMetaArgs(args, text)) {
         std::fputs(text.c_str(), stdout);
@@ -129,7 +130,6 @@ HWND g_hwnd = nullptr;
 int g_width = 1280;
 int g_height = 800;
 
-
 // The IME composition and candidate windows follow the caret. imgui_impl_win32
 // 1.93 does NOT install a Platform_SetImeDataFn, so without this the candidate
 // window sits in a corner on a Chinese input method (test A1 in the design).
@@ -162,9 +162,8 @@ LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         wndlogInit = true;
         wndlog = std::fopen("wnd.log", "w");
     }
-    if (wndlog &&
-        (msg == WM_KEYDOWN || msg == WM_CHAR || msg == WM_SYSKEYDOWN || msg == WM_SETFOCUS ||
-         msg == WM_KILLFOCUS || msg == WM_ACTIVATE)) {
+    if (wndlog && (msg == WM_KEYDOWN || msg == WM_CHAR || msg == WM_SYSKEYDOWN ||
+                   msg == WM_SETFOCUS || msg == WM_KILLFOCUS || msg == WM_ACTIVATE)) {
         std::fprintf(wndlog, "msg=%u wparam=%llu handled=%lld\n", msg,
                      static_cast<unsigned long long>(w), static_cast<long long>(handled));
         std::fflush(wndlog);
@@ -546,7 +545,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (storage.empty()) storage.push_back("proJV_studio");
     std::vector<char*> argv;
     argv.reserve(storage.size());
-    for (auto& s : storage) argv.push_back(s.data());
+    for (auto& s : storage)
+        argv.push_back(s.data());
     return runStudio(static_cast<int>(argv.size()), argv.data());
 }
 #endif // _WIN32

@@ -86,7 +86,7 @@ struct Node {
     float fixedH = 0.0f;
     float percentW = 0.0f; // 0..1 of the parent's inner width
     float percentH = 0.0f;
-    float grow = 1.0f;     // weight when policy is Grow
+    float grow = 1.0f; // weight when policy is Grow
     float minW = 0.0f;
     float minH = 0.0f;
     float maxW = 0.0f; // 0 = unbounded

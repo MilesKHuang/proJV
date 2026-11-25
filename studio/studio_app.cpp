@@ -47,7 +47,6 @@ double doubleOr(const std::string& s, double fallback) {
     }
 }
 
-
 long long monotonicMs() {
     using namespace std::chrono;
     return static_cast<long long>(
@@ -107,9 +106,9 @@ void App::bindActive() {
     if (active_ >= static_cast<int>(panes_.size())) active_ = static_cast<int>(panes_.size()) - 1;
     // A pane that is still starting has a runtime whose agent and database do not
     // exist yet: the turn-driving code must see "no runtime rather than a half-
- // built one. That read was the access violation reported on + New.
- Pane& pane = *panes_[static_cast<size_t>(active_)];
- runtime_ = pane.state.load() == Pane::State::Ready ? pane.rt.get() : nullptr;
+    // built one. That read was the access violation reported on + New.
+    Pane& pane = *panes_[static_cast<size_t>(active_)];
+    runtime_ = pane.state.load() == Pane::State::Ready ? pane.rt.get() : nullptr;
 }
 
 // The callbacks below run on that pane's TURN thread. None of them touches a
@@ -350,10 +349,9 @@ bool App::closePane(int index) {
 float App::sourceCost() const {
     if (!runtime_) return 0.0f;
     const AppConfig& cfg = runtime_->config();
-    return static_cast<float>(runtime_->promptTokens() *
-                                  lookupModelPrice(cfg.modelPrices, cfg.model, true) * 1e-6 +
-                              runtime_->completionTokens() *
-                                  lookupModelPrice(cfg.modelPrices, cfg.model, false) * 1e-6);
+    return static_cast<float>(
+        runtime_->promptTokens() * lookupModelPrice(cfg.modelPrices, cfg.model, true) * 1e-6 +
+        runtime_->completionTokens() * lookupModelPrice(cfg.modelPrices, cfg.model, false) * 1e-6);
 }
 
 // ---- chat projection -----------------------------------------------------
@@ -369,8 +367,8 @@ void App::fillSource() {
     s.version = PROJV_VERSION;
     s.modal = modal_;
     s.dock = dock_;
-    s.phase = demoBusy_ ? AgentPhase::ExecutingTools
-                        : (runtime_ ? runtime_->phase() : AgentPhase::Idle);
+    s.phase =
+        demoBusy_ ? AgentPhase::ExecutingTools : (runtime_ ? runtime_->phase() : AgentPhase::Idle);
     s.busy = busy() || demoBusy_;
     s.spinnerFrame = spinnerFrame_;
     s.model = runtime_ ? runtime_->config().model : std::string();
@@ -403,8 +401,8 @@ void App::fillSource() {
         if (demoBusy_ && !demoStreamText_.empty()) s.status.streamingText = demoStreamText_;
         const std::string& streamed = s.status.streamingText;
         if (active().clock.running && !streamed.empty()) {
-            const size_t tokens = estimateTokensForText(streamed) +
-                                  estimateTokensForText(s.status.reasoningText);
+            const size_t tokens =
+                estimateTokensForText(streamed) + estimateTokensForText(s.status.reasoningText);
             work_clock::noteTokens(active().clock, monotonicMs(), static_cast<int>(tokens));
         }
 
@@ -433,10 +431,9 @@ void App::fillSource() {
             row.name = a.displayName;
             row.tag = "[" + view_model::truncateToCols(a.displayName, 10) + "]";
             row.idle = a.activity == SkillRunner::AgentActivity::Idle;
-            row.activity = row.idle
-                               ? "idle"
-                               : (a.activity == SkillRunner::AgentActivity::Error ? "error"
-                                                                                 : "working");
+            row.activity =
+                row.idle ? "idle"
+                         : (a.activity == SkillRunner::AgentActivity::Error ? "error" : "working");
             row.slot = static_cast<int>(speaker_slots::paletteSlot(a.displayName));
             std::string detail = view_model::lastNarrationLine(a.status);
             if (detail.empty()) detail = row.idle ? std::string() : (row.activity + "...");
@@ -456,7 +453,8 @@ void App::fillSource() {
     }
 
     s.slashRows.clear();
-    for (const auto& c : slashRows_) s.slashRows.push_back({c.name, c.args, c.desc});
+    for (const auto& c : slashRows_)
+        s.slashRows.push_back({c.name, c.args, c.desc});
     s.slashOpen = slashOpen_;
     s.slashSelected = slashSelected_;
 
@@ -553,7 +551,8 @@ void App::fillModalSource(view_model::Source& s) {
         s.open.visible = true;
         s.open.title = "Open Session";
         s.open.hint = "Esc close | Up/Down select | Enter open";
-        for (const auto& p : sessionPaths()) s.open.rows.push_back(p);
+        for (const auto& p : sessionPaths())
+            s.open.rows.push_back(p);
         if (s.open.rows.empty()) s.open.rows.push_back("(no sessions)");
         s.open.selected = listSelected_;
         return;
@@ -577,7 +576,8 @@ void App::fillModalSource(view_model::Source& s) {
     if (modal_ == "theme_editor") {
         s.themeEditor.visible = true;
         s.themeEditor.title = "Theme Editor";
-        for (const auto& f : themeColorFields()) s.themeEditor.fields.push_back(f.name);
+        for (const auto& f : themeColorFields())
+            s.themeEditor.fields.push_back(f.name);
         s.themeEditor.selected = themeField_;
         if (themeField_ >= 0 && themeField_ < static_cast<int>(themeColorFields().size()))
             s.themeEditor.field = themeColorFields()[static_cast<size_t>(themeField_)].name;
@@ -589,7 +589,8 @@ void App::fillModalSource(view_model::Source& s) {
     if (modal_ == "help") {
         s.help.visible = true;
         s.help.title = "Help (F1)";
-        for (const auto& h : help_text::quickHints()) s.help.rows.push_back({h.key, h.desc});
+        for (const auto& h : help_text::quickHints())
+            s.help.rows.push_back({h.key, h.desc});
         s.help.hint = "Enter, Esc or F1 closes";
         s.help.buttons = {"Close"};
         return;
@@ -621,7 +622,8 @@ void App::fillModalSource(view_model::Source& s) {
         s.approval.command = cmd.empty() ? "(arguments unreadable)" : cmd;
         const auto files = approval_logic::extractDeleteFiles(cmd);
         const size_t shown = std::min<size_t>(files.size(), 10);
-        for (size_t i = 0; i < shown; ++i) s.approval.targets.push_back(files[i]);
+        for (size_t i = 0; i < shown; ++i)
+            s.approval.targets.push_back(files[i]);
         s.approval.moreTargets = static_cast<int>(files.size() - shown);
         const bool canAlways = approvedAlways();
         s.approval.showAlways = canAlways;
@@ -671,7 +673,8 @@ void App::onInputEdited() {
     // exactly what the user means -- and a newline after the name counts as that
     // separator, or the menu would hang over the composer for good.
     const size_t sp = active().input.find_first_of(" \t\n");
-    const bool bare = !active().input.empty() && active().input[0] == '/' && sp == std::string::npos;
+    const bool bare =
+        !active().input.empty() && active().input[0] == '/' && sp == std::string::npos;
     if (!bare) {
         slashOpen_ = false;
         return;
@@ -786,7 +789,8 @@ void App::saveConfigFromForm() {
     next.maxTokens =
         std::clamp(intOr(form_.maxTokens, next.maxTokens), kMinOutputTokens, kMaxOutputTokens);
     next.temperature = std::clamp(doubleOr(form_.temperature, next.temperature), 0.0, 2.0);
-    next.reasoningEffort = kEffortValues()[static_cast<size_t>(std::clamp(form_.effortIndex, 0, 3))];
+    next.reasoningEffort =
+        kEffortValues()[static_cast<size_t>(std::clamp(form_.effortIndex, 0, 3))];
     const int cw = intOr(form_.contextWindow, static_cast<int>(next.contextWindow));
     next.contextWindow = cw < 0 ? 0 : static_cast<size_t>(cw);
     next.cppCompilerPath = form_.cppCompiler;
@@ -831,7 +835,8 @@ void App::openModelModal() {
     refreshModelRows();
     listSelected_ = 0;
     for (size_t i = 0; i < modelRows_.size(); ++i) {
-        if (runtime_ && modelRows_[i] == runtime_->config().model) listSelected_ = static_cast<int>(i);
+        if (runtime_ && modelRows_[i] == runtime_->config().model)
+            listSelected_ = static_cast<int>(i);
     }
     modal_ = "model";
 }
@@ -862,7 +867,8 @@ void App::refreshModelRows() {
     modelRows_.clear();
     if (runtime_) {
         auto models = runtime_->getAvailableModels();
-        for (const auto& m : models) modelRows_.push_back(m.id);
+        for (const auto& m : models)
+            modelRows_.push_back(m.id);
         if (modelRows_.empty()) {
             if (runtime_->modelsLoading())
                 modelRows_.push_back("(loading models...)");
@@ -950,7 +956,8 @@ void App::themeSelect(int index) {
     if (themeField_ >= 0 && themeField_ < static_cast<int>(themeColorFields().size()))
         ThemeManager::instance().current();
     themeField_ = index;
-    themeHex_ = ThemeManager::instance().current().*(themeColorFields()[static_cast<size_t>(index)].member);
+    themeHex_ =
+        ThemeManager::instance().current().*(themeColorFields()[static_cast<size_t>(index)].member);
 }
 
 void App::themeApply() {
@@ -1063,7 +1070,9 @@ int App::takeScrollRequest() {
     return n;
 }
 
-bool App::followEnabled() const { return active().followBottom; }
+bool App::followEnabled() const {
+    return active().followBottom;
+}
 
 void App::refuseIfBusy(std::string* why) const {
     if (busy() && why) *why = "refused: a turn is running";
@@ -1255,7 +1264,8 @@ void App::refreshChat(Pane& pane) {
     pane.lastMessageId = 0;
     harvestSpeakers(pane);
     auto msgs = pane.rt->agent()->getNewMessagesSince(0);
-    for (const auto& msg : msgs) appendDerived(pane, msg);
+    for (const auto& msg : msgs)
+        appendDerived(pane, msg);
 }
 
 void App::toggleRowCollapsed(const std::string& key) {
@@ -1302,11 +1312,11 @@ void App::loadDemoChat() {
         m.diff = diff;
         // A real ToolResult carries the wall time the agent measured around the
         // registry call; the demo values are in the same range as the real ones.
-        m.durationMs = name == "read_file"     ? 850
-                       : name == "grep_files"  ? 240
-                       : name == "write_file"  ? 1400
-                       : name == "exec_shell"  ? 12400
-                                               : 780;
+        m.durationMs = name == "read_file"    ? 850
+                       : name == "grep_files" ? 240
+                       : name == "write_file" ? 1400
+                       : name == "exec_shell" ? 12400
+                                              : 780;
         push(std::move(m));
     };
 
@@ -1315,7 +1325,8 @@ void App::loadDemoChat() {
     call(1, "read_file", "path", "src/core/view_model.cpp");
     {
         std::string body;
-        for (int i = 0; i < 30; ++i) body += "  // line " + std::to_string(i + 250) + "\n";
+        for (int i = 0; i < 30; ++i)
+            body += "  // line " + std::to_string(i + 250) + "\n";
         result("read_file", body, "", false);
     }
     call(2, "grep_files", "pattern", "tool_result");
@@ -1324,7 +1335,8 @@ void App::loadDemoChat() {
            "D:\\ws\\proJV\\src\\core\\view_model.cpp:318: while (i + 1 < total && ...)\n"
            "D:\\ws\\proJV\\src\\tui\\chat_view.cpp:224: while (i + 1 < total && ...)\n",
            "", false);
-    say("合并循环只有一个落点：`view_model.cpp:318`。diff 会让这个循环提前退出，所以同一次回合里第二个结果会掉出来变成独立卡片。");
+    say("合并循环只有一个落点：`view_model.cpp:318`。diff "
+        "会让这个循环提前退出，所以同一次回合里第二个结果会掉出来变成独立卡片。");
 
     user("把它做出来，然后发我看效果。");
     say("先加结构字段，再把 diff 吸进工具行，最后加点击。");
@@ -1367,7 +1379,8 @@ void App::loadDemoChat() {
     pane.knownSpeakers.insert("Writer");
     const std::string run = "skill-1761226800000";
     auto roleMsg = [&](const std::string& role, const std::string& kind, const std::string& text) {
-        Message m = Message::Assistant("**[" + role + (kind == "vote" ? " vote" : "") + "]** " + text);
+        Message m =
+            Message::Assistant("**[" + role + (kind == "vote" ? " vote" : "") + "]** " + text);
         m.skillRunId = run;
         push(std::move(m));
     };
@@ -1406,16 +1419,15 @@ void App::demoAppendOne() {
         call.toolCalls.push_back(tc);
         call.id = 1000 + n;
         appendDerived(pane, call);
-        Message r = Message::Tool(tc.id, "read_file",
-                                  "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n", false);
+        Message r = Message::Tool(
+            tc.id, "read_file", "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n", false);
         r.durationMs = 120;
         r.id = 1000 + n + 500;
         appendDerived(pane, r);
         return;
     }
-    Message m = Message::Assistant(
-        "第二条：`ChatRow` 的 key 来自 msg.id，折叠状态放在 Source 里，"
-        "所以追加气泡不会打乱任何人的身份。这一条用来观察跟随行为。");
+    Message m = Message::Assistant("第二条：`ChatRow` 的 key 来自 msg.id，折叠状态放在 Source 里，"
+                                   "所以追加气泡不会打乱任何人的身份。这一条用来观察跟随行为。");
     m.id = 1000 + n;
     appendDerived(pane, m);
 }
@@ -1451,9 +1463,10 @@ void App::tick() {
         pendingInit_.erase(pendingInit_.begin());
         // The pane may have been closed between the click and this frame; the raw
         // pointer is only dereferenced after its owner is found in panes_.
-        const bool alive = queued != nullptr && std::any_of(
-            panes_.begin(), panes_.end(),
-            [queued](const std::unique_ptr<Pane>& p) { return p.get() == queued; });
+        const bool alive =
+            queued != nullptr &&
+            std::any_of(panes_.begin(), panes_.end(),
+                        [queued](const std::unique_ptr<Pane>& p) { return p.get() == queued; });
         if (alive && queued->state.load() == Pane::State::Starting) {
             Pane& pane = *queued;
             const bool ok = pane.rt && pane.rt->initialize();
@@ -1472,7 +1485,8 @@ void App::tick() {
         harvestSpeakers(pane);
         if (Agent* a = pane.rt->agent()) {
             auto newMsgs = a->getNewMessagesSince(pane.lastMessageId);
-            for (const auto& msg : newMsgs) appendDerived(pane, msg);
+            for (const auto& msg : newMsgs)
+                appendDerived(pane, msg);
         }
         if (pane.chat.size() > kMaxBubbles) {
             const long drop = static_cast<long>(pane.chat.size() - kMaxBubbles);
@@ -1480,7 +1494,8 @@ void App::tick() {
             // The keys are a parallel array: trimming one without the other would
             // hand every remaining row its neighbour's fold key.
             const size_t n = std::min<size_t>(static_cast<size_t>(drop), pane.chatKeys.size());
-            pane.chatKeys.erase(pane.chatKeys.begin(), pane.chatKeys.begin() + static_cast<long>(n));
+            pane.chatKeys.erase(pane.chatKeys.begin(),
+                                pane.chatKeys.begin() + static_cast<long>(n));
         }
         // The turn clock: started when the pane becomes busy, stopped when it is not.
         // It is fed OUTPUT tokens only, and only while they move: the old figure
@@ -1636,8 +1651,6 @@ bool App::takeBeep() {
     return pending;
 }
 
-
-
 void App::injectPromptText(const std::string& text) {
     if (text.empty()) return;
     std::string& line = active().input;
@@ -1726,8 +1739,12 @@ int App::activeTokens() const {
     return runtime_->promptTokens() + runtime_->completionTokens();
 }
 
-long long App::nowMs() const { return monotonicMs(); }
+long long App::nowMs() const {
+    return monotonicMs();
+}
 
-void App::setFollowBottom(bool on) { active().followBottom = on; }
+void App::setFollowBottom(bool on) {
+    active().followBottom = on;
+}
 
 } // namespace studio

@@ -37,7 +37,8 @@ namespace {
 
 int printMetaIfAsked(int argc, char** argv) {
     std::vector<std::string> args;
-    for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
+    for (int i = 1; i < argc; ++i)
+        args.emplace_back(argv[i]);
     std::string text;
     if (const auto exitCode = cli_args::parseMetaArgs(args, text)) {
         std::fputs(text.c_str(), stdout);

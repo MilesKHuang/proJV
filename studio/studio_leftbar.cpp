@@ -44,7 +44,9 @@ using tokens::Space;
 using tokens::Type;
 using ui::Palette;
 
-ImU32 fld(const std::string ThemeColors::*field) { return studio_theme::field(field); }
+ImU32 fld(const std::string ThemeColors::*field) {
+    return studio_theme::field(field);
+}
 
 struct Panel {
     Rect head;
@@ -78,8 +80,7 @@ void drawPanelTitle(const Metrics& m, const Rect& head, const std::string& title
 // three numbers, which made the session card taller than the conversation it
 // belonged to. The track has no outline: at four pixels an outline IS the bar.
 void metricBar(const Metrics& m, const Rect& row, const std::string& label,
-               const std::string& value, double fraction, ImU32 color,
-               const std::string& tooltip) {
+               const std::string& value, double fraction, ImU32 color, const std::string& tooltip) {
     if (row.empty()) return;
     const Palette p = ui::palette();
     const Type tier = Type::Caption;
@@ -101,8 +102,9 @@ void metricBar(const Metrics& m, const Rect& row, const std::string& label,
     }
     ui::textAt(m, Rect{row.right() - valueW, row.y, valueW, row.h},
                ui::fitLine(m, value, valueW, tier, false), p.text, tier, false, 1.0f, 0.5f);
-    if (!tooltip.empty() && ImGui::IsMouseHoveringRect(ImVec2(track.x, track.y),
-                                                      ImVec2(track.right(), track.bottom())) &&
+    if (!tooltip.empty() &&
+        ImGui::IsMouseHoveringRect(ImVec2(track.x, track.y),
+                                   ImVec2(track.right(), track.bottom())) &&
         ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))
         ImGui::SetTooltip("%s", tooltip.c_str());
 }
@@ -143,8 +145,10 @@ void drawSessionRow(App& app, const Metrics& m, const Rect& row, int index) {
     const bool middleClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
     ImGui::PopID();
 
-    if (activeRow) ui::fillRound(row, p.selected, radius);
-    else if (hovered) ui::fillRound(row, p.hover, radius);
+    if (activeRow)
+        ui::fillRound(row, p.selected, radius);
+    else if (hovered)
+        ui::fillRound(row, p.hover, radius);
     ui::stroke(row, activeRow ? p.accent : p.border,
                activeRow ? std::max(1.0f, m.hairline * 1.5f) : m.hairline, radius);
 
@@ -182,15 +186,14 @@ void drawSessionRow(App& app, const Metrics& m, const Rect& row, int index) {
                     : "this session is still starting");
     y += metricH + gap * 0.5f;
     metricBar(m, Rect{row.x + padX, y, barW, metricH}, "MEM", memValue,
-              ready ? gauges::fraction(static_cast<double>(sample.rssBytes),
-                                       1024.0 * 1024.0 * 1024.0)
-                    : 0.0,
+              ready
+                  ? gauges::fraction(static_cast<double>(sample.rssBytes), 1024.0 * 1024.0 * 1024.0)
+                  : 0.0,
               ready ? p.info : dim, "resident memory of this session's processes");
     y += metricH + gap * 0.5f;
     metricBar(m, Rect{row.x + padX, y, barW, metricH}, "GPU",
               ready ? gauges::percentLabel(gpuPct) : std::string("-"),
-              ready ? gauges::fraction(gpuPct.value_or(0.0), 100.0) : 0.0,
-              ready ? p.success : dim,
+              ready ? gauges::fraction(gpuPct.value_or(0.0), 100.0) : 0.0, ready ? p.success : dim,
               ready ? (sample.gpu.valid ? "GPU engine utilization of this session"
                                         : ("GPU unknown: " + sample.gpu.reason))
                     : "this session is still starting");
@@ -276,11 +279,10 @@ void drawFilesPanel(App& app, const Frame& f, const Rect& box) {
     if (ui::listRowAt(m, titleBox, title, false, false, Type::Small))
         app.setLeftOpen(!app.leftOpen());
     if (!app.leftOpen()) return;
-    drawPanelTitle(
-        m,
-        Rect{panel.head.x + titleW, panel.head.y, std::max(1.0f, panel.head.w - titleW),
-             panel.head.h},
-        "", app.tree().rootError(), p);
+    drawPanelTitle(m,
+                   Rect{panel.head.x + titleW, panel.head.y, std::max(1.0f, panel.head.w - titleW),
+                        panel.head.h},
+                   "", app.tree().rootError(), p);
 
     // Toolbar: parent directory, the path (Enter re-roots), "+" a session here, refresh.
     const float ctlH = m.controlH;
@@ -336,8 +338,10 @@ void drawFilesPanel(App& app, const Frame& f, const Rect& box) {
         const Rect rowBox{origin.x, origin.y, w, m.rowH};
         const bool selected = i == app.treeSelected();
         const bool showIcons = w >= 150.0f * m.factor;
-        const Rect labelBox{rowBox.x, rowBox.y, showIcons ? std::max(20.0f, w - iconsW) : w, m.rowH};
-        const bool clicked = ui::listRowAt(m, labelBox, "##" + row.path, selected, false, Type::Small);
+        const Rect labelBox{rowBox.x, rowBox.y, showIcons ? std::max(20.0f, w - iconsW) : w,
+                            m.rowH};
+        const bool clicked =
+            ui::listRowAt(m, labelBox, "##" + row.path, selected, false, Type::Small);
         const bool doubleClicked = ui::listRowDoubleClicked();
         if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
             app.setContextPath(row.path, row.isDir);
@@ -345,7 +349,8 @@ void drawFilesPanel(App& app, const Frame& f, const Rect& box) {
         }
 
         std::string violation;
-        const bool notAllowed = !roots.empty() && !roots.resolve(row.path, false, violation).empty();
+        const bool notAllowed =
+            !roots.empty() && !roots.resolve(row.path, false, violation).empty();
         const float indent = tokens::spacePx(m, Space::Sm) * static_cast<float>(row.depth + 1);
         const std::string marker = row.isDir ? (row.expanded ? "v" : ">") : " ";
         ui::textAt(m,

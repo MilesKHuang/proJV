@@ -65,7 +65,8 @@ DialogBox computeDialog(const Metrics& m, float bodyRows) {
     const float headerH = std::max(tokens::linePx(m, Type::Heading), m.controlH);
     const float footerH = m.controlH;
     const float chrome = 2.0f * pad + headerH + footerH + 2.0f * tokens::spacePx(m, Space::Sm);
-    const float wantedBody = std::max(1.0f, bodyRows) * m.rowH + 2.0f * tokens::spacePx(m, Space::Sm);
+    const float wantedBody =
+        std::max(1.0f, bodyRows) * m.rowH + 2.0f * tokens::spacePx(m, Space::Sm);
     const float h = std::min(maxH, std::max(chrome + 96.0f * m.factor, chrome + wantedBody));
 
     DialogBox d;
@@ -77,9 +78,8 @@ DialogBox computeDialog(const Metrics& m, float bodyRows) {
     d.header = Rect{inner.x, inner.y, inner.w, headerH};
     d.footer = Rect{inner.x, inner.bottom() - footerH, inner.w, footerH};
     const float bodyTop = d.header.bottom() + tokens::spacePx(m, Space::Sm);
-    d.body = Rect{inner.x, bodyTop, inner.w, std::max(1.0f, d.footer.y -
-                                                                tokens::spacePx(m, Space::Sm) -
-                                                                bodyTop)};
+    d.body = Rect{inner.x, bodyTop, inner.w,
+                  std::max(1.0f, d.footer.y - tokens::spacePx(m, Space::Sm) - bodyTop)};
     return d;
 }
 
@@ -126,14 +126,16 @@ void bodyApproval(App& app, const Metrics& m, const Palette& p) {
     // The command lives in its own surface: it is the thing being approved.
     const float cmdW = ImGui::GetContentRegionAvail().x;
     const float lineH = tokens::linePx(m, Type::Mono);
-    const int lines = std::max(1, static_cast<int>(ImGui::CalcTextSize(a.command.c_str(), nullptr,
-                                                                      false, cmdW).y / lineH));
+    const int lines = std::max(
+        1,
+        static_cast<int>(ImGui::CalcTextSize(a.command.c_str(), nullptr, false, cmdW).y / lineH));
     const Rect cmdBox{ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y, cmdW,
-                      lineH * static_cast<float>(std::min(lines, 6)) + 2.0f * tokens::spacePx(m, Space::Sm)};
+                      lineH * static_cast<float>(std::min(lines, 6)) +
+                          2.0f * tokens::spacePx(m, Space::Sm)};
     ui::fillRound(cmdBox, p.inputBg, tokens::radiusPx(m, Radius::Sm));
     ui::stroke(cmdBox, p.border, m.hairline, tokens::radiusPx(m, Radius::Sm));
-    ImGui::SetCursorScreenPos(ImVec2(cmdBox.x + tokens::spacePx(m, Space::Sm),
-                                     cmdBox.y + tokens::spacePx(m, Space::Sm)));
+    ImGui::SetCursorScreenPos(
+        ImVec2(cmdBox.x + tokens::spacePx(m, Space::Sm), cmdBox.y + tokens::spacePx(m, Space::Sm)));
     ImGui::PushTextWrapPos(cmdBox.right() - tokens::spacePx(m, Space::Sm));
     ui::text(m, a.command, studio_theme::field(&ThemeColors::phaseAwaitApproval), Type::Mono, true);
     ImGui::PopTextWrapPos();
@@ -143,9 +145,9 @@ void bodyApproval(App& app, const Metrics& m, const Palette& p) {
     if (!a.targets.empty()) {
         ui::text(m, "Targets", p.textDim, Type::Small);
         for (const auto& t : a.targets)
-            ui::text(m, "  - " + t, studio_theme::field(&ThemeColors::phaseAwaitApproval), Type::Small);
-        if (a.moreTargets > 0)
-            ui::hint(m, "  ... and " + std::to_string(a.moreTargets) + " more");
+            ui::text(m, "  - " + t, studio_theme::field(&ThemeColors::phaseAwaitApproval),
+                     Type::Small);
+        if (a.moreTargets > 0) ui::hint(m, "  ... and " + std::to_string(a.moreTargets) + " more");
     }
     ui::divider(m);
     ui::hint(m, a.explain);
@@ -165,7 +167,8 @@ void bodyConfig(App& app, const Metrics& m, const Palette& p) {
         if (f.kind == "radio") {
             ui::text(m, f.label, p.text, Type::Body);
             for (int k = 0; k < static_cast<int>(f.options.size()); ++k) {
-                const bool sel = (f.label == "Effort") ? form.effortIndex == k : form.modeIndex == k;
+                const bool sel =
+                    (f.label == "Effort") ? form.effortIndex == k : form.modeIndex == k;
                 if (ui::radio(m, f.options[static_cast<size_t>(k)], sel)) {
                     if (f.label == "Effort")
                         form.effortIndex = k;
@@ -173,7 +176,8 @@ void bodyConfig(App& app, const Metrics& m, const Palette& p) {
                         form.modeIndex = k;
                 }
             }
-            if (f.label == "Command approval" && ui::button(m, "Clear remembered commands", ui::Btn::Secondary))
+            if (f.label == "Command approval" &&
+                ui::button(m, "Clear remembered commands", ui::Btn::Secondary))
                 app.clearGrants();
         } else if (f.kind == "note") {
             ui::hint(m, f.label + ": " + f.value);
@@ -196,8 +200,8 @@ void bodyConfig(App& app, const Metrics& m, const Palette& p) {
             } else {
                 std::string* buf = app.configBufferAt(i);
                 if (buf) {
-                    const bool entered = ui::field(m, "##v", buf, nullptr,
-                                                   f.kind == "password", controlBox.w);
+                    const bool entered =
+                        ui::field(m, "##v", buf, nullptr, f.kind == "password", controlBox.w);
                     (void)entered;
                 }
             }
@@ -217,7 +221,8 @@ void bodyMcp(App& app, const Metrics& m, const Palette& p) {
     } else {
         for (int i = 0; i < static_cast<int>(mp.rows.size()); ++i) {
             const view_model::McpRow& r = mp.rows[static_cast<size_t>(i)];
-            std::string line = std::string(r.enabled ? "[on]  " : "[off] ") + r.name + "   " + r.state;
+            std::string line =
+                std::string(r.enabled ? "[on]  " : "[off] ") + r.name + "   " + r.state;
             if (r.tools > 0) line += "   " + std::to_string(r.tools) + " tools";
             if (!r.trusted) line += "   (needs \"trusted\": true)";
             if (ui::listRow(m, line, app.listSelected() == i, !r.trusted)) app.listSelected() = i;
@@ -254,8 +259,8 @@ void bodyThemeEditor(App& app, const Metrics& m, const Palette& p) {
 
     const Rect listBox{at.x, at.y, listW, height};
     ui::fillRound(listBox, p.inputBg, tokens::radiusPx(m, Radius::Sm));
-    const bool listOpen = ui::beginScroll("##tfields", listBox.inset(tokens::spacePx(m, Space::Xs)),
-                                          m, p.inputBg);
+    const bool listOpen =
+        ui::beginScroll("##tfields", listBox.inset(tokens::spacePx(m, Space::Xs)), m, p.inputBg);
     if (listOpen) {
         for (int i = 0; i < static_cast<int>(te.fields.size()); ++i) {
             if (ui::listRow(m, te.fields[static_cast<size_t>(i)], app.themeField() == i))
@@ -274,8 +279,8 @@ void bodyThemeEditor(App& app, const Metrics& m, const Palette& p) {
     ui::field(m, "##hex", &app.themeHex(), "#RRGGBB", false,
               std::min(160.0f * m.factor, editBox.w));
     ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Sm)));
-    const Rect swatch{editBox.x, ImGui::GetCursorScreenPos().y, std::min(160.0f * m.factor, editBox.w),
-                      36.0f * m.factor};
+    const Rect swatch{editBox.x, ImGui::GetCursorScreenPos().y,
+                      std::min(160.0f * m.factor, editBox.w), 36.0f * m.factor};
     ui::fillRound(swatch, studio_theme::fromHex(app.themeHex()), tokens::radiusPx(m, Radius::Sm));
     ui::stroke(swatch, p.border, m.hairline, tokens::radiusPx(m, Radius::Sm));
     ImGui::SetCursorScreenPos(ImVec2(editBox.x, swatch.bottom() + tokens::spacePx(m, Space::Sm)));
@@ -310,8 +315,7 @@ void bodyWelcome(App& app, const Metrics& m, const Palette& p) {
     ui::paragraph(m, w.body, p.text, Type::Body);
     ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Sm)));
     ui::text(m, w.keyLabel, p.text, Type::Small);
-    ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x,
-                                     ImGui::GetCursorScreenPos().y));
+    ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y));
     // The first thing a new user must do is type a key here, so the field takes
     // focus when the dialog appears. Enter is handled by the FIELD (EnterReturnsTrue)
     // rather than by a global IsKeyPressed check, which the focused field swallows.
@@ -327,8 +331,20 @@ void bodyWelcome(App& app, const Metrics& m, const Palette& p) {
 
 // One action in a dialog footer. `id` is what the shell dispatches on, so a body
 // never has to know where its buttons are.
-enum class Act { None, Approve, ApproveAlways, Deny, SaveConfig, Close, Ok, RestartMcp,
-                 ThemeApply, ThemeSave, SaveKey, Quit };
+enum class Act {
+    None,
+    Approve,
+    ApproveAlways,
+    Deny,
+    SaveConfig,
+    Close,
+    Ok,
+    RestartMcp,
+    ThemeApply,
+    ThemeSave,
+    SaveKey,
+    Quit
+};
 
 struct Action {
     std::string label;
@@ -342,7 +358,8 @@ std::vector<Action> actionsFor(const std::string& modal, const view_model::Scree
         const auto& b = s.approval.buttons;
         if (b.size() >= 3) {
             out.push_back({b[2], ui::Btn::Ghost, Act::Deny});
-            if (s.approval.showAlways) out.push_back({b[1], ui::Btn::Secondary, Act::ApproveAlways});
+            if (s.approval.showAlways)
+                out.push_back({b[1], ui::Btn::Secondary, Act::ApproveAlways});
             out.push_back({b[0], ui::Btn::Primary, Act::Approve});
         }
     } else if (modal == "config") {
@@ -438,7 +455,8 @@ Act enterAction(const std::string& modal) {
     return Act::None;
 }
 
-void drawFooter(App& app, const std::string& modal, const Metrics& m, const Rect& box) {    const std::vector<Action> actions = actionsFor(modal, app.screen());
+void drawFooter(App& app, const std::string& modal, const Metrics& m, const Rect& box) {
+    const std::vector<Action> actions = actionsFor(modal, app.screen());
     const float gap = tokens::spacePx(m, Space::Sm);
     float right = box.right();
     for (auto it = actions.rbegin(); it != actions.rend(); ++it) {
@@ -449,11 +467,16 @@ void drawFooter(App& app, const std::string& modal, const Metrics& m, const Rect
     }
     // A hint on the left of the footer, clipped to what the buttons left over.
     std::string hint;
-    if (modal == "approval") hint = "Enter approves,  Esc is not an answer";
-    else if (modal == "config") hint = "Esc or F2 closes";
-    else if (modal == "help") hint = "Enter closes";
-    else if (modal == "mcp") hint = "Enter toggles,  R restarts";
-    else if (modal == "quit") hint = "Ctrl+C never quits";
+    if (modal == "approval")
+        hint = "Enter approves,  Esc is not an answer";
+    else if (modal == "config")
+        hint = "Esc or F2 closes";
+    else if (modal == "help")
+        hint = "Enter closes";
+    else if (modal == "mcp")
+        hint = "Enter toggles,  R restarts";
+    else if (modal == "quit")
+        hint = "Ctrl+C never quits";
     if (!hint.empty() && right > box.x) {
         ui::textAt(m, Rect{box.x, box.y, right - box.x - gap, box.h},
                    ui::fitLine(m, hint, right - box.x - gap, Type::Small, false),
@@ -554,11 +577,11 @@ void drawModals(App& app) {
             default:
                 break;
             }
-        }    }
+        }
+    }
     ImGui::End();
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 }
 
 } // namespace studio
-

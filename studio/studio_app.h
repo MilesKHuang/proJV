@@ -167,9 +167,9 @@ class App {
     const std::string& paneTitle(int index) const;
     const std::string& paneWorkspace(int index) const;
     const view_model::Screen& screenOf(int index) const;
- // ready / starting... / failed -- one word for the card's state column.
- const std::string& paneStateName(int index) const;
- bool paneReady(int index) const;
+    // ready / starting... / failed -- one word for the card's state column.
+    const std::string& paneStateName(int index) const;
+    bool paneReady(int index) const;
     void activatePane(int index);
     // False when the pane is running a turn: closing it would orphan the worker.
     bool closePane(int index);
@@ -237,7 +237,10 @@ class App {
     void setContextPane(int index) { contextPane_ = index; }
     const std::string& contextPath() const { return contextPath_; }
     bool contextIsDir() const { return contextIsDir_; }
-    void setContextPath(std::string path, bool isDir) { contextPath_ = std::move(path); contextIsDir_ = isDir; }
+    void setContextPath(std::string path, bool isDir) {
+        contextPath_ = std::move(path);
+        contextIsDir_ = isDir;
+    }
     void clearContextPath() { contextPath_.clear(); }
     // Start a pane whose tools resolve against `dir`. This is the ONLY way in
     // (the reference panel works the same way): the directory comes from the file
@@ -317,12 +320,12 @@ class App {
     const Pane& active() const;
     void bindActive();
     void wireRuntime(Pane& pane);
- // Called by tick(): a pane whose startup thread finished becomes usable here,
- // on the UI thread (theme init, command table, welcome dialog on the first one).
- void adoptFinishedPanes();
- // Two panes in folders with the same name would read identically; the second one
- // gets a suffix. Recomputed whenever the set of panes changes.
- void refreshPaneTitles();
+    // Called by tick(): a pane whose startup thread finished becomes usable here,
+    // on the UI thread (theme init, command table, welcome dialog on the first one).
+    void adoptFinishedPanes();
+    // Two panes in folders with the same name would read identically; the second one
+    // gets a suffix. Recomputed whenever the set of panes changes.
+    void refreshPaneTitles();
     void fillSource();
     void fillModalSource(view_model::Source& s);
     void listMove(int delta);
@@ -330,7 +333,8 @@ class App {
     // which message produced which bubble, which is what a stable key needs.
     void appendDerived(Pane& pane, const Message& msg);
     void refreshChat(Pane& pane);
-    void drainNotices(Pane& pane);    void harvestSpeakers(Pane& pane);
+    void drainNotices(Pane& pane);
+    void harvestSpeakers(Pane& pane);
     float sourceCost() const;
     void refreshModelRows();
     void refreshThemeRows();
@@ -396,12 +400,11 @@ class App {
     ftree::Tree tree_;
     int treeSelected_ = 0;
     bool leftOpen_ = true;
-    float leftSplit_ = 0.55f; // share of the column the session list gets
+    float leftSplit_ = 0.55f;  // share of the column the session list gets
     bool beepPending_ = false; // a pane's turn just ended; the platform layer beeps
     int contextPane_ = -1;
     std::string contextPath_;
     bool contextIsDir_ = false;
-
 
     ConfigForm form_;
     std::string themeHex_;

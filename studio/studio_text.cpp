@@ -65,22 +65,33 @@ ImU32 runColor(markdown_text::Style style, ImU32 plainOverride) {
     if (plainOverride) return plainOverride;
     const ThemeColors& T = ThemeManager::instance().current();
     switch (style) {
-    case markdown_text::Style::H1: return studio_theme::fromHex(T.mdH1);
-    case markdown_text::Style::H2: return studio_theme::fromHex(T.mdH2);
-    case markdown_text::Style::H3: return studio_theme::fromHex(T.mdH3);
-    case markdown_text::Style::Bold: return studio_theme::fromHex(T.mdBold);
-    case markdown_text::Style::Italic: return studio_theme::fromHex(T.mdItalic);
+    case markdown_text::Style::H1:
+        return studio_theme::fromHex(T.mdH1);
+    case markdown_text::Style::H2:
+        return studio_theme::fromHex(T.mdH2);
+    case markdown_text::Style::H3:
+        return studio_theme::fromHex(T.mdH3);
+    case markdown_text::Style::Bold:
+        return studio_theme::fromHex(T.mdBold);
+    case markdown_text::Style::Italic:
+        return studio_theme::fromHex(T.mdItalic);
     case markdown_text::Style::Code:
-    case markdown_text::Style::CodeBlock: return studio_theme::fromHex(T.mdCode);
-    case markdown_text::Style::Link: return studio_theme::fromHex(T.mdLink);
-    case markdown_text::Style::Quote: return studio_theme::fromHex(T.mdQuote);
+    case markdown_text::Style::CodeBlock:
+        return studio_theme::fromHex(T.mdCode);
+    case markdown_text::Style::Link:
+        return studio_theme::fromHex(T.mdLink);
+    case markdown_text::Style::Quote:
+        return studio_theme::fromHex(T.mdQuote);
     case markdown_text::Style::Bullet:
-    case markdown_text::Style::Ordered: return studio_theme::fromHex(T.mdBullet);
+    case markdown_text::Style::Ordered:
+        return studio_theme::fromHex(T.mdBullet);
     // mdTableHdr is a BACKGROUND in this theme (the TUI paints the header row with
     // it). Drawing glyphs in it made the header disappear; the row now gets a band
     // instead (drawBlock) and the text keeps the body colour.
-    case markdown_text::Style::TableHeader: return studio_theme::fromHex(T.text);
-    default: return studio_theme::fromHex(T.text);
+    case markdown_text::Style::TableHeader:
+        return studio_theme::fromHex(T.text);
+    default:
+        return studio_theme::fromHex(T.text);
     }
 }
 
@@ -117,8 +128,7 @@ int tierOf(const markdown_text::Line& line) {
 
 void Selection::ordered(int* b0, int* l0, int* c0, int* b1, int* l1, int* c1) const {
     const bool forward = (blockA < blockB) ||
-                         (blockA == blockB &&
-                          (lineA < lineB || (lineA == lineB && colA <= colB)));
+                         (blockA == blockB && (lineA < lineB || (lineA == lineB && colA <= colB)));
     *b0 = forward ? blockA : blockB;
     *l0 = forward ? lineA : lineB;
     *c0 = forward ? colA : colB;
@@ -245,9 +255,11 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
         if (!line.cells.empty()) {
             size_t j = i;
             std::vector<const markdown_text::Line*> rows;
-            while (j < lines.size() && !lines[j].cells.empty()) rows.push_back(&lines[j++]);
+            while (j < lines.size() && !lines[j].cells.empty())
+                rows.push_back(&lines[j++]);
             size_t cols = 0;
-            for (const auto* r : rows) cols = std::max(cols, r->cells.size());
+            for (const auto* r : rows)
+                cols = std::max(cols, r->cells.size());
 
             TableData td;
             td.weights.assign(std::max<size_t>(cols, 1), 1.0f);
@@ -256,7 +268,8 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                 for (size_t c = 0; c < cols; ++c) {
                     std::string text;
                     if (c < r->cells.size())
-                        for (const auto& seg : r->cells[c]) text += seg.text;
+                        for (const auto& seg : r->cells[c])
+                            text += seg.text;
                     cells[c] = text;
                     td.weights[c] = std::max(td.weights[c], static_cast<float>(columnsOf(text)));
                 }
@@ -439,18 +452,18 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
         // single glyph must never be painted outside the surface it belongs to: the
         // bubble is a card, and text crossing its edge is the one thing a reader
         // notices before anything else.
-        dl->PushClipRect(ImVec2(vl.x0 - 2.0f, vl.y0 - 2.0f),
-                         ImVec2(vl.x0 + width + 2.0f * dpi,
-                                vl.y0 + ImGui::GetTextLineHeight() + 4.0f * dpi),
-                         true);
+        dl->PushClipRect(
+            ImVec2(vl.x0 - 2.0f, vl.y0 - 2.0f),
+            ImVec2(vl.x0 + width + 2.0f * dpi, vl.y0 + ImGui::GetTextLineHeight() + 4.0f * dpi),
+            true);
 
         // Block decoration, painted before the glyphs so it sits behind them.
         if (vl.codeBg) {
             const float pad = 5.0f * dpi;
-            dl->AddRectFilled(ImVec2(vl.x0 - pad, vl.y0 - pad * 0.4f),
-                              ImVec2(vl.x0 + width - ind + pad,
-                                     vl.y0 + ImGui::GetTextLineHeight() + pad * 0.4f),
-                              studio_theme::field(&ThemeColors::mdCodeBg), 3.0f);
+            dl->AddRectFilled(
+                ImVec2(vl.x0 - pad, vl.y0 - pad * 0.4f),
+                ImVec2(vl.x0 + width - ind + pad, vl.y0 + ImGui::GetTextLineHeight() + pad * 0.4f),
+                studio_theme::field(&ThemeColors::mdCodeBg), 3.0f);
         }
         if (vl.quote)
             dl->AddRectFilled(ImVec2(vl.x0 - 8.0f * dpi, vl.y0),
@@ -466,10 +479,9 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             if (style == markdown_text::Style::Code) {
                 const float w = ImGui::CalcTextSize(vl.runs[r].text.c_str()).x;
                 const ImVec2 p = ImGui::GetCursorScreenPos();
-                dl->AddRectFilled(
-                    ImVec2(p.x - 3.0f, p.y - 1.0f),
-                    ImVec2(p.x + w + 3.0f, p.y + ImGui::GetTextLineHeight() + 1.0f),
-                    studio_theme::field(&ThemeColors::mdCodeBg), 4.0f);
+                dl->AddRectFilled(ImVec2(p.x - 3.0f, p.y - 1.0f),
+                                  ImVec2(p.x + w + 3.0f, p.y + ImGui::GetTextLineHeight() + 1.0f),
+                                  studio_theme::field(&ThemeColors::mdCodeBg), 4.0f);
             }
             ImGui::PushStyleColor(ImGuiCol_Text, runColor(style, plainColor));
             ImGui::TextUnformatted(vl.runs[r].text.c_str());
@@ -512,7 +524,8 @@ void TextSurface::drawTable(const TableData& t) {
     ImGui::PushID(&t);
     if (ImGui::BeginTable("##mdtable", cols, flags)) {
         float total = 0.0f;
-        for (float w : t.weights) total += std::max(1.0f, w);
+        for (float w : t.weights)
+            total += std::max(1.0f, w);
         if (total <= 0.0f) total = static_cast<float>(cols);
         for (int c = 0; c < cols; ++c) {
             // The weight is the column's natural width in character cells, so a 2-glyph
@@ -530,8 +543,9 @@ void TextSurface::drawTable(const TableData& t) {
             ImGui::TableNextRow();
             for (int c = 0; c < cols; ++c) {
                 ImGui::TableSetColumnIndex(c);
-                const std::string& cell =
-                    c < static_cast<int>(t.rows[r].size()) ? t.rows[r][static_cast<size_t>(c)] : empty;
+                const std::string& cell = c < static_cast<int>(t.rows[r].size())
+                                              ? t.rows[r][static_cast<size_t>(c)]
+                                              : empty;
                 ImGui::TextWrapped("%s", cell.c_str()); // wraps inside its own cell
             }
         }
@@ -574,9 +588,11 @@ void TextSurface::handleInput() {
                         b += cpLen(vl.plain, b);
                     }
                     size_t e = b;
-                    while (e < vl.plain.size() && vl.plain[e] != ' ') e += cpLen(vl.plain, e);
+                    while (e < vl.plain.size() && vl.plain[e] != ' ')
+                        e += cpLen(vl.plain, e);
                     size_t s = b;
-                    while (s > 0 && vl.plain[s - 1] != ' ') s -= cpLen(vl.plain, s - 1);
+                    while (s > 0 && vl.plain[s - 1] != ' ')
+                        s -= cpLen(vl.plain, s - 1);
                     sel_.colA = columnsOf(vl.plain.substr(0, s));
                     sel_.colB = columnsOf(vl.plain.substr(0, e));
                     break;

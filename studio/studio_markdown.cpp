@@ -106,8 +106,10 @@ std::vector<std::vector<Segment>> wrap(const std::vector<Segment>& segs, float w
         size_t i = 0;
         while (i < seg.text.size()) {
             const size_t start = i;
-            while (i < seg.text.size() && !isSpace(seg.text[i])) i += cpLen(seg.text, i);
-            while (i < seg.text.size() && isSpace(seg.text[i])) ++i;
+            while (i < seg.text.size() && !isSpace(seg.text[i]))
+                i += cpLen(seg.text, i);
+            while (i < seg.text.size() && isSpace(seg.text[i]))
+                ++i;
             const std::string token = seg.text.substr(start, i - start);
             const float w = textWidth(token);
 
@@ -168,11 +170,13 @@ void drawMarkdown(const std::string& md, float wrapWidth) {
             const ImVec2 rowPos = ImGui::GetCursorScreenPos();
             for (int c = 0; c < cols; ++c) {
                 std::string cell;
-                for (const auto& s : line.cells[static_cast<size_t>(c)]) cell += s.text;
+                for (const auto& s : line.cells[static_cast<size_t>(c)])
+                    cell += s.text;
                 const ImVec2 cellPos(rowPos.x + colW * static_cast<float>(c), rowPos.y);
-                ImGui::PushClipRect(cellPos, ImVec2(cellPos.x + colW - 4.0f,
-                                                    cellPos.y + ImGui::GetTextLineHeight() + 2.0f),
-                                    true);
+                ImGui::PushClipRect(
+                    cellPos,
+                    ImVec2(cellPos.x + colW - 4.0f, cellPos.y + ImGui::GetTextLineHeight() + 2.0f),
+                    true);
                 ImGui::SetCursorScreenPos(cellPos);
                 drawRun(cell, line.tableHeader ? Style::TableHeader : Style::TableCell, 0);
                 ImGui::PopClipRect();
@@ -195,9 +199,8 @@ void drawMarkdown(const std::string& md, float wrapWidth) {
 
         // A code block keeps its background across the whole line.
         const bool codeBlock =
-            std::all_of(line.segs.begin(), line.segs.end(), [](const Segment& s) {
-                return s.style == Style::CodeBlock;
-            });
+            std::all_of(line.segs.begin(), line.segs.end(),
+                        [](const Segment& s) { return s.style == Style::CodeBlock; });
         const bool quote = line.segs[0].style == Style::Quote;
 
         const auto rows = wrap(line.segs, wrapWidth - (quote ? 7.0f : 0.0f));
@@ -206,7 +209,8 @@ void drawMarkdown(const std::string& md, float wrapWidth) {
             const float rowH = ImGui::GetTextLineHeight();
             ImDrawList* dl = ImGui::GetWindowDrawList();
             if (codeBlock)
-                dl->AddRectFilled(rowStart, ImVec2(rowStart.x + wrapWidth, rowStart.y + rowH + 2.0f),
+                dl->AddRectFilled(rowStart,
+                                  ImVec2(rowStart.x + wrapWidth, rowStart.y + rowH + 2.0f),
                                   studio_theme::field(&ThemeColors::mdCodeBg));
             if (quote) {
                 dl->AddRectFilled(rowStart, ImVec2(rowStart.x + 3.0f, rowStart.y + rowH),

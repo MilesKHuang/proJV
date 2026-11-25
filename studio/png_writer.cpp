@@ -15,13 +15,15 @@ unsigned crc32Of(const unsigned char* data, size_t n) {
     if (!ready) {
         for (unsigned i = 0; i < 256; ++i) {
             unsigned c = i;
-            for (int k = 0; k < 8; ++k) c = (c & 1u) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            for (int k = 0; k < 8; ++k)
+                c = (c & 1u) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
             table[i] = c;
         }
         ready = true;
     }
     unsigned c = 0xFFFFFFFFu;
-    for (size_t i = 0; i < n; ++i) c = table[(c ^ data[i]) & 0xFFu] ^ (c >> 8);
+    for (size_t i = 0; i < n; ++i)
+        c = table[(c ^ data[i]) & 0xFFu] ^ (c >> 8);
     return c ^ 0xFFFFFFFFu;
 }
 
@@ -41,8 +43,7 @@ void be32(std::vector<unsigned char>& out, unsigned v) {
     out.push_back(static_cast<unsigned char>(v));
 }
 
-void chunk(std::vector<unsigned char>& out, const char* type, const unsigned char* data,
-           size_t n) {
+void chunk(std::vector<unsigned char>& out, const char* type, const unsigned char* data, size_t n) {
     be32(out, static_cast<unsigned>(n));
     std::vector<unsigned char> body;
     body.reserve(n + 4);
@@ -98,8 +99,8 @@ bool writePng(const std::string& path, int width, int height, const unsigned cha
     ihdr[5] = static_cast<unsigned char>(height >> 16);
     ihdr[6] = static_cast<unsigned char>(height >> 8);
     ihdr[7] = static_cast<unsigned char>(height);
-    ihdr[8] = 8; // bit depth
-    ihdr[9] = 2; // colour type: truecolour RGB
+    ihdr[8] = 8;  // bit depth
+    ihdr[9] = 2;  // colour type: truecolour RGB
     ihdr[10] = 0; // compression
     ihdr[11] = 0; // filter
     ihdr[12] = 0; // interlace

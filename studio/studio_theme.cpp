@@ -15,7 +15,8 @@
 // namespace), so the tree is spelled once here instead of at every call site.
 namespace tokens = studio::tokens;
 
-namespace studio_theme {namespace {
+namespace studio_theme {
+namespace {
 
 float g_fontScale = 1.0f;
 ImFont* g_ui = nullptr;
@@ -148,10 +149,9 @@ ImU32 readable(ImU32 fg, ImU32 bg, float minRatio) {
     const int tr = (target >> IM_COL32_R_SHIFT) & 0xFF, tg = (target >> IM_COL32_G_SHIFT) & 0xFF,
               tb = (target >> IM_COL32_B_SHIFT) & 0xFF;
     for (float t = 0.1f; t <= 1.0f; t += 0.1f) {
-        const ImU32 mixed = IM_COL32(static_cast<int>(fr + (tr - fr) * t),
-                                     static_cast<int>(fgn + (tg - fgn) * t),
-                                     static_cast<int>(fb + (tb - fb) * t),
-                                     (fg >> IM_COL32_A_SHIFT) & 0xFF);
+        const ImU32 mixed =
+            IM_COL32(static_cast<int>(fr + (tr - fr) * t), static_cast<int>(fgn + (tg - fgn) * t),
+                     static_cast<int>(fb + (tb - fb) * t), (fg >> IM_COL32_A_SHIFT) & 0xFF);
         if (contrast(mixed, bg) >= minRatio) return mixed;
     }
     return target;
@@ -271,8 +271,8 @@ void applyMetrics(const tokens::Metrics& m) {
         ImVec2(tokens::spacePx(m, tokens::Space::Sm), tokens::spacePx(m, tokens::Space::Xs));
     st.ItemSpacing =
         ImVec2(tokens::spacePx(m, tokens::Space::Sm), tokens::spacePx(m, tokens::Space::Xs));
-    st.ItemInnerSpacing = ImVec2(tokens::spacePx(m, tokens::Space::Xs),
-                                 tokens::spacePx(m, tokens::Space::Xs));
+    st.ItemInnerSpacing =
+        ImVec2(tokens::spacePx(m, tokens::Space::Xs), tokens::spacePx(m, tokens::Space::Xs));
     st.CellPadding =
         ImVec2(tokens::spacePx(m, tokens::Space::Sm), tokens::spacePx(m, tokens::Space::Xs));
     st.ScrollbarSize = m.scrollbar;

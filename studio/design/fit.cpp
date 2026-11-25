@@ -112,7 +112,8 @@ std::string ellipsize(const std::string& text, float width, const Measure& measu
     std::string head = prefixThatFits(text, width - markerW, measure);
     // Do not leave a trailing space before the marker ("Save & Conn ..." reads as
     // a word that lost its ending rather than as a truncation).
-    while (!head.empty() && head.back() == ' ') head.pop_back();
+    while (!head.empty() && head.back() == ' ')
+        head.pop_back();
     if (head.empty()) return marker;
     return head + marker;
 }

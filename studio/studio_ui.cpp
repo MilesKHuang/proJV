@@ -46,7 +46,6 @@ using tokens::Space;
 using tokens::Type;
 using ui::Palette;
 
-
 // One text surface for the whole chat: it owns the selection and the layout cache.
 TextSurface g_surface;
 // The frame of the last drawFrame call: the composer, the slash menu and the
@@ -137,9 +136,12 @@ void drawDiffUnified(const std::string& diff, float width) {
         if (line.rfind("--- ", 0) == 0 || line.rfind("+++ ", 0) == 0) {
             col = hunk;
         } else if (!line.empty()) {
-            if (line[0] == '@') col = hunk;
-            else if (line[0] == '+') col = add;
-            else if (line[0] == '-') col = del;
+            if (line[0] == '@')
+                col = hunk;
+            else if (line[0] == '+')
+                col = add;
+            else if (line[0] == '-')
+                col = del;
         }
         ImGui::PushStyleColor(ImGuiCol_Text, col);
         ImGui::TextUnformatted(line.c_str());
@@ -177,7 +179,8 @@ void drawDiffSplit(const std::string& diff, int widthChars, float charW) {
     int total = 0;
     const auto rows = diff_rows::alignRows(diff, diff_rows::kContextLines, 40, &total);
     int maxNumber = 0;
-    for (const auto& r : rows) maxNumber = std::max(maxNumber, std::max(r.oldNo, r.newNo));
+    for (const auto& r : rows)
+        maxNumber = std::max(maxNumber, std::max(r.oldNo, r.newNo));
     const int gutter = std::max(3, diff_rows::digitCount(maxNumber));
     const int pane = (widthChars - 2 * gutter - 5) / 2;
     if (pane < 12) {
@@ -192,7 +195,8 @@ void drawDiffSplit(const std::string& diff, int widthChars, float charW) {
 
     const auto gutterCell = [gutter](int number) {
         std::string s = number > 0 ? std::to_string(number) : std::string();
-        while (static_cast<int>(s.size()) < gutter) s.insert(s.begin(), ' ');
+        while (static_cast<int>(s.size()) < gutter)
+            s.insert(s.begin(), ' ');
         return s;
     };
     const auto col = [](const std::string& s, ImU32 c) {
@@ -255,8 +259,8 @@ void drawRowBody(const Metrics& m, const view_model::ChatRow& row, int blockId, 
     // the measurer can put a line a few pixels past the box it was fitted to. With a
     // margin that size the last word breaks to the next line instead of being cut,
     // and a paragraph reads as set rather than crammed against its border.
-    const float textW = std::max(40.0f, ImGui::GetContentRegionAvail().x -
-                                             2.0f * tokens::spacePx(m, Space::Lg));
+    const float textW =
+        std::max(40.0f, ImGui::GetContentRegionAvail().x - 2.0f * tokens::spacePx(m, Space::Lg));
     if (!row.reasoningSummary.empty()) ui::hint(m, row.reasoningSummary);
     if (!row.reasoningHead.empty() && !row.reasoningBody.empty())
         ui::text(m, row.reasoningHead, fld(row.labelColor), Type::Small);
@@ -299,14 +303,16 @@ std::string clipToWidth(const std::string& s, float room) {
     while (lo < hi) {
         const size_t mid = (lo + hi + 1) / 2;
         size_t cut = mid < s.size() ? mid : s.size();
-        while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+        while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80)
+            --cut;
         if (ImGui::CalcTextSize(s.substr(0, cut).c_str()).x + dots <= room)
             lo = mid;
         else
             hi = mid - 1;
     }
     size_t cut = lo;
-    while (cut > 0 && cut < s.size() && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+    while (cut > 0 && cut < s.size() && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80)
+        --cut;
     return s.substr(0, cut) + "...";
 }
 
@@ -381,13 +387,12 @@ void drawFoldedTool(const Metrics& m, const view_model::ChatRow& row) {
     size_t nl = row.text.find('\n');
     while (nl != std::string::npos) {
         const size_t end = row.text.find('\n', nl + 1);
-        const std::string line = row.text.substr(
-            nl + 1, (end == std::string::npos ? row.text.size() : end) - (nl + 1));
+        const std::string line =
+            row.text.substr(nl + 1, (end == std::string::npos ? row.text.size() : end) - (nl + 1));
         if (!line.empty()) {
             ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
             ImGui::Indent(indent);
-            ImGui::PushStyleColor(ImGuiCol_Text,
-                                  studio_theme::field(&ThemeColors::toolResultText));
+            ImGui::PushStyleColor(ImGuiCol_Text, studio_theme::field(&ThemeColors::toolResultText));
             ImGui::TextUnformatted(clipToWidth(line, rowW - indent).c_str());
             ImGui::PopStyleColor();
             ImGui::Unindent(indent);
@@ -398,8 +403,8 @@ void drawFoldedTool(const Metrics& m, const view_model::ChatRow& row) {
 
 // Returns true when the row consumed the click this frame: the text-selection
 // surface listens to the same press and must stay out of it.
-bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, int index,
-                 App& app, int& blockSeq) {
+bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, int index, App& app,
+                 int& blockSeq) {
     const Metrics& m = f.metrics;
     const float padX = tokens::spacePx(m, Space::Md);
     // Tighter than the block padding: the transcript is a list of cards, and a card
@@ -408,8 +413,7 @@ bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, in
     // A row that carries a label is a message: it gets a card. A bare text row is
     // a continuation of the one above it and stays on the surface.
     const bool carded = !row.label.empty() || row.kind == "tool" || row.kind == "result" ||
-                        row.kind == "diff" || row.kind == "system" ||
-                        row.kind == "skillrun";
+                        row.kind == "diff" || row.kind == "system" || row.kind == "skillrun";
     // A frame-local counter, not the row index: a container's children need ids
     // that cannot collide with the next row's, and index*10 ran out of room the
     // moment a block could hold children of its own.
@@ -461,7 +465,8 @@ bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, in
                     if (!right.empty()) {
                         ImGui::SameLine();
                         ui::text(m, right,
-                                 row.status.empty() ? fld(row.extraColor) : statusColour(row.status),
+                                 row.status.empty() ? fld(row.extraColor)
+                                                    : statusColour(row.status),
                                  Type::Caption);
                     }
                     ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
@@ -510,8 +515,8 @@ void drawStreaming(const Frame& f, const view_model::StreamingView& st, float wi
         ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding;
     if (ImGui::BeginChild("##streaming", ImVec2(width, 0.0f), flags,
                           ImGuiWindowFlags_NoScrollWithMouse)) {
-        const float textW =
-            std::max(40.0f, ImGui::GetContentRegionAvail().x - 2.0f * tokens::spacePx(m, Space::Lg));
+        const float textW = std::max(40.0f, ImGui::GetContentRegionAvail().x -
+                                                2.0f * tokens::spacePx(m, Space::Lg));
         if (st.hasReasoning) {
             if (!st.reasoningHead.empty())
                 ui::text(m, st.reasoningHead, studio_theme::field(&ThemeColors::reasoningTextColor),
@@ -522,8 +527,8 @@ void drawStreaming(const Frame& f, const view_model::StreamingView& st, float wi
         }
         if (st.hasContent) {
             if (!st.contentHead.empty())
-                ui::text(m, st.contentHead,
-                         studio_theme::field(&ThemeColors::phaseExecutingTools), Type::Caption);
+                ui::text(m, st.contentHead, studio_theme::field(&ThemeColors::phaseExecutingTools),
+                         Type::Caption);
             // Same renderer as a settled row: the streaming and persisted paths used
             // to be two different renderers, so a table that showed while streaming
             // disappeared when the message settled.
@@ -580,7 +585,8 @@ void drawChat(App& app, const Frame& f) {
             ImGui::PushStyleColor(ImGuiCol_Text, p.textDim);
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + colW);
             ui::pushType(m, Type::Body, false);
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (colW - 320.0f * m.factor) * 0.5f));
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
+                                 std::max(0.0f, (colW - 320.0f * m.factor) * 0.5f));
             ImGui::TextUnformatted(
                 "(no messages yet -- type below, Enter sends, / opens the command list)");
             ui::popType();
@@ -673,8 +679,8 @@ void drawDock(App& app, const Frame& f) {
             ui::divider(m);
             for (const auto& t : s.tasks) {
                 const std::string line = t.tag + "  " + t.detail;
-                ui::text(m, ui::fitLine(m, line, ImGui::GetContentRegionAvail().x, Type::Small,
-                                        false),
+                ui::text(m,
+                         ui::fitLine(m, line, ImGui::GetContentRegionAvail().x, Type::Small, false),
                          p.textDim, Type::Small);
             }
         }
@@ -697,24 +703,23 @@ void drawAgentUnit(const Metrics& m, const layout::Rect& box, const view_model::
     const float pad = tokens::spacePx(m, Space::Xs);
     layout::Rect rest = box;
     const float tagW = std::min(rest.w, ui::measure(m, a.tag, Type::Caption, false) + pad);
-    ui::textAt(m, layout::Rect{rest.x, rest.y, tagW, rest.h},
-               a.idle ? a.tag : a.tag, a.idle ? p.textDim : p.text, Type::Caption, false, 0.0f);
+    ui::textAt(m, layout::Rect{rest.x, rest.y, tagW, rest.h}, a.idle ? a.tag : a.tag,
+               a.idle ? p.textDim : p.text, Type::Caption, false, 0.0f);
     rest.x += tagW;
     rest.w -= tagW;
     if (!a.idle && rest.w > m.iconSize) {
-        const ImU32 glyph = a.activity == "error"
-                                ? p.danger
-                                : studio_theme::fromHex(
-                                      ThemeManager::instance().current().*
-                                      speaker_slots::paletteField(static_cast<size_t>(a.slot)));
+        const ImU32 glyph =
+            a.activity == "error"
+                ? p.danger
+                : studio_theme::fromHex(ThemeManager::instance().current().*
+                                        speaker_slots::paletteField(static_cast<size_t>(a.slot)));
         drawSpinner(m, layout::Rect{rest.x, rest.y, m.iconSize + pad, rest.h}, glyph);
         rest.x += m.iconSize + pad;
         rest.w -= m.iconSize + pad;
     }
     if (rest.w > 0.0f) {
-        ui::textAt(m, rest,
-                   ui::fitLine(m, a.detail, rest.w, Type::Caption, false), p.textDim, Type::Caption,
-                   false, 0.0f);
+        ui::textAt(m, rest, ui::fitLine(m, a.detail, rest.w, Type::Caption, false), p.textDim,
+                   Type::Caption, false, 0.0f);
     }
 }
 
@@ -833,8 +838,8 @@ void drawHeader(App& app, const Frame& f) {
              p.border);
 
     const float pad = tokens::spacePx(m, Space::Lg);
-    const layout::Rect row = f.header.inset(pad, tokens::spacePx(m, Space::Sm), pad,
-                                            tokens::spacePx(m, Space::Sm));
+    const layout::Rect row =
+        f.header.inset(pad, tokens::spacePx(m, Space::Sm), pad, tokens::spacePx(m, Space::Sm));
     const float titleH = tokens::linePx(m, Type::Title);
     const float row0H = std::max(titleH, m.controlH);
     const HeaderPlan& plan = g_headerPlan;
@@ -846,16 +851,16 @@ void drawHeader(App& app, const Frame& f) {
     for (size_t r = 0; r < plan.rows.size(); ++r) {
         const std::vector<int>& idxs = plan.rows[r];
         float x = row.right() - rowWidth(plan.widths, idxs, plan.gap);
-        const float y = row.y + (row0H - plan.rowH) * 0.5f +
-                        static_cast<float>(r) * (plan.rowH + plan.gap);
+        const float y =
+            row.y + (row0H - plan.rowH) * 0.5f + static_cast<float>(r) * (plan.rowH + plan.gap);
         for (int idx : idxs) {
             if (idx < 0 || idx >= static_cast<int>(items.size())) continue;
             const size_t i = static_cast<size_t>(idx);
             const actions::Item& item = items[i];
             const layout::Rect box{x, y, plan.widths[i], plan.rowH};
-            const std::string shown =
-                ui::fitLine(m, plan.labels[i], plan.widths[i] - 2.0f * tokens::spacePx(m, Space::Md),
-                            Type::Body, false);
+            const std::string shown = ui::fitLine(
+                m, plan.labels[i], plan.widths[i] - 2.0f * tokens::spacePx(m, Space::Md),
+                Type::Body, false);
             if (ui::buttonAt(m, box, shown, kHeaderButton, plan.tooltips[i].c_str())) {
                 app.handleKey(keyFor(item.id));
             }
@@ -888,12 +893,11 @@ void drawHeader(App& app, const Frame& f) {
     const float markH = tokens::linePx(m, titleTier) + 2.0f * tokens::spacePx(m, Space::Xs);
     const layout::Rect titleBox{row.x, row.y + (row0H - markH) * 0.5f, titleW, markH};
     ui::badge(m, titleBox,
-              ui::fitLine(m, titleText, titleBox.w - 2.0f * titlePadX, titleTier, false),
-              p.textDim, p.surface);
+              ui::fitLine(m, titleText, titleBox.w - 2.0f * titlePadX, titleTier, false), p.textDim,
+              p.surface);
     if (showPills) {
         float x = titleBox.right() + tokens::spacePx(m, Space::Lg);
-        const float pillH =
-            tokens::linePx(m, Type::Caption) + 2.0f * tokens::spacePx(m, Space::Xs);
+        const float pillH = tokens::linePx(m, Type::Caption) + 2.0f * tokens::spacePx(m, Space::Xs);
         const float pillY = row.y + (row0H - pillH) * 0.5f;
         // Only the spinner: the phase word lives in the status line, one line above
         // the prompt, where it is read together with the turn's clock.
@@ -960,19 +964,20 @@ void drawStatusLine(App& app, const Frame& f) {
     // of the window, a hand's width away from the box it describes.
     // From `x`, i.e. after the spinner: starting at the column's own left edge drew
     // "Idle" underneath the arc.
-    ui::fittedText(m, layout::Rect{x, top.y, std::max(1.0f, top.right() - x), top.h},
-                   s.statusText, fld(s.statusColor), tiers, 2, false, 0.0f);
+    ui::fittedText(m, layout::Rect{x, top.y, std::max(1.0f, top.right() - x), top.h}, s.statusText,
+                   fld(s.statusColor), tiers, 2, false, 0.0f);
 
     if (!s.skillStatus.empty()) {
         const std::string pill = "[skill] " + s.skillStatus;
         const float w = std::min(bottom.w, ui::measure(m, pill, Type::Caption, false) +
-                                            2.0f * tokens::spacePx(m, Space::Sm));
+                                               2.0f * tokens::spacePx(m, Space::Sm));
         const float h = std::min(bottom.h, tokens::linePx(m, Type::Caption) +
-                                            2.0f * tokens::spacePx(m, Space::Xs));
+                                               2.0f * tokens::spacePx(m, Space::Xs));
         const layout::Rect pillBox{bottom.right() - w, bottom.y + (bottom.h - h) * 0.5f, w, h};
-        ui::badge(m, pillBox, ui::fitLine(m, pill, pillBox.w - tokens::spacePx(m, Space::Md),
-                                          Type::Caption, false),
-                  ui::contrastOn(p.warning), p.warning);
+        ui::badge(
+            m, pillBox,
+            ui::fitLine(m, pill, pillBox.w - tokens::spacePx(m, Space::Md), Type::Caption, false),
+            ui::contrastOn(p.warning), p.warning);
         return;
     }
     // How long this has been running and how fast it is producing. Studio clock
@@ -1048,8 +1053,8 @@ void drawSlash(App& app, const Frame& f) {
     ImGui::SetNextWindowSize(ImVec2(box.w, box.h));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, p.overlay);
     ImGui::PushStyleColor(ImGuiCol_Border, p.border);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(tokens::spacePx(m, Space::Md),
-                                                           tokens::spacePx(m, Space::Sm)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(tokens::spacePx(m, Space::Md), tokens::spacePx(m, Space::Sm)));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, m.hairline);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, tokens::radiusPx(m, Radius::Md));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -1058,11 +1063,11 @@ void drawSlash(App& app, const Frame& f) {
     // moment it appears, and FocusWindow() drops the active item of every OTHER
     // window -- which is the composer. Typing "/" opened this list and took the
     // keyboard away, leaving nothing but Up/Down (handled by the app, not ImGui).
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
-                                   ImGuiWindowFlags_NoFocusOnAppearing |
-                                   ImGuiWindowFlags_NoNavFocus;
+    const ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNavFocus;
     if (ImGui::Begin("##slash", nullptr, flags)) {
         const int count = static_cast<int>(s.slashRows.size());
         const int shown = std::min(10, count);
@@ -1102,13 +1107,14 @@ std::vector<std::vector<int>> packAgents(const Metrics& m,
     float unit = 180.0f * m.factor;
     for (const auto& a : agents) {
         const float want = ui::measure(m, a.tag, Type::Caption) + m.iconSize +
-                          tokens::spacePx(m, Space::Xs) * 3.0f + 150.0f * m.factor;
+                           tokens::spacePx(m, Space::Xs) * 3.0f + 150.0f * m.factor;
         unit = std::max(unit, std::min(want, avail));
     }
     const int per = std::max(1, static_cast<int>((avail + gap) / (unit + gap)));
     for (int i = 0; i < static_cast<int>(agents.size()); i += per) {
         std::vector<int> row;
-        for (int k = i; k < static_cast<int>(agents.size()) && k < i + per; ++k) row.push_back(k);
+        for (int k = i; k < static_cast<int>(agents.size()) && k < i + per; ++k)
+            row.push_back(k);
         rows.push_back(row);
     }
     if (rowH) *rowH = tokens::linePx(m, Type::Caption) + tokens::spacePx(m, Space::Xs);
@@ -1161,7 +1167,8 @@ Frame computeFrame(App& app, const Metrics& m) {
     f.headerAgentRowH = agentRowH;
     const float agentH =
         f.headerAgentRows.empty() ? 0.0f : static_cast<float>(f.headerAgentRows.size()) * agentRowH;
-    const float headerH = 2.0f * gap + row0H + extraActionRows + (agentH > 0.0f ? gap + agentH : 0.0f);
+    const float headerH =
+        2.0f * gap + row0H + extraActionRows + (agentH > 0.0f ? gap + agentH : 0.0f);
 
     // The status line moved into the composer's row (its own column on the right),
     // so the footer stack is now just: queued hint, prompt, service bar.
@@ -1178,8 +1185,7 @@ Frame computeFrame(App& app, const Metrics& m) {
     // remaining window: the prompt then overhung its own column and the status
     // column came out negative and drew nothing.
     const float leftW =
-        app.leftOpen() ? std::min(std::max(340.0f * m.factor, contentW * 0.26f),
-                                  contentW * 0.40f)
+        app.leftOpen() ? std::min(std::max(340.0f * m.factor, contentW * 0.26f), contentW * 0.40f)
                        : 0.0f;
     // The footer spans the transcript AND the dock. Since the dock ends where the
     // transcript ends, the strip under it was dead space: the prompt and its two
@@ -1194,9 +1200,8 @@ Frame computeFrame(App& app, const Metrics& m) {
     // the prompt, and so the box does not twitch on every character.
     const float statusWant =
         ui::measure(m, s.statusText, Type::Body, false) + 3.0f * tokens::spacePx(m, Space::Md);
-    const float statusColW = std::max(96.0f * m.factor,
-                                      std::min(statusWant, std::min(220.0f * m.factor,
-                                                                    footerW * 0.42f)));
+    const float statusColW = std::max(
+        96.0f * m.factor, std::min(statusWant, std::min(220.0f * m.factor, footerW * 0.42f)));
     const float promptW = std::max(120.0f, footerW - statusColW - gap);
     f.composerRows = composerRowCount(app.inputText(), m, promptW);
     const float promptRowH = tokens::typePx(m, Type::Mono);
@@ -1258,8 +1263,8 @@ Frame computeFrame(App& app, const Metrics& m) {
         // line AND a track per metric, which is why one card filled a third of the column.
         const float metricH = std::max(tokens::linePx(m, Type::Caption), f.sessionsBarH);
         f.sessionsRowH = m.rowH + 3.0f * (metricH + gap * 0.5f) + gap;
-        const float sessionsWanted = m.rowH + static_cast<float>(app.paneCount()) * f.sessionsRowH +
-                                     3.0f * gap;
+        const float sessionsWanted =
+            m.rowH + static_cast<float>(app.paneCount()) * f.sessionsRowH + 3.0f * gap;
         const float sessionsMax = std::max(6.0f * m.rowH, f.left.h * 0.45f);
         const float sessionsH = std::min(sessionsWanted, sessionsMax);
         layout::Node col = layout::Node::col(0.0f);
@@ -1292,7 +1297,8 @@ Frame computeFrame(App& app, const Metrics& m) {
     y += composerH + gap;
     f.statusBar = layout::Rect{f.footer.x, y, f.footer.w, statusBarH};
     // --- the floating "/" menu, anchored above the composer ----------------
-    if (s.slashOpen) {        const int shown = std::min(10, static_cast<int>(s.slashRows.size()));
+    if (s.slashOpen) {
+        const int shown = std::min(10, static_cast<int>(s.slashRows.size()));
         const float hintH = tokens::linePx(m, Type::Small) + tokens::spacePx(m, Space::Xs);
         // The item gap is part of the height: counting only the rows left the hint
         // line under them clipped by the window's own bottom edge.

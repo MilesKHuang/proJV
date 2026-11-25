@@ -109,14 +109,13 @@ void drawPrompt(App& app, const Frame& f) {
     // ImGuiInputTextFlags_CtrlEnterForNewLine's exact definition in multiline mode
     // (imgui_widgets.cpp: "Determine if we turn Enter into a \n character"), and
     // WordWrap is what makes a long line wrap instead of scrolling sideways.
-    const ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue |
-                                      ImGuiInputTextFlags_CtrlEnterForNewLine |
-                                      ImGuiInputTextFlags_WordWrap |
-                                      ImGuiInputTextFlags_EscapeClearsAll;
+    const ImGuiInputTextFlags flags =
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine |
+        ImGuiInputTextFlags_WordWrap | ImGuiInputTextFlags_EscapeClearsAll;
     if (!modalOpen && wantFocus) ImGui::SetKeyboardFocusHere();
     ui::pushType(m, Type::Mono, true);
-    const bool entered = ImGui::InputTextMultiline("##prompt", g_buf, sizeof g_buf,
-                                                  ImVec2(box.w, box.h), flags);
+    const bool entered =
+        ImGui::InputTextMultiline("##prompt", g_buf, sizeof g_buf, ImVec2(box.w, box.h), flags);
     const bool edited = ImGui::IsItemEdited();
     const bool active = ImGui::IsItemActive();
     ui::popType();

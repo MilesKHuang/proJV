@@ -35,11 +35,11 @@
 namespace studio {
 namespace ui {
 
+using layout::Rect;
 using tokens::Metrics;
 using tokens::Radius;
 using tokens::Space;
 using tokens::Type;
-using layout::Rect;
 
 // ---- palette --------------------------------------------------------------
 // Semantic names, resolved from the active ThemeColors. Nothing outside this
@@ -116,7 +116,9 @@ void textAt(const Metrics& m, const Rect& box, const std::string& s, ImU32 color
 void fittedText(const Metrics& m, const Rect& box, const std::string& s, ImU32 color,
                 const Type* tiers, int tierCount, bool mono, float alignX = 0.0f);
 // A label allowed exactly one line that must not overflow: ellipsis.
-std::string fitLine(const Metrics& m, const std::string& s, float width, Type tier, bool mono);// ---- surfaces -------------------------------------------------------------
+std::string fitLine(const Metrics& m, const std::string& s, float width, Type tier, bool mono);
+
+// ---- surfaces -------------------------------------------------------------
 void fill(const Rect& box, ImU32 color);
 void stroke(const Rect& box, ImU32 color, float thickness, float radius);
 void fillRound(const Rect& box, ImU32 color, float radius);
@@ -148,13 +150,12 @@ bool checkbox(const Metrics& m, const std::string& label, bool* value);
 bool radio(const Metrics& m, const std::string& label, bool selected);
 // N options in one row, the selected one filled with the accent. Returns the new
 // index, or -1 when nothing was clicked.
-int segmented(const Metrics& m, const std::vector<std::string>& options, int selected,
-              float width);
+int segmented(const Metrics& m, const std::vector<std::string>& options, int selected, float width);
 // The one ImGui-native control: IME, selection, clipboard, undo. Styled entirely
 // from tokens so it matches the painted controls around it. Returns true when
 // Enter was pressed; fieldEdited() reports whether the text changed.
-bool field(const Metrics& m, const char* id, std::string* text, const char* hintText,
-           bool password, float width = -1.0f);
+bool field(const Metrics& m, const char* id, std::string* text, const char* hintText, bool password,
+           float width = -1.0f);
 bool fieldEdited();
 // A full-width selectable row: hover fill, selected fill, optional subtitle.
 // Returns true on click; listRowDoubleClicked() reports a double click.
@@ -166,7 +167,9 @@ bool listRowDoubleClicked();
 // keeps the tooltip-free contract: the caller paints its own icons in the space it
 // reserved, so a click on an icon cannot also count as a click on the row.
 bool listRowAt(const Metrics& m, const Rect& box, const std::string& label, bool selected,
-               bool disabled = false, Type tier = Type::Body);// A small pill of text (a phase name, a model name).
+               bool disabled = false, Type tier = Type::Body);
+
+// A small pill of text (a phase name, a model name).
 void badge(const Metrics& m, const Rect& box, const std::string& label, ImU32 fg, ImU32 bg);
 
 // ---- scrolling ------------------------------------------------------------

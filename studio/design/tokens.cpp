@@ -90,18 +90,19 @@ Metrics build(float dpi, float zoom) {
         m.type[i] = snap(kTypePx[i] * factor);
         m.line[i] = snap(kTypePx[i] * kLineRatio[i] * factor);
     }
-    for (int i = 0; i < kSpaceCount; ++i) m.space[i] = snap(kSpacePx[i] * factor);
+    for (int i = 0; i < kSpaceCount; ++i)
+        m.space[i] = snap(kSpacePx[i] * factor);
     for (int i = 0; i < kRadiusCount; ++i) {
-        m.radius[i] = (i == static_cast<int>(Radius::Pill)) ? 999.0f * factor
-                                                            : snap(kRadiusPx[i] * factor);
+        m.radius[i] =
+            (i == static_cast<int>(Radius::Pill)) ? 999.0f * factor : snap(kRadiusPx[i] * factor);
     }
 
     // A control is one line of body text plus 8 px above and below: 30.5 px at
     // 100%, which is what a desktop button measures.
     m.controlH = snap(m.line[static_cast<int>(Type::Body)] +
                       2.0f * kSpacePx[static_cast<int>(Space::Xs)] * factor);
-    m.rowH = snap(m.line[static_cast<int>(Type::Body)] +
-                  kSpacePx[static_cast<int>(Space::Xs)] * factor);
+    m.rowH =
+        snap(m.line[static_cast<int>(Type::Body)] + kSpacePx[static_cast<int>(Space::Xs)] * factor);
     m.iconSize = snap(m.type[static_cast<int>(Type::Body)] * 1.15f);
 
     // Never below one physical pixel, never a fraction: a 0.7 px separator does

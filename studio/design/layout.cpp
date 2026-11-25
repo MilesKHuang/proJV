@@ -121,10 +121,12 @@ float contentLen(const Node& n, Axis a) {
     const Axis main = mainAxisOf(n.dir);
     float acc = 0.0f;
     if (a == main) {
-        for (const Node& c : n.children) acc += preferredLen(c, a);
+        for (const Node& c : n.children)
+            acc += preferredLen(c, a);
         acc += n.gap * static_cast<float>(n.children.size() - 1);
     } else {
-        for (const Node& c : n.children) acc = std::max(acc, preferredLen(c, a));
+        for (const Node& c : n.children)
+            acc = std::max(acc, preferredLen(c, a));
     }
     return acc;
 }
@@ -213,7 +215,8 @@ void place(Node& n, Rect area) {
 
     // Pass 2: justify the run along the main axis.
     float sumMain = 0.0f;
-    for (float v : mainLen) sumMain += v;
+    for (float v : mainLen)
+        sumMain += v;
     const float leftover = std::max(0.0f, innerMain - sumMain - gapTotal);
     float offset = 0.0f;
     float extraGap = 0.0f;

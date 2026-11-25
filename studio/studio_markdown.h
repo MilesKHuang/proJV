@@ -21,8 +21,8 @@ float textWidth(const std::string& utf8);
 
 // Wrap one paragraph of styled segments to `wrapWidth` pixels. Returns lines, each
 // a list of segments that fit. Pure apart from the font measurement.
-std::vector<std::vector<markdown_text::Segment>> wrap(const std::vector<markdown_text::Segment>& segs,
-                                                      float wrapWidth);
+std::vector<std::vector<markdown_text::Segment>>
+wrap(const std::vector<markdown_text::Segment>& segs, float wrapWidth);
 
 // Draw markdown (headings, lists, quotes, code, rules, tables) into the current
 // ImGui window at the given wrap width.
