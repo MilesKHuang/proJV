@@ -367,6 +367,10 @@ class App {
     // --demo-chat pretends a turn is running, so an acceptance image can show the
     // spinner and the running state without a live model.
     bool demoBusy_ = false;
+    // A growing "streamed answer" for --demo-stream: the only live signal of output
+    // while a real turn runs (the provider reports usage only at the end), so the
+    // throughput figure can be exercised without a model.
+    std::string demoStreamText_;
     bool toolsCollapsed_ = true;
     // Same rule for skill runs: a debate is the noisiest thing in a transcript.
     bool skillsCollapsed_ = true;

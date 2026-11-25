@@ -4,6 +4,7 @@
 #include "core/help_text.h"
 #include "core/snapshot.h"
 #include "core/speaker_slots.h"
+#include "core/token_estimate.h"
 #include "design/path_text.h"
 #include "platform/iprocess_runner.h"
 #include "platform/isystem_stats.h"
@@ -393,6 +394,19 @@ void App::fillSource() {
     if (runtime_ && runtime_->agent()) {
         Agent* a = runtime_->agent();
         s.status = a->getStatus();
+        // Throughput has to come from the text ARRIVING: the provider reports usage
+        // only when the stream ends, so completionTokens() sits at 0 for the whole
+        // answer and a window over it can never produce a rate. Estimate from the
+        // streamed text with the same estimator the context budget uses, and let
+        // work_clock average that. Only the active pane is measured -- it is the only
+        // one whose summary is drawn.
+        if (demoBusy_ && !demoStreamText_.empty()) s.status.streamingText = demoStreamText_;
+        const std::string& streamed = s.status.streamingText;
+        if (active().clock.running && !streamed.empty()) {
+            const size_t tokens = estimateTokensForText(streamed) +
+                                  estimateTokensForText(s.status.reasoningText);
+            work_clock::noteTokens(active().clock, monotonicMs(), static_cast<int>(tokens));
+        }
 
         s.msgCount = a->getSession().messageCount();
         int toolCount = 0;
@@ -1377,7 +1391,12 @@ void App::demoAppendOne() {
     Pane& pane = active();
     static int n = 0;
     ++n;
-    const bool tool = (n % 3) == 0;
+    // Every call emits a few more characters of "answer", which is what the rate is
+    // measured from; every third call also settles a message, so the follow behaviour
+    // gets exercised at the same time.
+    demoStreamText_ += "折叠、跟随、吞吐各自只看一个信号，这样三件事不会互相拖累。";
+    if ((n % 3) != 0) return;
+    const bool tool = ((n / 3) % 2) == 1; // alternate: a tool pair, then a reply
     if (tool) {
         Message call = Message::Assistant("再看一处。");
         ToolCall tc;
@@ -1467,11 +1486,13 @@ void App::tick() {
         // It is fed OUTPUT tokens only, and only while they move: the old figure
         // divided prompt+completion by the turn's length, so the first second of a
         // 30k-token context read as "30000 tok/s".
-        const bool busyNow = pane.rt->isBusy();
-        const int outTokens = pane.rt->completionTokens();
+        // --demo-chat pretends a turn is running: the clock has to run too, or the
+        // summary it feeds has nothing to show.
+        const bool busyNow = pane.rt->isBusy() || (demoBusy_ && &pane == &active());
         if (busyNow) {
-            if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), outTokens);
-            work_clock::noteTokens(pane.clock, monotonicMs(), outTokens);
+            // The baseline is "no output yet"; the samples come from fillSource, which
+            // is the one place that already holds the streamed text.
+            if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), 0);
         } else if (pane.clock.running) {
             work_clock::end(pane.clock);
         }
