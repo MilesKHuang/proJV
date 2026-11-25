@@ -428,7 +428,14 @@ TEST_CASE("ftree: Explorer order is folders first, then numbers by value") {
     const std::vector<std::string> got =
         namesOf({ent("b10.txt", false), ent("b2.txt", false), ent("README.md", false),
                  ent("sub", true), ent("Alpha", false)});
-    const std::vector<std::string> want = {"sub", "Alpha", "b2.txt", "b10.txt", "README.md"};
+    // Which of "b2.txt" and "README.md" comes first is the PLATFORM's rule: Explorer
+    // ignores case, a Linux file manager does not, and the tree follows the one it
+    // runs beside. Asserting the Windows order everywhere is what made this test go
+    // red on the Linux CI the first time it ever ran there.
+    const std::vector<std::string> want =
+        studio::ftree::kCaseInsensitiveOrder
+            ? std::vector<std::string>{"sub", "Alpha", "b2.txt", "b10.txt", "README.md"}
+            : std::vector<std::string>{"sub", "Alpha", "README.md", "b2.txt", "b10.txt"};
     CHECK(got == want);
 }
 

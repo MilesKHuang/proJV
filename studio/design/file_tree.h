@@ -30,6 +30,17 @@ struct Entry {
     bool isDir = false;
 };
 
+// Does the ordering ignore ASCII case? Windows Explorer does; a Linux file manager
+// does not, and the tree follows the platform it runs on so it sorts the way the
+// file manager beside it does. Exposed (rather than a constant inside the .cpp) so
+// a test can state the platform's rule instead of asserting one platform's order
+// on the other, which is exactly how this went red on Linux CI.
+#ifdef _WIN32
+constexpr bool kCaseInsensitiveOrder = true;
+#else
+constexpr bool kCaseInsensitiveOrder = false;
+#endif
+
 // The ordering rule, exposed so the panel and the tests use the same one.
 // Text runs sort before number runs at the same position (the reference's tag
 // ordering); numbers compare by value, never by text.

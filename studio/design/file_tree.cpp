@@ -12,14 +12,9 @@ namespace {
 
 namespace fs = std::filesystem;
 
-#ifdef _WIN32
-constexpr bool kCaseInsensitive = true;
-#else
-constexpr bool kCaseInsensitive = false;
-#endif
 
 std::string folded(const std::string& s) {
-    if (!kCaseInsensitive) return s;
+    if (!kCaseInsensitiveOrder) return s;
     std::string out = s;
     for (char& c : out) {
         const unsigned char u = static_cast<unsigned char>(c);
