@@ -108,12 +108,30 @@ jobs:
           fi
           wc -l release_body.md
 
+      # The runner's own `gh`, not a third-party action: the softprops action
+      # started failing on this repo with nothing but a Node 20 -> 24 deprecation
+      # warning in the annotations, while both package jobs and the artifact
+      # download stayed green -- twice in a row, so not transient. `gh` is
+      # preinstalled, needs no bundled runtime, and prints the real API error if it
+      # fails. Same behaviour: update the release for this tag if it exists, else
+      # create it, always with the packaged files and the curated notes.
       - name: Create / update the Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          body_path: release_body.md
-          generate_release_notes: false
-          fail_on_unmatched_files: true
-          draft: false
-          prerelease: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(ls -A dist)" ]; then
+            echo "no packaged files in dist/ -- refusing to publish a release without them"
+            exit 1
+          fi
+          ls -l dist
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
+              --notes-file release_body.md
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" \
+              --notes-file release_body.md
+          fi
+          gh release view "$GITHUB_REF_NAME" --json tagName,assets \
+            --template '{{.tagName}}: {{len .assets}} asset(s){{"\n"}}'
