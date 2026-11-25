@@ -18,13 +18,6 @@ Rect Rect::inset(float l, float t, float r, float b) const {
     return out;
 }
 
-Rect Rect::clippedTo(float maxHeight) const {
-    Rect out = *this;
-    const float limit = maxHeight < 0.0f ? 0.0f : maxHeight;
-    if (out.h > limit) out.h = limit;
-    return out;
-}
-
 namespace {
 
 // One code path for both axes: every helper takes an Axis instead of working on
@@ -281,13 +274,6 @@ void solve(Node& root, Rect area) {
     place(root, area);
 }
 
-float preferredWidth(const Node& n) {
-    return fitLen(n, Axis::X);
-}
-
-float preferredHeight(const Node& n) {
-    return fitLen(n, Axis::Y);
-}
 
 } // namespace layout
 } // namespace studio

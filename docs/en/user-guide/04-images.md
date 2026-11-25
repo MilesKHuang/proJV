@@ -36,9 +36,21 @@ that directory, up to 8 per message. It does not recurse.
 |-------|-------|
 | Per image size | about 30 MiB |
 | Images per message | 8 |
+| Encoded images per message | 32 MiB total |
+| Attachments kept in the request | the newest message that has any |
 
 Images are sent as base64 content blocks; large images cost tokens. Screenshot
 tags and other tools produce PNGs you can attach the same way.
+
+A request carries the whole history, and every attachment is re-encoded from its
+path on the way out -- so a screenshot you pasted twenty turns ago is still part
+of today's request. Once that pushed a body past the gateway's limit the turn
+failed with HTTP 413 and there was no way back (the history cannot shrink).
+
+So proJV sends the attachments of the newest message that has any, and replaces
+older ones with a one-line note. Nothing is deleted: the session still shows the
+image, and the message you just sent always keeps its own. The cap is 32 MiB of
+encoded images per message, which leaves room for the text of a long session.
 
 ## The model can fetch an image itself
 

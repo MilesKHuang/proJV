@@ -126,7 +126,6 @@ void fillRound(const Rect& box, ImU32 color, float radius);
 void card(const Rect& box, const Metrics& m, bool raised = false);
 // A hairline across the current window at the cursor, then a small gap.
 void divider(const Metrics& m);
-void dividerAt(const Metrics& m, const Rect& box);
 
 // ---- controls -------------------------------------------------------------
 // Four weights, one shape. Primary carries the accent (the eye lands on Save,
@@ -148,15 +147,11 @@ bool buttonAt(const Metrics& m, const Rect& box, const std::string& label, Btn k
 bool iconButton(const Metrics& m, const Rect& box, const std::string& glyph);
 bool checkbox(const Metrics& m, const std::string& label, bool* value);
 bool radio(const Metrics& m, const std::string& label, bool selected);
-// N options in one row, the selected one filled with the accent. Returns the new
-// index, or -1 when nothing was clicked.
-int segmented(const Metrics& m, const std::vector<std::string>& options, int selected, float width);
 // The one ImGui-native control: IME, selection, clipboard, undo. Styled entirely
 // from tokens so it matches the painted controls around it. Returns true when
-// Enter was pressed; fieldEdited() reports whether the text changed.
+// Enter was pressed.
 bool field(const Metrics& m, const char* id, std::string* text, const char* hintText, bool password,
            float width = -1.0f);
-bool fieldEdited();
 // A full-width selectable row: hover fill, selected fill, optional subtitle.
 // Returns true on click; listRowDoubleClicked() reports a double click.
 bool listRow(const Metrics& m, const std::string& label, bool selected, bool disabled = false);
@@ -178,7 +173,6 @@ void badge(const Metrics& m, const Rect& box, const std::string& label, ImU32 fg
 bool beginScroll(const char* id, const Rect& box, const Metrics& m, ImU32 bg);
 // Move the visible window inside the region currently being built.
 void scrollBy(float pixels);
-float scrollMax();
 // Pixels between the view and the bottom of its content (0 = at the bottom, and
 // 0 when there is nothing to scroll). Read it before endScroll(): ImGui knows the
 // real content height only once this frame's items have been laid out.

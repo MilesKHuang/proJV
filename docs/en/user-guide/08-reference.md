@@ -153,6 +153,30 @@ Exit codes: `0` ok, `1` error, `2` cancelled, `3` an approval was needed but
 `--approve never` refused it. `projv run --schema` lists every event and its
 fields; `projv run -p "..." --jsonl` is what a CI job parses.
 
+## The window: `proJV_studio`
+
+```
+proJV_studio [--dump-view-model [file]] [--screenshot out.png]
+             [--frames N] [--expand KEY] [--scroll-up N]
+             [--demo-chat [--demo-stream N]]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--dump-view-model [file]` | write one frame's view-model JSON and exit (the parity oracle) |
+| `--screenshot out.png` | render, read the back buffer, write a PNG, exit |
+| `--frames N` | how many frames to render before the screenshot (default 4) |
+| `--demo-chat` | fill a fixed transcript, so no model or API key is needed |
+| `--demo-stream N` | append a demo bubble every N frames (follows the end like a live turn) |
+| `--expand KEY` | open one folded row by key (e.g. `m10:0`) before the shot |
+| `--scroll-up N` | scroll back N lines before the shot |
+
+`--dump-view-model` and `--screenshot` are the two acceptance hooks: the first says
+what the derivation produced, the second says what a reader actually sees. Neither
+opens a dialog, and `--demo-chat` makes both work on a machine with no key. The
+window's own behaviour (fold, follow, layout) is described in
+[the studio guide](../dev-guide/studio-gui.md).
+
 ---
 
 Next -> back to [the guide](README.md) | Want to change it -> [dev guide](../dev-guide/README.md)

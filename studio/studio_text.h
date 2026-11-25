@@ -60,7 +60,6 @@ class TextSurface {
 
     // Selection bookkeeping.
     Selection& selection() { return sel_; }
-    void clearSelection() { sel_.clear(); }
 
     // Text the selection covers (plain, no styling). Empty when nothing is selected.
     std::string selectedText() const;

@@ -133,7 +133,6 @@ class App {
 
     bool initialize(IProcessRunner* runner);
     void shutdown();
-    void emergencyShutdown();
     bool hasApiKey() const;
 
     // --- per frame --------------------------------------------------------
@@ -181,7 +180,6 @@ class App {
 
     // --- input line -------------------------------------------------------
     const std::string& inputText() const { return active().input; }
-    void setInputText(const std::string& s);
     // Visual rows the composer holds this frame (set by the prompt widget).
     void setPromptRows(int rows) { promptRows_ = rows > 0 ? rows : 1; }
     int promptRows() const { return promptRows_; }
@@ -210,7 +208,6 @@ class App {
     bool leftOpen() const { return leftOpen_; }
     void setLeftOpen(bool open) { leftOpen_ = open; }
     float leftSplit() const { return leftSplit_; }
-    void setLeftSplit(float ratio);
     // One line saying what just happened, so a click never has a silent result.
     // Per pane: the service bar it lands in belongs to one session.
     void setReceipt(const std::string& text);
@@ -252,7 +249,6 @@ class App {
     // --- modals -----------------------------------------------------------
     const std::string& modal() const { return modal_; }
     int debugKeys() const { return debugKeys_; }
-    int debugModalSets() const { return debugModalSets_; }
     void openModal(const std::string& name);
     void closeModal() { modal_ = "none"; }
     ConfigForm& configForm() { return form_; }
@@ -293,7 +289,6 @@ class App {
     // Append ONE more demo message, as if a turn were producing bubbles. Used by
     // --demo-stream to reproduce the follow behaviour without a model.
     void demoAppendOne();
-    void beginQuit() { openModal("quit"); }
     void requestExit() { wantExit_ = true; }
     bool wantExit() const { return wantExit_; }
     void refuseIfBusy(std::string* why) const;
@@ -304,16 +299,11 @@ class App {
     float dpiScale() const { return dpiScale_; }
     void setDpiScale(float s) { dpiScale_ = s; }
 
-    std::string describeState() const;
-
     // "12.4s - 34 tok/s - tool 2/3" for the active pane, or "" when it is idle.
     // One derivation, so the status line and the System panel cannot disagree. The
     // view model never reads a clock (its snapshots are golden tests), which is why
     // this lives here.
     std::string workSummary() const;
-    // Prompt+completion tokens of the active pane, for the throughput figure.
-    int activeTokens() const;
-    long long nowMs() const;
 
   private:
     Pane& active();
@@ -384,7 +374,6 @@ class App {
     bool bannerShown_ = false;
     float dpiScale_ = 1.0f;
     int debugKeys_ = 0;
-    int debugModalSets_ = 0;
     // One-time startup: the first pane to become ready initialises the theme, the
     // "/" command table and the welcome dialog, because those used to run inside
     // App::initialize() on the UI thread (which is now off it).

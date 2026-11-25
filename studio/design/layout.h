@@ -35,8 +35,7 @@ struct Rect {
 
     float right() const { return x + w; }
     float bottom() const { return y + h; }
-    float centerX() const { return x + w * 0.5f; }
-    float centerY() const { return y + h * 0.5f; }
+
     bool empty() const { return w <= 0.0f || h <= 0.0f; }
     bool contains(float px, float py) const {
         return px >= x && py >= y && px < right() && py < bottom();
@@ -45,16 +44,9 @@ struct Rect {
     Rect inset(float all) const { return inset(all, all, all, all); }
     Rect shrink(float dw, float dh) const { return inset(dw, dh, dw, dh); }
     // Same box with a new height, keeping the top edge (bands stacked downwards).
-    Rect withHeight(float newH) const { return Rect{x, y, w, newH}; }
-    Rect withWidth(float newW) const { return Rect{x, y, newW, h}; }
-    Rect moved(float dx, float dy) const { return Rect{x + dx, y + dy, w, h}; }
+
     // The bottom `amount` pixels of this box.
-    Rect fromBottom(float amount) const { return Rect{x, bottom() - amount, w, amount}; }
-    // The top `amount` pixels of this box.
-    Rect fromTop(float amount) const { return Rect{x, y, w, amount}; }
-    // This box cut down so it ends at `limit` (a band plus everything reserved
-    // below it can never overlap).
-    Rect clippedTo(float maxHeight) const;
+
 };
 
 struct Edges {
@@ -139,21 +131,6 @@ struct Node {
         percentH = fraction;
         return *this;
     }
-    // Fit is the default; these two exist so a builder line reads as a statement
-    // of intent rather than relying on a default.
-    Node& wFit() {
-        policyW = Policy::Fit;
-        return *this;
-    }
-    Node& hFit() {
-        policyH = Policy::Fit;
-        return *this;
-    }
-    Node& minsize(float w, float h) {
-        minW = w;
-        minH = h;
-        return *this;
-    }
     Node& maxsize(float w, float h) {
         maxW = w;
         maxH = h;
@@ -169,10 +146,6 @@ struct Node {
     }
     Node& padding(float x, float y) {
         pad = Edges::xy(x, y);
-        return *this;
-    }
-    Node& spacing(float g) {
-        gap = g;
         return *this;
     }
     Node& crossAlign(Align a) {
@@ -196,8 +169,6 @@ void solve(Node& root, Rect area);
 
 // The size a node would like on its own (padding + content), ignoring Grow and
 // Percent. Exposed for callers that must reserve space before solving.
-float preferredWidth(const Node& n);
-float preferredHeight(const Node& n);
 
 } // namespace layout
 } // namespace studio

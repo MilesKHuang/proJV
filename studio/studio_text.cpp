@@ -95,19 +95,11 @@ ImU32 runColor(markdown_text::Style style, ImU32 plainOverride) {
     }
 }
 
-bool allOfStyle(const markdown_text::Line& line, markdown_text::Style style) {
-    if (line.segs.empty()) return false;
-    for (const auto& s : line.segs)
-        if (s.style != style && s.style != markdown_text::Style::Normal) return false;
-    return true;
-}
-
-// A fenced-code line is ALL CodeBlock, with no tolerance for Normal. The tolerant
-// test above is right for a quote or a bullet, whose wrapped runs may carry plain
-// segments -- but for code it made every PROSE paragraph a code line: its segs are
-// all Normal, and Normal counted as "same style". Each paragraph was therefore
-// drawn as a fenced block: a full-width mdCodeBg band and the code hang indent
-// (the dark strip behind ordinary sentences in a screenshot).
+// A fenced-code line is ALL CodeBlock, with no tolerance for Normal. Tolerating
+// Normal here (as an earlier helper did) made every PROSE paragraph a code line --
+// its segs are all Normal, and Normal counted as "same style", so each paragraph
+// was drawn as a fenced block: a full-width mdCodeBg band plus the code hang
+// indent (the dark strip behind ordinary sentences in a screenshot).
 bool isCodeLine(const markdown_text::Line& line) {
     if (line.segs.empty()) return false;
     for (const auto& s : line.segs)

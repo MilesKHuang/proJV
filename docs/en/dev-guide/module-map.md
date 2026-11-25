@@ -167,10 +167,13 @@ the code disagree, the code wins.
 - **Responsibility.** `config.toml` round-trip and SQLite session persistence.
 - **Entry.** `src/core/config.cpp` (TOML load/save, defaults),
   `src/core/storage.cpp` (DB create/open, message append, checkpoint).
-- **Schema.** `messages` carries a `diff TEXT` column: the unified diff a
-  file-writing tool produced, shown in its own TUI bubble. It is display-only and
-  must never reach `to_json`. Older databases get it through the same
-  try-`ALTER TABLE` block as `reasoning_content` / `image_paths` / `synthetic`.
+- **Schema.** `messages` carries three display-only columns: `diff TEXT` (the
+  unified diff a file-writing tool produced), `duration_ms` (how long the call
+  took) and `skill_run_id` (which skill run wrote that role message, so a replay
+  folds the same way the live session did). None of them may reach `to_json`.
+  Older databases get them through the same try-`ALTER TABLE` block as
+  `reasoning_content` / `image_paths` / `synthetic`, and the two new ones read back
+  as `0` / empty -- "unknown", never "instant".
 - **Tests.** `test_storage_diff.cpp` covers the `diff` round trip and the
   migration from a pre-`diff` schema; everything else is covered indirectly by
   the skill and agent suites.
@@ -230,6 +233,47 @@ the code disagree, the code wins.
   approval request (deny, or allow under `--approve always`).
 - **Tests.** `tests/unit/test_session_runtime.cpp` (event contract) and
   `tests/e2e/run_e2e.ps1` (the real `TuiApp` over the runtime, against a fake API).
+
+## 12. The studio front-end
+
+- **Responsibility.** Draw the same session in a window. It owns layout, input and
+  the two pieces of view state a window has and a terminal does not: what is
+  folded open, and whether the transcript follows its end.
+- **Entry.** `studio/main_studio.cpp` (Win32 + WGL, the IME-complete half) and
+  `studio/main_studio_sdl.cpp` (Linux, SDL2). Both build `studio::App`
+  (`studio/studio_app.{h,cpp}`) and call `studio::drawFrame`.
+- **What is on screen comes from `src/core/view_model.h`.** `App::fillSource()`
+  fills a `view_model::Source` from the active pane, `build()` derives a `Screen`,
+  `studio_ui.cpp` only places it. A label, a colour reference, a row order or a
+  derived summary added in `studio_ui.cpp` is the divergence `view_model` exists to
+  prevent: put it in the derivation and let the TUI ignore it.
+- **The chat.** `view_model::ChatRow` carries the fold fields (`key`,
+  `collapsible`, `collapsed`, `summary`, `status`, `durationText`, `diffSummary`,
+  `diffText`, `extraFull`, `lines`) and `children` for a skill run's role blocks.
+  The fold is DERIVED (`deriveChat`), the state is INPUT (`Source::toolsCollapsed`
+  / `skillsCollapsed` / `expandedKeys`), and the row identity is `Source::bubbleKeys`
+  -- built in `studio_app.cpp` where bubbles are appended, never a row index.
+  Adding a foldable kind: fill those fields in `deriveChat`, then draw it in
+  `drawFoldedTool` (`studio/studio_ui.cpp`).
+- **Following the end.** `App::followEnabled()` is a latch the reader owns; a wheel
+  turn or a scrollbar drag sets it, `ui::scrollToBottom()` runs every frame while
+  it is on. Content arriving never touches it -- see the studio guide for the frame
+  trace that killed three earlier designs.
+- **Layout.** `studio/design/layout.{h,cpp}` is a tiny row/col solver;
+  `computeFrame` (`studio_ui.cpp`) is the whole window as nested nodes, so a band
+  is moved by editing that one function. `studio/design/tokens.{h,cpp}` is the
+  type/space/radius ladder -- a hard-coded pixel value in a draw call is a bug.
+- **Chrome that is not the view model.** `studio/design/work_clock.{h,cpp}` (turn
+  length and throughput, injected timestamps, no clock in the view model) and
+  `studio/png_writer.{h,cpp}` (`--screenshot`: stored-deflate PNG, no image
+  library). `studio/ui/ui.{h,cpp}` is the widget kit; one radius, one padding.
+- **Screenshots.** `proJV_studio --screenshot out.png [--frames N] [--demo-chat]
+  [--expand KEY] [--scroll-up N] [--demo-stream N]` renders through the real draw
+  path and writes a PNG. `--demo-chat` / `--demo-stream` supply a transcript, so an
+  acceptance image never needs a model or a key.
+- **Tests.** `tests/unit/test_studio_design.cpp` (tokens, layout, fitting, the
+  header's button table, `work_clock`) and `tests/unit/test_png_writer.cpp`. None of
+  them include ImGui, so they run without a GPU or a window.
 
 ---
 

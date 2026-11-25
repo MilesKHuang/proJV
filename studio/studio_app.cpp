@@ -271,12 +271,6 @@ void App::shutdown() {
     }
 }
 
-void App::emergencyShutdown() {
-    for (auto& pane : panes_) {
-        if (pane && pane->rt) pane->rt->emergencyShutdown();
-    }
-}
-
 bool App::hasApiKey() const {
     return runtime_ && runtime_->config().loaded && !runtime_->config().apiKey.empty();
 }
@@ -642,11 +636,6 @@ void App::fillModalSource(view_model::Source& s) {
 
 // ---- input line ----------------------------------------------------------
 
-void App::setInputText(const std::string& s) {
-    active().input = s;
-    onInputEdited();
-}
-
 void App::commitInput(const char* text) {
     if (!text) return;
     // The field is multi-line, so a line break is something the user asked for with
@@ -709,7 +698,6 @@ void App::slashClose() {
 // ---- modals --------------------------------------------------------------
 
 void App::openModal(const std::string& name) {
-    ++debugModalSets_;
     if (name == "config") {
         openConfigModal();
         return;
@@ -1076,10 +1064,6 @@ bool App::followEnabled() const {
 
 void App::refuseIfBusy(std::string* why) const {
     if (busy() && why) *why = "refused: a turn is running";
-}
-
-std::string App::describeState() const {
-    return view_model::toJson(active().screen);
 }
 
 // ---- the key map (docs/*/user-guide/08-reference.md, key for key) --------
@@ -1618,11 +1602,6 @@ void App::setTreeRoot(const std::string& dir) {
     setReceipt("cannot open " + dir + ": " + err);
 }
 
-void App::setLeftSplit(float ratio) {
-    if (!(ratio > 0.0f)) return;
-    leftSplit_ = std::min(0.8f, std::max(0.2f, ratio));
-}
-
 void App::setReceipt(const std::string& text) {
     Pane& pane = active();
     pane.receipt = text;
@@ -1732,15 +1711,6 @@ std::string App::workSummary() const {
         std::snprintf(buf, sizeof buf, "%.1fs  %.0f tok/s", seconds, rate);
     }
     return buf;
-}
-
-int App::activeTokens() const {
-    if (!runtime_) return 0;
-    return runtime_->promptTokens() + runtime_->completionTokens();
-}
-
-long long App::nowMs() const {
-    return monotonicMs();
 }
 
 void App::setFollowBottom(bool on) {

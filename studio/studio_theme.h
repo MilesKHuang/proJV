@@ -73,14 +73,7 @@ float fontPx(TextRole role);
 
 // Push the chrome face at `role`'s size (pair every push with popText).
 void pushText(TextRole role);
-// Push the monospace face at `role`'s size (chat body, prompt, aligned output).
-void pushMono(TextRole role);
 void popText();
-
-// The dim text colour, nudged to at least 4.5:1 against the window background.
-// Every "hint" in the studio goes through here: a hand-authored theme's disabled
-// grey is unreadable on the light background (2.7:1 in the shipped Light theme).
-ImU32 dimText();
 
 // A panel surface derived from a theme colour: `base` moved `amount` (0..1) of the
 // way toward white on a dark background, or toward black on a light one. Themes do
@@ -108,6 +101,4 @@ bool loadFonts(float scale, std::string* err);
 ImFont* uiFont();
 ImFont* monoFont();
 
-// Rebuild the atlas at a new scale (hi-DPI monitor switch).
-void setFontScale(float scale);
 } // namespace studio_theme

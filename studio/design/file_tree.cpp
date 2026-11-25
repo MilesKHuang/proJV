@@ -265,12 +265,8 @@ void Tree::flatten(const Node& node, int depth, std::vector<Row>& out) const {
 
 std::vector<Row> Tree::rows() const {
     std::vector<Row> out;
-    if (root_.empty()) {
-        count_ = 0;
-        return out;
-    }
+    if (root_.empty()) return out;
     flatten(rootNode_, 0, out);
-    count_ = static_cast<int>(out.size());
     return out;
 }
 

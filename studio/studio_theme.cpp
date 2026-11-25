@@ -234,11 +234,6 @@ void applyStyle() {
     c[ImGuiCol_TextDisabled] = ImGui::ColorConvertU32ToFloat4(dim);
 }
 
-ImU32 dimText() {
-    const ThemeColors& T = ThemeManager::instance().current();
-    return readable(fromHex(T.textDisabled), fromHex(T.windowBg), 4.5f);
-}
-
 ImU32 surface(ImU32 base, float amount) {
     if (amount < 0.0f) amount = 0.0f;
     if (amount > 1.0f) amount = 1.0f;
@@ -311,11 +306,6 @@ float fontPx(TextRole role) {
 // negative. Falling back to the font already in use keeps push and pop equal.
 void pushText(TextRole role) {
     ImFont* face = g_ui ? g_ui : ImGui::GetFont();
-    ImGui::PushFont(face, fontPx(role));
-}
-
-void pushMono(TextRole role) {
-    ImFont* face = g_mono ? g_mono : ImGui::GetFont();
     ImGui::PushFont(face, fontPx(role));
 }
 
@@ -395,13 +385,6 @@ ImFont* uiFont() {
 
 ImFont* monoFont() {
     return g_mono;
-}
-
-void setFontScale(float scale) {
-    if (scale < 0.1f) scale = 1.0f;
-    if (scale == g_fontScale) return;
-    g_fontScale = scale;
-    ImGui::GetStyle().FontScaleDpi = g_fontScale;
 }
 
 } // namespace studio_theme

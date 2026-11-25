@@ -86,7 +86,6 @@ class Tree {
     // The rows to draw, top to bottom (collapsed folders hide their children).
     std::vector<Row> rows() const;
     // Rows the last rows() call produced -- the panel's scroll bound.
-    int count() const { return count_; }
 
   private:
     Node* find(Node& node, const std::string& dir);
@@ -97,7 +96,6 @@ class Tree {
     std::string rootError_;
     Node rootNode_;
     std::set<std::string> expanded_;
-    mutable int count_ = 0;
 };
 
 } // namespace ftree

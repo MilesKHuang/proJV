@@ -15,7 +15,6 @@ namespace ui {
 namespace {
 
 float g_zoom = 1.0f;
-bool g_fieldEdited = false;
 bool g_rowDouble = false;
 
 int typeIdx(Type t) {
@@ -287,14 +286,6 @@ void divider(const Metrics& m) {
     ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Md)));
 }
 
-void dividerAt(const Metrics& m, const Rect& box) {
-    if (box.empty()) return;
-    const Palette p = palette();
-    const float y = box.y + box.h * 0.5f;
-    ImGui::GetWindowDrawList()->AddLine(ImVec2(box.x, y), ImVec2(box.right(), y), p.divider,
-                                        m.hairline);
-}
-
 // ---- controls -------------------------------------------------------------
 
 float buttonWidth(const Metrics& m, const std::string& label, Btn kind) {
@@ -422,41 +413,6 @@ bool radio(const Metrics& m, const std::string& label, bool selected) {
     return clicked;
 }
 
-int segmented(const Metrics& m, const std::vector<std::string>& options, int selected,
-              float width) {
-    if (options.empty() || width <= 0.0f) return -1;
-    const Palette p = palette();
-    const float radius = tokens::radiusPx(m, Radius::Sm);
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    const Rect row{pos.x, pos.y, width, m.controlH};
-    fillRound(row, p.inputBg, radius);
-    stroke(row, p.border, m.hairline, radius);
-
-    const float cellW = row.w / static_cast<float>(options.size());
-    int chosen = -1;
-    for (int i = 0; i < static_cast<int>(options.size()); ++i) {
-        const Rect cell{row.x + cellW * static_cast<float>(i), row.y, cellW, row.h};
-        ImGui::SetCursorScreenPos(ImVec2(cell.x, cell.y));
-        pushWidgetId(options[static_cast<size_t>(i)], cell);
-        const bool clicked = ImGui::InvisibleButton("##seg", ImVec2(cell.w, cell.h));
-        const bool hovered = ImGui::IsItemHovered();
-        popWidgetId();
-        const bool on = i == selected;
-        if (on) {
-            fillRound(cell.shrink(m.hairline, m.hairline), p.accent, radius);
-        } else if (hovered) {
-            fillRound(cell.shrink(m.hairline, m.hairline), p.hover, radius);
-        }
-        paintLabel(options[static_cast<size_t>(i)], cell, on ? contrastOn(p.accent) : p.text,
-                   Type::Small);
-        if (clicked) chosen = i;
-    }
-    // Leave the caller's cursor below the row: the cells moved it around.
-    ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y));
-    ImGui::Dummy(ImVec2(width, m.controlH));
-    return chosen;
-}
-
 bool field(const Metrics& m, const char* id, std::string* text, const char* hintText, bool password,
            float width) {
     if (!text) return false;
@@ -481,16 +437,11 @@ bool field(const Metrics& m, const char* id, std::string* text, const char* hint
         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_EscapeClearsAll;
     if (password) flags |= ImGuiInputTextFlags_Password;
     const bool entered = ImGui::InputTextWithHint(id, hintText ? hintText : "", text, flags);
-    g_fieldEdited = ImGui::IsItemEdited();
 
     popType();
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor(7);
     return entered;
-}
-
-bool fieldEdited() {
-    return g_fieldEdited;
 }
 
 bool listRow(const Metrics& m, const std::string& label, bool selected, bool disabled) {
@@ -581,10 +532,6 @@ bool beginScroll(const char* id, const Rect& box, const Metrics& m, ImU32 bg) {
 
 void scrollBy(float pixels) {
     ImGui::SetScrollY(ImGui::GetScrollY() + pixels);
-}
-
-float scrollMax() {
-    return ImGui::GetScrollMaxY();
 }
 
 float scrollFromBottom() {

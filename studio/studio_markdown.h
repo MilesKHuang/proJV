@@ -24,10 +24,6 @@ float textWidth(const std::string& utf8);
 std::vector<std::vector<markdown_text::Segment>>
 wrap(const std::vector<markdown_text::Segment>& segs, float wrapWidth);
 
-// Draw markdown (headings, lists, quotes, code, rules, tables) into the current
-// ImGui window at the given wrap width.
-void drawMarkdown(const std::string& md, float wrapWidth);
-
 // Draw plain text with soft wrap (no markdown grammar), in `color`.
 void drawPlain(const std::string& text, float wrapWidth, ImU32 color);
 
