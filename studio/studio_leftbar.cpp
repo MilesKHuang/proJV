@@ -73,21 +73,24 @@ void drawPanelTitle(const Metrics& m, const Rect& head, const std::string& title
                0.5f);
 }
 
-// One metric as a progress bar: a caption line ("CPU" left, the value right) and a
-// slim track under it. The track has no outline -- at four pixels an outline IS the
-// bar.
-void metricBar(const Metrics& m, const Rect& cap, float barH, const std::string& label,
+// One metric on ONE line: the label at the left, the track between, the value at the
+// right. It used to be a caption line with a track under it -- six text rows for
+// three numbers, which made the session card taller than the conversation it
+// belonged to. The track has no outline: at four pixels an outline IS the bar.
+void metricBar(const Metrics& m, const Rect& row, const std::string& label,
                const std::string& value, double fraction, ImU32 color,
                const std::string& tooltip) {
-    if (cap.empty()) return;
+    if (row.empty()) return;
     const Palette p = ui::palette();
     const Type tier = Type::Caption;
-    ui::textAt(m, cap, label, p.textDim, tier, false, 0.0f, 0.5f);
-    const float vw = std::min(cap.w * 0.6f, ui::measure(m, value, tier, false));
-    ui::textAt(m, Rect{cap.right() - vw, cap.y, vw, cap.h},
-               ui::fitLine(m, value, vw, tier, false), p.text, tier, false, 1.0f, 0.5f);
-    const float h = std::max(4.0f, barH);
-    const Rect track{cap.x, cap.bottom(), cap.w, h};
+    const float h = std::max(4.0f, m.hairline * 3.0f);
+    const float pad = tokens::spacePx(m, Space::Xs);
+    const float labelW = ui::measure(m, "GPU ", tier, false);
+    const float valueW =
+        std::min(row.w * 0.4f, ui::measure(m, value, tier, false) + tokens::spacePx(m, Space::Sm));
+    ui::textAt(m, Rect{row.x, row.y, labelW, row.h}, label, p.textDim, tier, false, 0.0f, 0.5f);
+    const Rect track{row.x + labelW + pad, row.y + (row.h - h) * 0.5f,
+                     std::max(1.0f, row.w - labelW - valueW - 2.0f * pad), h};
     const float radius = h * 0.5f;
     ui::fillRound(track, p.inputBg, radius);
     const double f = fraction < 0.0 ? 0.0 : (fraction > 1.0 ? 1.0 : fraction);
@@ -96,6 +99,8 @@ void metricBar(const Metrics& m, const Rect& cap, float barH, const std::string&
         fillBox.w = std::max(radius * 2.0f, track.w * static_cast<float>(f));
         ui::fillRound(fillBox, studio_theme::mix(p.inputBg, color, 0.65f), radius);
     }
+    ui::textAt(m, Rect{row.right() - valueW, row.y, valueW, row.h},
+               ui::fitLine(m, value, valueW, tier, false), p.text, tier, false, 1.0f, 0.5f);
     if (!tooltip.empty() && ImGui::IsMouseHoveringRect(ImVec2(track.x, track.y),
                                                       ImVec2(track.right(), track.bottom())) &&
         ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))
@@ -162,19 +167,20 @@ void drawSessionRow(App& app, const Metrics& m, const Rect& row, int index) {
     if (ready && sample.gpu.valid) gpuPct = sample.gpu.utilPercent;
     const ImU32 dim = p.textDim;
     float y = top.bottom() + gap;
-    metricBar(m, Rect{row.x + padX, y, barW, capH}, barH, "CPU",
+    const float metricH = std::max(capH, barH);
+    metricBar(m, Rect{row.x + padX, y, barW, metricH}, "CPU",
               ready ? gauges::percentLabel(sample.cpuValid ? cpuPct : 0.0) : std::string("-"),
               ready ? gauges::fraction(cpuPct, 100.0) : 0.0, ready ? p.accent : dim,
               ready ? "this session's processes, percent of the whole machine"
                     : "this session is still starting");
-    y += capH + barH + gap;
-    metricBar(m, Rect{row.x + padX, y, barW, capH}, barH, "MEM", memValue,
+    y += metricH + gap * 0.5f;
+    metricBar(m, Rect{row.x + padX, y, barW, metricH}, "MEM", memValue,
               ready ? gauges::fraction(static_cast<double>(sample.rssBytes),
                                        1024.0 * 1024.0 * 1024.0)
                     : 0.0,
               ready ? p.info : dim, "resident memory of this session's processes");
-    y += capH + barH + gap;
-    metricBar(m, Rect{row.x + padX, y, barW, capH}, barH, "GPU",
+    y += metricH + gap * 0.5f;
+    metricBar(m, Rect{row.x + padX, y, barW, metricH}, "GPU",
               ready ? gauges::percentLabel(gpuPct) : std::string("-"),
               ready ? gauges::fraction(gpuPct.value_or(0.0), 100.0) : 0.0,
               ready ? p.success : dim,
@@ -223,7 +229,14 @@ void drawSessionsPanel(App& app, const Frame& f, const Rect& box) {
         ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + rowH + gap));
         ImGui::Dummy(ImVec2(w, 0.0f)); // the gap between two cards
     }
-    // One menu for the card that was right-clicked (see the file header).
+    // One menu for the card that was right-clicked (see the file header). The
+    // padding is pushed BEFORE BeginPopup: a popup reads WindowPadding when its
+    // window starts, so a push inside the block does nothing and the labels run
+    // into the border.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(tokens::spacePx(m, Space::Md), tokens::spacePx(m, Space::Sm)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                        ImVec2(tokens::spacePx(m, Space::Sm), tokens::spacePx(m, Space::Xs)));
     if (ImGui::BeginPopup("##pane_menu")) {
         const int target = app.contextPane();
         if (target >= 0 && target < app.paneCount()) {
@@ -235,6 +248,7 @@ void drawSessionsPanel(App& app, const Frame& f, const Rect& box) {
         }
         ImGui::EndPopup();
     }
+    ImGui::PopStyleVar(2);
     ui::endScroll(false);
 }
 
@@ -368,7 +382,12 @@ void drawFilesPanel(App& app, const Frame& f, const Rect& box) {
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + m.rowH));
     }
-    // One menu for the row that was right-clicked (see the file header).
+    // One menu for the row that was right-clicked (see the file header). Same
+    // padding rule as the pane menu: push before the popup, pop after it ends.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                        ImVec2(tokens::spacePx(m, Space::Md), tokens::spacePx(m, Space::Sm)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                        ImVec2(tokens::spacePx(m, Space::Sm), tokens::spacePx(m, Space::Xs)));
     if (ImGui::BeginPopup("##file_menu")) {
         const std::string cpath = app.contextPath();
         const bool cisDir = app.contextIsDir();
@@ -390,6 +409,7 @@ void drawFilesPanel(App& app, const Frame& f, const Rect& box) {
         }
         ImGui::EndPopup();
     }
+    ImGui::PopStyleVar(2);
     ui::endScroll(false);
 }
 

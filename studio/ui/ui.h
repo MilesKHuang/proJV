@@ -176,6 +176,10 @@ bool beginScroll(const char* id, const Rect& box, const Metrics& m, ImU32 bg);
 // Move the visible window inside the region currently being built.
 void scrollBy(float pixels);
 float scrollMax();
+// Pixels between the view and the bottom of its content (0 = at the bottom, and
+// 0 when there is nothing to scroll). Read it before endScroll(): ImGui knows the
+// real content height only once this frame's items have been laid out.
+float scrollFromBottom();
 // Call before EndChild. `follow` requests a jump to the bottom (new content);
 // the return value reports whether the view sits at the bottom now, which is
 // what the caller stores as the next frame's sticky-bottom state.

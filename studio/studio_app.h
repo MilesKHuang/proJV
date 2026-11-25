@@ -336,6 +336,9 @@ class App {
     bool reasoningExpanded_ = false;
     // Tool blocks fold to one line by default: they are the bulk of a transcript
     // and their results are read on demand, not while scrolling past.
+    // --demo-chat pretends a turn is running, so an acceptance image can show the
+    // spinner and the running state without a live model.
+    bool demoBusy_ = false;
     bool toolsCollapsed_ = true;
     // Same rule for skill runs: a debate is the noisiest thing in a transcript.
     bool skillsCollapsed_ = true;

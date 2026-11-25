@@ -336,9 +336,8 @@ int runStudio(int argc, char** argv) {
         app.loadDemoChat();
         // A demo run must show the chat, not the first-run key dialog.
         app.closeModal();
-        // The dock's width belongs to the transcript in an acceptance image, and
-        // no "starting ..." receipt either.
-        app.toggleDock();
+        // No "starting ..." receipt in an acceptance image; the dock stays, it is
+        // part of the layout being looked at.
         app.setReceipt(std::string());
         if (!shot.expandKey.empty()) app.toggleRowCollapsed(shot.expandKey);
     }

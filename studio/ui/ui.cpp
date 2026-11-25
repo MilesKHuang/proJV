@@ -584,6 +584,10 @@ float scrollMax() {
     return ImGui::GetScrollMaxY();
 }
 
+float scrollFromBottom() {
+    return std::max(0.0f, ImGui::GetScrollMaxY() - ImGui::GetScrollY());
+}
+
 bool endScroll(bool follow) {
     // The jump happens here, after this frame's content is laid out: ImGui knows
     // the real content height only now, so an earlier jump would aim at the

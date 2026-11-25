@@ -300,6 +300,27 @@ writes a PNG. No image library is involved: `studio/png_writer.cpp` writes store
 deflate blocks (see `tests/unit/test_png_writer.cpp`). `--demo-chat` fills a fixed
 transcript, so an acceptance image never depends on a live model.
 
+### The footer belongs to the transcript
+
+The prompt and the service bar are the session's own furniture, so they live in
+the transcript's column: the side panels keep their full height, and the footer
+starts at the prompt's left edge instead of the window's. The status line moved
+out of the stack above the prompt into the column beside it (state on top, the
+turn's own clock or the skill pill under it), which is what bought the prompt its
+second row: `composerRowCount` never returns less than two.
+
+Scrolling follows only a reader who is already near the bottom -- within a third
+of a screen, and never less than four lines. An explicit jump (send, new chat, a
+notice) pins once whatever the distance. The old rule was a binary "was at the
+bottom last frame": one wheel notch stopped the chase for good, and an arriving
+message re-armed it and pulled the view down from three screens up.
+
+The spinner is a drawn arc with a frame-count phase (so a screenshot run stays
+reproducible), not the TUI's `|/-\` glyphs, which read as a stray character
+beside a label. Both context menus push their own window padding before
+`BeginPopup`: a popup reads that value when its window starts, so a padding push
+inside the block does nothing and the labels run into the border.
+
 ## What is deliberately different
 
 - **A window owns several sessions.** The TUI is one session per process; the studio

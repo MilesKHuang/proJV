@@ -368,8 +368,9 @@ void App::fillSource() {
     s.version = PROJV_VERSION;
     s.modal = modal_;
     s.dock = dock_;
-    s.phase = runtime_ ? runtime_->phase() : AgentPhase::Idle;
-    s.busy = busy();
+    s.phase = demoBusy_ ? AgentPhase::ExecutingTools
+                        : (runtime_ ? runtime_->phase() : AgentPhase::Idle);
+    s.busy = busy() || demoBusy_;
     s.spinnerFrame = spinnerFrame_;
     s.model = runtime_ ? runtime_->config().model : std::string();
     s.workspace = getWorkspaceDir();
@@ -1046,8 +1047,14 @@ int App::takeScrollRequest() {
 }
 
 bool App::takeFollowBottom() {
-    const bool follow = active().followBottom;
-    return follow;
+    // One-shot: a queued jump is consumed here. Whether the view KEEPS following
+    // is decided per frame by how far the reader is from the bottom (drawChat),
+    // so a new message no longer yanks the transcript while someone is reading
+    // three screens up.
+    bool& pending = active().followBottom;
+    const bool was = pending;
+    pending = false;
+    return was;
 }
 
 void App::refuseIfBusy(std::string* why) const {
@@ -1254,6 +1261,7 @@ void App::toggleRowCollapsed(const std::string& key) {
 // write with a diff, a long shell result and one failed call.
 void App::loadDemoChat() {
     Pane& pane = active();
+    demoBusy_ = true; // so the spinner and the running state are on screen
     pane.chat.clear();
     pane.chatKeys.clear();
     pane.lastMessageId = 0;

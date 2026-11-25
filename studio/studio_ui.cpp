@@ -55,10 +55,19 @@ Frame g_frame;
 // The TUI's spinner is FTXUI charset 8 (U+2596..), which neither Consolas nor
 // Microsoft YaHei carries -- it rendered as a "?" box. A GUI has to use glyphs the
 // loaded fonts actually have, so the rotation is the classic ASCII one.
-const char* const kSpin[4] = {"|", "/", "-", "\\"};
-
-int spinPhase() {
-    return (ImGui::GetFrameCount() / 8) % 4;
+// A drawn arc, not a terminal glyph. "|/-\\" is what a TUI has to work with; in a
+// window it reads as a stray character sitting next to a label, and at Caption
+// size it is three pixels of ink. One turn per 72 frames, and the phase comes from
+// the frame count (not the wall clock), so a screenshot run stays reproducible.
+void drawSpinner(const Metrics& m, const layout::Rect& box, ImU32 colour) {
+    if (box.w < 6.0f || box.h < 6.0f) return;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float r = std::max(2.0f, std::min(box.w, box.h) * 0.26f);
+    const ImVec2 c{box.x + box.w * 0.5f, box.y + box.h * 0.5f};
+    const float turn = 6.2831853f * static_cast<float>(ImGui::GetFrameCount() % 72) / 72.0f;
+    dl->PathClear();
+    dl->PathArcTo(c, r, turn, turn + 4.4f, 18); // ~70% of a circle, the gap is the motion
+    dl->PathStroke(colour, ImDrawFlags_None, std::max(1.0f, m.hairline * 2.0f));
 }
 
 ImU32 fld(const std::string& name) {
@@ -277,6 +286,29 @@ void drawRowBody(const Metrics& m, const view_model::ChatRow& row, int blockId, 
     }
 }
 
+// Truncate `s` to `room` pixels, measured with the font that is about to draw it.
+// ui::fitLine() takes a tier instead, and in the chat the tier in use is Mono: a
+// measure/fit pair at a different tier truncates the wrong amount ("read_fi..."
+// for a string that had room for thirty characters).
+std::string clipToWidth(const std::string& s, float room) {
+    if (room <= 0.0f) return std::string();
+    if (ImGui::CalcTextSize(s.c_str()).x <= room) return s;
+    const float dots = ImGui::CalcTextSize("...").x;
+    size_t lo = 0, hi = s.size();
+    while (lo < hi) {
+        const size_t mid = (lo + hi + 1) / 2;
+        size_t cut = mid < s.size() ? mid : s.size();
+        while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+        if (ImGui::CalcTextSize(s.substr(0, cut).c_str()).x + dots <= room)
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    size_t cut = lo;
+    while (cut > 0 && cut < s.size() && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+    return s.substr(0, cut) + "...";
+}
+
 // Outcome colour: the same three words a status line would use.
 ImU32 statusColour(const std::string& status) {
     if (status == "failed") return studio_theme::field(&ThemeColors::statusError);
@@ -304,37 +336,43 @@ void drawFoldedTool(const Metrics& m, const view_model::ChatRow& row) {
     // result's length otherwise). Each part keeps its own colour and the whole
     // group is laid out from the right, so the left text can be fitted to the room
     // that is actually left -- "ok 12.4s 43 lines" must not sit on the call name.
-    std::string size = row.diffSummary;
-    if (size.empty() && row.lines > 1) size = std::to_string(row.lines) + " lines";
-    const std::string* parts[3] = {&row.status, &row.durationText, &size};
-    const ImU32 colours[3] = {statusColour(row.status),
-                              studio_theme::field(&ThemeColors::textDisabled),
-                              studio_theme::field(&ThemeColors::toolResultText)};
+    // The diff size only. The result's line count was a second number competing
+    // with the call name for the same pixels, and it says nothing a reader cannot
+    // see by opening the row.
+    const std::string& size = row.diffSummary;
+    // Two blocks on the right: the outcome in its own colour, then the clock and
+    // the size as one dim run. Each is measured by the same call that draws it, so
+    // the group cannot claim more room than it uses (it used to, and the call name
+    // was cut to eight characters to make room for nothing).
+    std::string tail = row.durationText;
+    if (!size.empty()) tail += (tail.empty() ? "" : "  ") + size;
     const float pad = lh * 0.5f;
-    float right = 0.0f;
-    int shownParts = 0;
-    for (int k = 0; k < 3; ++k) {
-        if (parts[k]->empty()) continue;
-        right += ImGui::CalcTextSize(parts[k]->c_str()).x;
-        ++shownParts;
-    }
-    if (shownParts > 1) right += static_cast<float>(shownParts - 1) * pad;
-    const float leftRoom = std::max(lh * 2.0f, rowW - lh * 1.1f - right - lh * 0.6f);
-    const std::string shown = ui::fitLine(m, row.summary, leftRoom, Type::Body, true);
+    const float statusW = row.status.empty() ? 0.0f : ImGui::CalcTextSize(row.status.c_str()).x;
+    const float tailW = tail.empty() ? 0.0f : ImGui::CalcTextSize(tail.c_str()).x;
+    const float right = statusW + tailW + ((statusW > 0.0f && tailW > 0.0f) ? pad : 0.0f);
+    // A full step of air between the call name and the right-hand figures: the
+    // clipped name already ends in "...", and an ellipsis that touches "ok" reads
+    // as one long word.
+    const float leftRoom = std::max(lh * 2.0f, rowW - lh * 1.1f - right - lh * 1.1f);
     ImGui::Dummy(ImVec2(lh * 1.1f, lh));
     ImGui::SameLine(0.0f, 0.0f);
     ImGui::PushStyleColor(ImGuiCol_Text, studio_theme::field(&ThemeColors::toolTitleColor));
-    ImGui::TextUnformatted(shown.c_str());
+    ImGui::TextUnformatted(clipToWidth(row.summary, leftRoom).c_str());
     ImGui::PopStyleColor();
 
     float x = std::max(lh * 1.1f, rowW - right);
-    for (int k = 0; k < 3; ++k) {
-        if (parts[k]->empty()) continue;
+    if (statusW > 0.0f) {
         ImGui::SameLine(x);
-        ImGui::PushStyleColor(ImGuiCol_Text, colours[k]);
-        ImGui::TextUnformatted(parts[k]->c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, statusColour(row.status));
+        ImGui::TextUnformatted(row.status.c_str());
         ImGui::PopStyleColor();
-        x += ImGui::CalcTextSize(parts[k]->c_str()).x + pad;
+        x += statusW + pad;
+    }
+    if (tailW > 0.0f) {
+        ImGui::SameLine(x);
+        ImGui::PushStyleColor(ImGuiCol_Text, studio_theme::field(&ThemeColors::toolResultText));
+        ImGui::TextUnformatted(tail.c_str());
+        ImGui::PopStyleColor();
     }
 
     // The rest of the call list, one indented line each.
@@ -349,7 +387,7 @@ void drawFoldedTool(const Metrics& m, const view_model::ChatRow& row) {
             ImGui::Indent(indent);
             ImGui::PushStyleColor(ImGuiCol_Text,
                                   studio_theme::field(&ThemeColors::toolResultText));
-            ImGui::TextUnformatted(ui::fitLine(m, line, rowW - indent, Type::Body, true).c_str());
+            ImGui::TextUnformatted(clipToWidth(line, rowW - indent).c_str());
             ImGui::PopStyleColor();
             ImGui::Unindent(indent);
         }
@@ -363,7 +401,9 @@ bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, in
                  App& app, int& blockSeq) {
     const Metrics& m = f.metrics;
     const float padX = tokens::spacePx(m, Space::Md);
-    const float padY = tokens::spacePx(m, Space::Sm);
+    // Tighter than the block padding: the transcript is a list of cards, and a card
+    // that pads like a dialog makes ten tool rows read as ten dialogs.
+    const float padY = tokens::spacePx(m, Space::Xs);
     // A row that carries a label is a message: it gets a card. A bare text row is
     // a continuation of the one above it and stays on the surface.
     const bool carded = !row.label.empty() || row.kind == "tool" || row.kind == "result" ||
@@ -451,7 +491,9 @@ bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, in
         drawRowBody(m, row, blockId, false);
     }
     ImGui::PopID();
-    ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs)));
+    // Half a step between cards: enough that two blocks never touch, little
+    // enough that the transcript stops reading as a stack of separate windows.
+    ImGui::Dummy(ImVec2(1.0f, tokens::spacePx(m, Space::Xs) * 0.5f));
     return clicked;
 }
 
@@ -544,12 +586,20 @@ void drawChat(App& app, const Frame& f) {
         if (!rowClick) g_surface.handleInput();
         if (inset > 0.0f) ImGui::Unindent(inset);
     }
-    // Sticky bottom: follow new content only while the view sits at the bottom.
-    // Scrolling up stops the chase on the very frame the wheel turns, and coming
-    // back resumes it -- the return value IS the next frame's state.
-    const bool follow = open && app.takeFollowBottom();
-    const bool atBottom = ui::endScroll(follow);
-    if (open) app.setFollowBottom(atBottom);
+    // Sticky bottom, but only for a reader who is already near it. The old rule
+    // was a binary "was at the bottom last frame": one wheel notch stopped the
+    // chase for good, and an arriving message re-armed it and tore the view down
+    // from wherever it was. Now:
+    //   - an explicit jump (send, new chat, a notice) pins once, whatever the
+    //     distance -- the user just did something and wants to see it;
+    //   - otherwise the view follows only while it is within a third of a screen
+    //     of the bottom, which is far enough that a streaming frame cannot lose
+    //     the chase and near enough that scrolling away really is "leave me be".
+    const bool jump = open && app.takeFollowBottom();
+    const float slack = std::max(4.0f * tokens::linePx(m, Type::Body),
+                                 ImGui::GetWindowHeight() * 0.33f);
+    const bool follow = jump || (open && ui::scrollFromBottom() <= slack);
+    ui::endScroll(follow);
 }
 
 // ---- dock ----------------------------------------------------------------
@@ -628,8 +678,7 @@ void drawAgentUnit(const Metrics& m, const layout::Rect& box, const view_model::
                                 : studio_theme::fromHex(
                                       ThemeManager::instance().current().*
                                       speaker_slots::paletteField(static_cast<size_t>(a.slot)));
-        ui::textAt(m, layout::Rect{rest.x, rest.y, m.iconSize + pad, rest.h}, kSpin[spinPhase()],
-                   glyph, Type::Caption, true, 0.0f);
+        drawSpinner(m, layout::Rect{rest.x, rest.y, m.iconSize + pad, rest.h}, glyph);
         rest.x += m.iconSize + pad;
         rest.w -= m.iconSize + pad;
     }
@@ -823,8 +872,7 @@ void drawHeader(App& app, const Frame& f) {
                   ui::contrastOn(phaseBg), phaseBg);
         x += phaseW + tokens::spacePx(m, Space::Xs);
         if (s.busy) {
-            ui::textAt(m, layout::Rect{x, pillY, m.iconSize, pillH}, kSpin[spinPhase()], p.accent,
-                       Type::Caption, true, 0.5f);
+            drawSpinner(m, layout::Rect{x, pillY, m.iconSize, pillH}, p.accent);
         }
     }
 
@@ -858,40 +906,60 @@ void drawStatusLine(App& app, const Frame& f) {
     const Palette p = ui::palette();
     const view_model::Screen& s = app.screen();
     layout::Rect box = f.statusLine;
+    if (box.w < 16.0f) return;
+    // The column beside the prompt holds two lines: the state on top, the turn's
+    // own figures (or the skill pill) under it. Both are right-aligned to the
+    // prompt's right edge, so a long "Running: read_file (2/5)" grows leftwards
+    // into free space instead of pushing the box around.
+    // One line (the state) unless there is something for the second one to say, in
+    // which case "Idle" sits at the top of a two-line stack instead of floating in
+    // the middle of a box twice its height.
+    const std::string work = app.workSummary();
+    const bool hasSecond = !s.skillStatus.empty() || !work.empty();
+    const float lineH = hasSecond ? std::max(1.0f, box.h * 0.5f) : box.h;
+    const layout::Rect top{box.x, box.y, box.w, lineH};
+    const layout::Rect bottom{box.x, box.y + lineH, box.w, box.h - lineH};
+
+    const float spinnerW = s.statusSpinner ? tokens::spacePx(m, Space::Md) : 0.0f;
+    // A full step between the arc and the word: at an Xs gap the ring touched the
+    // first glyph.
+    const float gapX = s.statusSpinner ? tokens::spacePx(m, Space::Sm) : 0.0f;
+    float x = top.x;
     if (s.statusSpinner) {
-        const float w = tokens::spacePx(m, Space::Md);
-        ui::textAt(m, layout::Rect{box.x, box.y, w, box.h}, kSpin[spinPhase()], p.accent,
-                   Type::Body, true, 0.0f);
-        box.x += w + tokens::spacePx(m, Space::Xs);
-        box.w -= w + tokens::spacePx(m, Space::Xs);
-    }
-    if (!s.skillStatus.empty()) {
-        const std::string pill = "[skill] " + s.skillStatus;
-        const float w = std::min(box.w, ui::measure(m, pill, Type::Caption, false) +
-                                            2.0f * tokens::spacePx(m, Space::Sm));
-        const float h = std::min(box.h, tokens::linePx(m, Type::Caption) +
-                                            2.0f * tokens::spacePx(m, Space::Xs));
-        const layout::Rect pillBox{box.right() - w, box.y + (box.h - h) * 0.5f, w, h};
-        ui::badge(m, pillBox, ui::fitLine(m, pill, pillBox.w - tokens::spacePx(m, Space::Md),
-                                          Type::Caption, false),
-                  ui::contrastOn(p.warning), p.warning);
-        box.w -= w + tokens::spacePx(m, Space::Sm);
+        drawSpinner(m, layout::Rect{x, top.y, spinnerW, top.h}, p.accent);
+        x += spinnerW + gapX;
     }
     // Body, with Small only as the fallback for a line too long to fit: the footer
     // is read at a glance, and 13.5 px of grey was reported as too small twice.
     const Type tiers[2] = {Type::Body, Type::Small};
-    // The turn's own figures, right-aligned and dim: how long this has been running
-    // and how fast it is producing. Studio clock (the view model reads none), so it
-    // is drawn here rather than derived into the snapshot.
-    const std::string work = app.workSummary();
-    if (!work.empty()) {
-        const float w = std::min(box.w * 0.5f, ui::measure(m, work, Type::Small, false));
-        ui::textAt(m, layout::Rect{box.right() - w, box.y, w, box.h},
-                   ui::fitLine(m, work, w, Type::Small, false), p.textDim, Type::Small, false, 1.0f,
-                   0.5f);
-        box.w = std::max(1.0f, box.w - w - tokens::spacePx(m, Space::Sm));
+    // Left-aligned inside its column: right-aligning pushed "Idle" to the far edge
+    // of the window, a hand's width away from the box it describes.
+    // From `x`, i.e. after the spinner: starting at the column's own left edge drew
+    // "Idle" underneath the arc.
+    ui::fittedText(m, layout::Rect{x, top.y, std::max(1.0f, top.right() - x), top.h},
+                   s.statusText, fld(s.statusColor), tiers, 2, false, 0.0f);
+
+    if (!s.skillStatus.empty()) {
+        const std::string pill = "[skill] " + s.skillStatus;
+        const float w = std::min(bottom.w, ui::measure(m, pill, Type::Caption, false) +
+                                            2.0f * tokens::spacePx(m, Space::Sm));
+        const float h = std::min(bottom.h, tokens::linePx(m, Type::Caption) +
+                                            2.0f * tokens::spacePx(m, Space::Xs));
+        const layout::Rect pillBox{bottom.right() - w, bottom.y + (bottom.h - h) * 0.5f, w, h};
+        ui::badge(m, pillBox, ui::fitLine(m, pill, pillBox.w - tokens::spacePx(m, Space::Md),
+                                          Type::Caption, false),
+                  ui::contrastOn(p.warning), p.warning);
+        return;
     }
-    ui::fittedText(m, box, s.statusText, fld(s.statusColor), tiers, 2, false, 0.0f);
+    // How long this has been running and how fast it is producing. Studio clock
+    // (the view model reads none), so it is drawn here, not derived into the
+    // snapshot.
+    if (!work.empty() && hasSecond) {
+        const float w = std::min(bottom.w, ui::measure(m, work, Type::Small, false));
+        ui::textAt(m, layout::Rect{bottom.x, bottom.y, w, bottom.h},
+                   ui::fitLine(m, work, w, Type::Small, false), p.textDim, Type::Small, false, 0.0f,
+                   0.5f);
+    }
 }
 
 void drawQueued(App& app, const Frame& f) {
@@ -908,7 +976,9 @@ void drawStatusBar(App& app, const Frame& f) {
     const Metrics& m = f.metrics;
     const Palette p = ui::palette();
     const view_model::Screen& s = app.screen();
-    ui::fill(f.statusBar, p.surfaceAlt);
+    // The darkest surface in the window: the bar's own colours are mid-tone status
+    // colours, and on the lighter alt surface the figures were unreadable.
+    ui::fill(f.statusBar, p.inputBg);
     // The service bar is reference data (tokens, context, cost), not a footnote:
     // at Body it reads at arm's length, at Small it read as a caption.
     const Type tier = Type::Body;
@@ -1025,14 +1095,16 @@ std::vector<std::vector<int>> packAgents(const Metrics& m,
 constexpr int kComposerMaxRows = 7;
 
 int composerRowCount(const std::string& text, const Metrics& m, float composerW) {
-    if (text.empty()) return 1;
+    // Two rows by default: one line of typing plus the line you are about to
+    // write is the difference between a search box and a prompt.
+    if (text.empty()) return 2;
     const float innerW =
         std::max(1.0f, composerW - 2.0f * tokens::spacePx(m, Space::Md) - m.scrollbar);
     const fit::Measure measure = [&m](const std::string& s) {
         return ui::measure(m, s, Type::Mono, true);
     };
     const int rows = fit::wrappedRowCount(text, innerW, measure);
-    return std::min(kComposerMaxRows, std::max(1, rows));
+    return std::min(kComposerMaxRows, std::max(2, rows));
 }
 
 Frame computeFrame(App& app, const Metrics& m) {
@@ -1065,6 +1137,8 @@ Frame computeFrame(App& app, const Metrics& m) {
         f.headerAgentRows.empty() ? 0.0f : static_cast<float>(f.headerAgentRows.size()) * agentRowH;
     const float headerH = 2.0f * gap + row0H + extraActionRows + (agentH > 0.0f ? gap + agentH : 0.0f);
 
+    // The status line moved into the composer's row (its own column on the right),
+    // so the footer stack is now just: queued hint, prompt, service bar.
     const float statusLineH = tokens::linePx(m, Type::Body) + tokens::spacePx(m, Space::Xs);
     const float queuedH = s.queued > 0 ? statusLineH : 0.0f;
     // The prompt is one control, not a card with a field inside, and it is
@@ -1072,18 +1146,33 @@ Frame computeFrame(App& app, const Metrics& m) {
     // newlines typed with Shift+Enter), measured before anything is drawn so the
     // chat column gives up exactly that height on this frame.
     const float dockActual = f.dockOpen ? std::max(m.dockW, 220.0f * m.factor) : 0.0f;
-    const float chatW = std::max(1.0f, contentW - (f.dockOpen ? m.gutter + dockActual : 0.0f));
-    f.composerRows = composerRowCount(app.inputText(), m, chatW);
+    // The transcript column's width has to be known BEFORE the footer is measured,
+    // because the prompt and the status line share that width. The left column used
+    // to be subtracted later by the row solver, so this number was the whole
+    // remaining window: the prompt then overhung its own column and the status
+    // column came out negative and drew nothing.
+    const float leftW =
+        app.leftOpen() ? std::min(std::max(340.0f * m.factor, contentW * 0.26f),
+                                  contentW * 0.40f)
+                       : 0.0f;
+    const float chatW = std::max(120.0f, contentW - (leftW > 0.0f ? leftW + m.gutter : 0.0f) -
+                                               (f.dockOpen ? m.gutter + dockActual : 0.0f));
+    // The prompt keeps a column on its right for the status line, so measure it
+    // against the width it will actually get -- wrapping is computed from the
+    // field's own inner width, not from the whole footer's.
+    const float statusColW =
+        std::min(chatW * 0.42f, std::max(200.0f * m.factor, chatW * 0.30f));
+    const float promptW = std::max(120.0f, chatW - statusColW - gap);
+    f.composerRows = composerRowCount(app.inputText(), m, promptW);
     const float promptRowH = tokens::typePx(m, Type::Mono);
     const float composerH = std::max(m.controlH, static_cast<float>(f.composerRows) * promptRowH +
                                                      2.0f * tokens::spacePx(m, Space::Sm));
     // The footer is read at arm's length: the status line and the service bar both
     // sit on the Body tier. They were Small (13.5 px), which reads as a caption.
     const float statusBarH = tokens::linePx(m, Type::Body) + 2.0f * tokens::spacePx(m, Space::Xs);
-    // One rhythm for the whole footer: status line, prompt, service bar, all separated
-    // by the same step, so the three surfaces read as one stack instead of three boxes
-    // that happen to be nearby.
-    const float footerH = statusLineH + queuedH + gap + composerH + gap + statusBarH + gap;
+    // One rhythm for the whole footer: queued hint, prompt, service bar, separated
+    // by the same step, so the three surfaces read as one stack.
+    const float footerH = queuedH + composerH + gap + statusBarH;
 
     // --- the vertical stack: header, body (grows), footer ------------------
     layout::Node root = layout::Node::col(m.gutter);
@@ -1092,27 +1181,33 @@ Frame computeFrame(App& app, const Metrics& m) {
     layout::Node body = layout::Node::row(m.gutter).hGrow(1.0f);
     // The left column is a sibling of the chat, not an overlay: the transcript
     // shrinks by exactly its width, and the reading measure re-centres in what is
-    // left. `leftOpen` is the panel's own chevron, not a key.
-    const float leftW =
-        app.leftOpen() ? std::min(std::max(340.0f * m.factor, contentW * 0.26f),
-                                  contentW * 0.40f)
-                       : 0.0f;
+    // left. `leftOpen` is the panel's own chevron, not a key. Its width was measured
+    // above, because the footer needed it.
     if (leftW > 0.0f) body.add(layout::Node::none().width(leftW));
-    body.add(layout::Node::none().wGrow(1.0f));
+    // The footer belongs to the transcript, not to the window: the prompt and the
+    // service bar are about the session in this column, so they sit INSIDE it and
+    // the side panels keep their full height. A window-wide footer stole the bottom
+    // strip from both columns and made the prompt look like a caption under the
+    // whole screen.
+    layout::Node mid = layout::Node::col(gap).wGrow(1.0f);
+    mid.add(layout::Node::none().hGrow(1.0f));      // the transcript
+    mid.add(layout::Node::none().height(footerH));  // its own prompt + service bar
+    body.add(mid);
     if (f.dockOpen) body.add(layout::Node::none().width(m.dockW).minsize(220.0f * m.factor, 0.0f));
     root.add(body);
-    root.add(layout::Node::none().height(footerH));
     layout::solve(root, f.window);
 
     f.header = root.children[0].rect;
     // The solver's own children, not a copy of their rects: the body node holds
-    // the left column, the chat and the dock, and all three were placed against the
-    // height it got.
+    // the left column, the transcript+footer column and the dock, and all three
+    // were placed against the height it got.
     const layout::Node& bodyNode = root.children[1];
     size_t child = 0;
     f.leftOpen = leftW > 0.0f;
     if (f.leftOpen) f.left = bodyNode.children[child++].rect;
-    f.chat = bodyNode.children[child++].rect;
+    const layout::Node& midNode = bodyNode.children[child++];
+    f.chat = midNode.children[0].rect;
+    f.footer = midNode.children[1].rect;
     if (f.dockOpen && child < bodyNode.children.size()) f.dock = bodyNode.children[child].rect;
     // --- the left column's own stack: sessions / handle / files ----------------
     // The Sessions panel is as tall as its content (a minimal wrapper: one row per
@@ -1121,11 +1216,12 @@ Frame computeFrame(App& app, const Metrics& m) {
     if (f.leftOpen && !f.left.empty()) {
         const float gap = tokens::spacePx(m, Space::Sm);
         const float handleH = tokens::spacePx(m, Space::Sm);
-        // A title line plus three progress bars, one per metric: a caption line and a
-        // slim track under it, which is what "an ordinary progress bar" looks like.
-        f.sessionsBarH = std::max(4.0f, m.hairline * 4.0f);
-        f.sessionsRowH =
-            m.rowH + 3.0f * (tokens::linePx(m, Type::Caption) + f.sessionsBarH + gap) + gap;        const float sessionsWanted = m.rowH + static_cast<float>(app.paneCount()) * f.sessionsRowH +
+        f.sessionsBarH = std::max(4.0f, m.hairline * 3.0f);
+        // Title line + three ONE-LINE metrics: the old figure counted a caption
+        // line AND a track per metric, which is why one card filled a third of the column.
+        const float metricH = std::max(tokens::linePx(m, Type::Caption), f.sessionsBarH);
+        f.sessionsRowH = m.rowH + 3.0f * (metricH + gap * 0.5f) + gap;
+        const float sessionsWanted = m.rowH + static_cast<float>(app.paneCount()) * f.sessionsRowH +
                                      3.0f * gap;
         const float sessionsMax = std::max(6.0f * m.rowH, f.left.h * 0.45f);
         const float sessionsH = std::min(sessionsWanted, sessionsMax);
@@ -1138,7 +1234,6 @@ Frame computeFrame(App& app, const Metrics& m) {
         f.leftSplit = col.children[1].rect;
         f.leftFiles = col.children[2].rect;
     }
-    f.footer = root.children[2].rect;
     // The reading column: capped and centred. Published so the composer, the
     // slash menu and the modals share one left edge with the transcript.
     const float chatInner = std::max(120.0f, f.chat.w - 2.0f * gap - m.scrollbar);
@@ -1147,20 +1242,18 @@ Frame computeFrame(App& app, const Metrics& m) {
 
     // --- the footer stack, top to bottom ----------------------------------
     float y = f.footer.y;
-    f.statusLine = layout::Rect{f.footer.x, y, f.footer.w, statusLineH};
-    y += statusLineH;
     if (queuedH > 0.0f) {
         f.queued = layout::Rect{f.footer.x, y, f.footer.w, queuedH};
         y += queuedH;
     }
-    y += gap;
-    // The prompt shares the transcript's edges, not a narrower box of its own: an
-    // outline that does not line up with the card above it reads as a mistake, which
-    // is exactly what "the input box looks detached from the background" was.
-    f.composer = layout::Rect{f.chat.x, y, f.chat.w, composerH};
+    // The prompt keeps the transcript's left edge, and the status line takes the
+    // column beside it: the two share one row, so the footer is two bands instead
+    // of three, and the prompt gets the taller box the extra row buys.
+    f.composer = layout::Rect{f.footer.x, y, promptW, composerH};
+    f.statusLine =
+        layout::Rect{f.footer.x + promptW + gap, y, f.footer.w - promptW - gap, composerH};
     y += composerH + gap;
     f.statusBar = layout::Rect{f.footer.x, y, f.footer.w, statusBarH};
-    y += statusBarH + gap;
     // --- the floating "/" menu, anchored above the composer ----------------
     if (s.slashOpen) {        const int shown = std::min(10, static_cast<int>(s.slashRows.size()));
         const float hintH = tokens::linePx(m, Type::Small) + tokens::spacePx(m, Space::Xs);
@@ -1213,9 +1306,11 @@ void drawFrame(App& app) {
         if (g_frame.leftOpen) drawLeftBar(app, g_frame);
         drawChat(app, g_frame);
         if (g_frame.dockOpen) drawDock(app, g_frame);
-        drawStatusLine(app, g_frame);
+        // After the prompt, not before: the prompt paints its own filled box and a
+        // frame, and anything drawn earlier in the same row is covered by it.
         drawQueued(app, g_frame);
         drawPrompt(app, g_frame);
+        drawStatusLine(app, g_frame);
         drawStatusBar(app, g_frame);
         drawSlash(app, g_frame);
     }
