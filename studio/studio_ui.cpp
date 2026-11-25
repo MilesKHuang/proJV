@@ -808,8 +808,10 @@ HeaderPlan planHeaderActions(const App& app, const Metrics& m, float rowW) {
     }
     // The wordmark keeps its room; the pills and the spinner give way first, and
     // the buttons never do. Row 0 fits next to the title, later rows get the width.
-    const float reserve =
-        ui::measure(m, "proJV", Type::Title, false) + tokens::spacePx(m, Space::Lg);
+    // The wordmark is drawn as a filled box: its measured text plus its padding, or
+    // the packing and the drawing would disagree about how much room it takes.
+    const float reserve = ui::measure(m, "proJV studio", Type::Title, false) +
+                          2.0f * tokens::spacePx(m, Space::Md) + tokens::spacePx(m, Space::Lg);
     plan.rows = actions::pack(plan.widths, plan.gap, std::max(0.0f, rowW - reserve), rowW);
     if (!plan.rows.empty()) plan.firstRowW = rowWidth(plan.widths, plan.rows[0], plan.gap);
     const float n = static_cast<float>(plan.rows.size());
@@ -863,50 +865,50 @@ void drawHeader(App& app, const Frame& f) {
     // Title: the largest tier that fits the space that is left, MEASURED so the
     // pills can follow the text instead of floating at the right edge of a box
     // that is mostly empty.
-    const std::string titleText = "proJV";
-    const std::string tag = "studio";
-    const std::string phase = s.phaseName;
-    const float tagW =
-        ui::measure(m, tag, Type::Caption, false) + 2.0f * tokens::spacePx(m, Space::Sm);
-    const float phaseW =
-        ui::measure(m, phase, Type::Caption, false) + 2.0f * tokens::spacePx(m, Space::Sm);
+    // ONE highlighted wordmark: "proJV studio". It used to be the name in plain
+    // text plus a grey "studio" pill, which read as two unrelated things where the
+    // product name belongs.
+    const std::string titleText = "proJV studio";
+    // No phase pill beside the wordmark: the state is already in the status line and
+    // on the session card, and its 60 px was exactly what the wordmark needed to
+    // stop reading "proJV...".
     const float spinnerW = s.busy ? m.iconSize + tokens::spacePx(m, Space::Xs) : 0.0f;
-    const float pillsW = tagW + tokens::spacePx(m, Space::Lg) + phaseW + spinnerW;
+    const float pillsW = spinnerW;
     const float minTitleW = 72.0f * m.factor;
+    const float titlePadX = tokens::spacePx(m, Space::Md);
 
     Type titleTier = Type::Display;
-    float titleW = ui::measure(m, titleText, titleTier, false);
+    float titleW = ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX;
     const float budget = leftW - pillsW - tokens::spacePx(m, Space::Lg);
     if (titleW > budget) {
         titleTier = Type::Title;
-        titleW = ui::measure(m, titleText, titleTier, false);
+        titleW = ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX;
     }
     if (titleW > budget) {
         titleTier = Type::Heading;
-        titleW = ui::measure(m, titleText, titleTier, false);
+        titleW = ui::measure(m, titleText, titleTier, false) + 2.0f * titlePadX;
     }
     titleW = std::min(titleW, std::max(minTitleW, budget));
 
     const bool showPills = budget >= minTitleW;
-    const layout::Rect titleBox{row.x, row.y + (row0H - titleH) * 0.5f, titleW, titleH};
-    ui::textAt(m, titleBox, ui::fitLine(m, titleText, titleW, titleTier, false), p.text,
-               titleTier, false, 0.0f, 0.5f);
+    // The wordmark sits in its own filled box: the accent surface and contrast text
+    // make it the one element the eye lands on first, which is what a product name
+    // is for. The box is one step taller than the glyphs, centred in the row.
+    const float markH = titleH + 2.0f * tokens::spacePx(m, Space::Xs);
+    const layout::Rect titleBox{row.x, row.y + (row0H - markH) * 0.5f, titleW, markH};
+    ui::fillRound(titleBox, p.accent, tokens::radiusPx(m, Radius::Sm));
+    ui::textAt(m, layout::Rect{titleBox.x + titlePadX, titleBox.y,
+                               std::max(1.0f, titleBox.w - 2.0f * titlePadX), titleBox.h},
+               ui::fitLine(m, titleText, titleBox.w - 2.0f * titlePadX, titleTier, false),
+               ui::contrastOn(p.accent), titleTier, false, 0.0f, 0.5f);
     if (showPills) {
         float x = titleBox.right() + tokens::spacePx(m, Space::Lg);
         const float pillH =
             tokens::linePx(m, Type::Caption) + 2.0f * tokens::spacePx(m, Space::Xs);
         const float pillY = row.y + (row0H - pillH) * 0.5f;
-        ui::badge(m, layout::Rect{x, pillY, tagW, pillH}, tag, p.textDim, p.surface);
-        x += tagW + tokens::spacePx(m, Space::Lg);
-        const ImU32 phaseBg = fld(s.phaseColor);
-        ui::badge(m, layout::Rect{x, pillY, phaseW, pillH},
-                  ui::fitLine(m, phase, phaseW - tokens::spacePx(m, Space::Sm), Type::Caption,
-                              false),
-                  ui::contrastOn(phaseBg), phaseBg);
-        x += phaseW + tokens::spacePx(m, Space::Xs);
-        if (s.busy) {
-            drawSpinner(m, layout::Rect{x, pillY, m.iconSize, pillH}, p.accent);
-        }
+        // Only the spinner: the phase word lives in the status line, one line above
+        // the prompt, where it is read together with the turn's clock.
+        if (s.busy) drawSpinner(m, layout::Rect{x, pillY, m.iconSize, pillH}, p.accent);
     }
 
     // Agent strip: packed into whole rows by the frame, drawn here.
@@ -1190,8 +1192,10 @@ Frame computeFrame(App& app, const Metrics& m) {
         app.leftOpen() ? std::min(std::max(340.0f * m.factor, contentW * 0.26f),
                                   contentW * 0.40f)
                        : 0.0f;
-    const float chatW = std::max(120.0f, contentW - (leftW > 0.0f ? leftW + m.gutter : 0.0f) -
-                                               (f.dockOpen ? m.gutter + dockActual : 0.0f));
+    // The footer spans the transcript AND the dock. Since the dock ends where the
+    // transcript ends, the strip under it was dead space: the prompt and its two
+    // status areas take it, and the prompt gets that much more room.
+    const float footerW = std::max(200.0f, contentW - (leftW > 0.0f ? leftW + m.gutter : 0.0f));
     // The prompt keeps a column on its right for the status line, so measure it
     // against the width it will actually get -- wrapping is computed from the
     // field's own inner width, not from the whole footer's.
@@ -1203,8 +1207,8 @@ Frame computeFrame(App& app, const Metrics& m) {
         ui::measure(m, s.statusText, Type::Body, false) + 3.0f * tokens::spacePx(m, Space::Md);
     const float statusColW = std::max(96.0f * m.factor,
                                       std::min(statusWant, std::min(220.0f * m.factor,
-                                                                    chatW * 0.42f)));
-    const float promptW = std::max(120.0f, chatW - statusColW - gap);
+                                                                    footerW * 0.42f)));
+    const float promptW = std::max(120.0f, footerW - statusColW - gap);
     f.composerRows = composerRowCount(app.inputText(), m, promptW);
     const float promptRowH = tokens::typePx(m, Type::Mono);
     const float composerH = std::max(m.controlH, static_cast<float>(f.composerRows) * promptRowH +
@@ -1226,44 +1230,33 @@ Frame computeFrame(App& app, const Metrics& m) {
     // left. `leftOpen` is the panel's own chevron, not a key. Its width was measured
     // above, because the footer needed it.
     if (leftW > 0.0f) body.add(layout::Node::none().width(leftW));
-    // The footer belongs to the transcript, not to the window: the prompt and the
-    // service bar are about the session in this column, so they sit INSIDE it and
-    // the side panels keep their full height. A window-wide footer stole the bottom
-    // strip from both columns and made the prompt look like a caption under the
-    // whole screen.
-    layout::Node mid = layout::Node::col(gap).wGrow(1.0f);
-    mid.add(layout::Node::none().hGrow(1.0f));      // the transcript
-    mid.add(layout::Node::none().height(footerH));  // its own prompt + service bar
-    body.add(mid);
-    if (f.dockOpen) {
-        // The dock belongs to the pane whose transcript it sits beside, so it ends
-        // where the transcript ends: a trailing spacer takes the footer's height.
-        // The left column stays full height -- it is the window's launcher, not the
-        // pane's furniture.
-        layout::Node dock = layout::Node::col(0.0f);
-        dock.add(layout::Node::none().hGrow(1.0f));
-        dock.add(layout::Node::none().height(footerH + gap));
-        dock.width(std::max(m.dockW, 220.0f * m.factor));
-        body.add(std::move(dock));
-    }
+    // Two bands on the right of the left column: the transcript beside the dock, and
+    // one footer UNDER BOTH. The footer is the session's furniture, and the strip
+    // under the dock was dead space the moment the dock stopped at the transcript's
+    // bottom -- so the prompt and its status areas take the whole width.
+    layout::Node rest = layout::Node::col(gap).wGrow(1.0f);
+    layout::Node top = layout::Node::row(m.gutter).hGrow(1.0f);
+    top.add(layout::Node::none().wGrow(1.0f));                       // transcript
+    if (f.dockOpen) top.add(layout::Node::none().width(dockActual)); // dock, same height
+    rest.add(top);
+    rest.add(layout::Node::none().height(footerH));
+    body.add(rest);
     root.add(body);
     layout::solve(root, f.window);
 
     f.header = root.children[0].rect;
-    // The solver's own children, not a copy of their rects: the body node holds
-    // the left column, the transcript+footer column and the dock, and all three
-    // were placed against the height it got.
+    // The solver's own children, not a copy of their rects: the body node holds the
+    // left column and the right-hand column, which holds [transcript | dock] over
+    // the footer, and all of them were placed against the height it got.
     const layout::Node& bodyNode = root.children[1];
     size_t child = 0;
     f.leftOpen = leftW > 0.0f;
     if (f.leftOpen) f.left = bodyNode.children[child++].rect;
-    const layout::Node& midNode = bodyNode.children[child++];
-    f.chat = midNode.children[0].rect;
-    f.footer = midNode.children[1].rect;
-    if (f.dockOpen && child < bodyNode.children.size()) {
-        const layout::Node& dockNode = bodyNode.children[child];
-        f.dock = dockNode.children.empty() ? dockNode.rect : dockNode.children[0].rect;
-    }
+    const layout::Node& restNode = bodyNode.children[child++];
+    const layout::Node& topNode = restNode.children[0];
+    f.chat = topNode.children[0].rect;
+    if (f.dockOpen && topNode.children.size() > 1) f.dock = topNode.children[1].rect;
+    f.footer = restNode.children[1].rect;
     // --- the left column's own stack: sessions / handle / files ----------------
     // The Sessions panel is as tall as its content (a minimal wrapper: one row per
     // pane plus the header) and the file tree gets every pixel that is left, capped

@@ -1446,10 +1446,14 @@ void App::tick() {
             pane.chatKeys.erase(pane.chatKeys.begin(), pane.chatKeys.begin() + static_cast<long>(n));
         }
         // The turn clock: started when the pane becomes busy, stopped when it is not.
-        const int tokens = pane.rt->promptTokens() + pane.rt->completionTokens();
+        // It is fed OUTPUT tokens only, and only while they move: the old figure
+        // divided prompt+completion by the turn's length, so the first second of a
+        // 30k-token context read as "30000 tok/s".
         const bool busyNow = pane.rt->isBusy();
+        const int outTokens = pane.rt->completionTokens();
         if (busyNow) {
-            if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), tokens);
+            if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), outTokens);
+            work_clock::noteTokens(pane.clock, monotonicMs(), outTokens);
         } else if (pane.clock.running) {
             work_clock::end(pane.clock);
         }
@@ -1670,7 +1674,7 @@ std::string App::workSummary() const {
     if (!pane.clock.running) return std::string();
     const long long now = monotonicMs();
     const double seconds = work_clock::elapsedSeconds(pane.clock, now);
-    const double rate = work_clock::tokensPerSecond(pane.clock, now, activeTokens());
+    const double rate = work_clock::tokensPerSecond(pane.clock, now);
     char buf[96];
     const AgentStatus status = runtime_->status();
     if (status.state == AgentState::ExecutingTool && status.toolProgressTotal > 0) {

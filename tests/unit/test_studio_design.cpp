@@ -561,7 +561,7 @@ TEST_CASE("gauges: a bar's ceiling scales with what is there") {
 
 // ---- the turn clock ------------------------------------------------------
 
-TEST_CASE("work_clock: elapsed time and throughput from injected timestamps") {
+TEST_CASE("work_clock: elapsed time from injected timestamps") {
     studio::work_clock::Clock c;
     CHECK(studio::work_clock::elapsedSeconds(c, 5000) == doctest::Approx(0.0));
 
@@ -570,17 +570,52 @@ TEST_CASE("work_clock: elapsed time and throughput from injected timestamps") {
     // A second begin (a re-entrant tick) must not restart the turn.
     studio::work_clock::begin(c, 4000, 900);
     CHECK(studio::work_clock::elapsedSeconds(c, 3000) == doctest::Approx(2.0));
-    // 200 tokens in 2 s. The token count of the second begin is ignored on
-    // purpose: the baseline is the turn's start, not the last call.
-    CHECK(studio::work_clock::tokensPerSecond(c, 3000, 300) == doctest::Approx(100.0));
-    // Under a second there is no rate: it would render as a wild number.
-    CHECK(studio::work_clock::tokensPerSecond(c, 1400, 500) == doctest::Approx(0.0));
     // Clock skew (a smaller `now`) can never produce a negative duration.
     CHECK(studio::work_clock::elapsedSeconds(c, 0) == doctest::Approx(0.0));
 
     studio::work_clock::end(c);
     CHECK_FALSE(c.running);
     CHECK(studio::work_clock::elapsedSeconds(c, 9000) == doctest::Approx(0.0));
+}
+
+TEST_CASE("work_clock: the rate is output tokens over a sliding window") {
+    using namespace studio::work_clock;
+    Clock c;
+    // Nothing recorded yet: no rate, not a division by zero.
+    CHECK(tokensPerSecond(c, 1000) == doctest::Approx(0.0));
+
+    begin(c, 1000, 0);
+    // A prompt-sized count passed as the baseline is exactly the bug that made the
+    // figure read "30000 tok/s": the rate only ever counts what was EMITTED.
+    CHECK(tokensPerSecond(c, 1200) == doctest::Approx(0.0)); // one sample: no span
+
+    // The window at 2400 ms still holds the turn's first sample (1000 ms, 0 tokens),
+    // so the figure is 200 tokens over 1.4 s -- an average, not a burst.
+    noteTokens(c, 1200, 0);
+    noteTokens(c, 1400, 100);
+    noteTokens(c, 2200, 200);
+    CHECK(tokensPerSecond(c, 2200) == doctest::Approx(200.0 * 1000.0 / 1200.0));
+
+    // A repeat of the same count is not a sample: it must not drag the average down
+    // while the model is thinking.
+    const double before = tokensPerSecond(c, 2400);
+    noteTokens(c, 2400, 200);
+    CHECK(tokensPerSecond(c, 2400) == doctest::Approx(before));
+
+    // Under 300 ms of span the figure is noise, so it reads 0.
+    Clock fast;
+    begin(fast, 0, 0);
+    noteTokens(fast, 100, 40);
+    CHECK(tokensPerSecond(fast, 100) == doctest::Approx(0.0));
+
+    // Once the window has gone quiet (no emission for two seconds) the rate falls
+    // to 0 instead of freezing at its last value.
+    CHECK(tokensPerSecond(c, 6000) == doctest::Approx(0.0));
+
+    // A stopped clock records nothing.
+    end(c);
+    noteTokens(c, 6200, 999);
+    CHECK(tokensPerSecond(c, 6200) == doctest::Approx(0.0));
 }
 
 // ---- the machine sampler's unit rule ------------------------------------
