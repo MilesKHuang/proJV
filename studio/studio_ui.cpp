@@ -21,6 +21,7 @@
 #include "imgui.h"
 
 #include "core/diff_rows.h"
+#include "debug_log.h"
 #include "core/speaker_slots.h"
 #include "design/actions.h"
 #include "design/fit.h"
@@ -545,6 +546,12 @@ void drawChat(App& app, const Frame& f) {
     const layout::Rect inner = f.chat.inset(tokens::spacePx(m, Space::Sm));
     const bool open = ui::beginScroll("##chat", inner, m, p.surface);
     const int req = app.takeScrollRequest();
+    // How far the reader is from the end of the transcript AS THEY LAST SAW IT.
+    // Measured before this frame's rows are laid out, while ImGui still reports the
+    // previous frame's content height -- which is exactly the right reference: after
+    // the rows are added, a newly arrived bubble has already pushed the distance
+    // past any sane threshold, and the pulse would be refused one frame too late.
+    const float distBefore = open ? ui::scrollFromBottom() : 0.0f;
     if (open) {
         if (req != 0) ui::scrollBy(-static_cast<float>(req) * tokens::linePx(m, Type::Body));
         const float avail = ImGui::GetContentRegionAvail().x;
@@ -602,17 +609,30 @@ void drawChat(App& app, const Frame& f) {
     // reader is not moving and is close to the last message -- otherwise the view
     // stays exactly where it was. A frame without a pulse never calls SetScrollY,
     // so the wheel always wins and nothing is "locked to the bottom".
-    const bool pulse = open && app.takeFollowBottom();
-    if (open && pulse) {
+    const bool armed = open && app.followPending();
+    if (open && armed) {
         // "Moving" is a wheel turn or a scrollbar drag in the last 400 ms, not
         // "the prompt has keyboard focus" (it always does).
         if (ImGui::GetIO().MouseWheel != 0.0f || ImGui::IsMouseDragging(ImGuiMouseButton_Left))
             app.noteReaderScroll();
         const float near = 3.0f * tokens::linePx(m, Type::Body);
-        ui::endScroll(!app.readerMovedRecently() && ui::scrollFromBottom() <= near);
-    } else {
-        ui::endScroll(false);
+        if (!app.readerMovedRecently() && distBefore <= near) {
+            // SetScrollHereY(1.0f) targets the line the cursor is on -- the end of
+            // the content just drawn -- and ImGui resolves it in the next Begin.
+            // GetScrollMaxY() cannot be used here: it reports the PREVIOUS frame's
+            // content height, which is why the old jump landed one bubble short.
+            ImGui::SetScrollHereY(1.0f);
+            // A session's first frames have no content height at all (max == 0) and
+            // a target aimed there is lost. Stay armed until there is something to
+            // reach, or the request dies on the frame it was made.
+            if (ui::scrollMax() > 0.0f) app.clearFollowPending();
+        } else {
+            // The reader is somewhere else (or was a moment ago): drop the request
+            // instead of yanking them down the moment they stop moving.
+            app.clearFollowPending();
+        }
     }
+    ui::endScroll(false);
 }
 
 // ---- dock ----------------------------------------------------------------

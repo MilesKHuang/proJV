@@ -589,9 +589,10 @@ float scrollFromBottom() {
 }
 
 bool endScroll(bool follow) {
-    // The jump happens here, after this frame's content is laid out: ImGui knows
-    // the real content height only now, so an earlier jump would aim at the
-    // previous frame's bottom and drift while streaming.
+    // Careful: GetScrollMaxY() here is the PREVIOUS frame's content height
+    // (imgui.cpp: "Update contents size from last frame"), so a jump issued from
+    // this call lands one item short of a bubble that was just appended. The chat
+    // no longer uses this path -- it pins with SetScrollHereY(1.0f) instead.
     if (follow) ImGui::SetScrollY(ImGui::GetScrollMaxY());
     const bool atBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 2.0f;
     ImGui::EndChild();

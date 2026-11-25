@@ -118,6 +118,7 @@ struct Pane {
     std::string receipt;
     long long receiptUntil = 0;
     long long lastScrollMs = 0; // the reader last turned the wheel over this pane
+
     // Notices arrive on the TURN thread of this pane: queued here, drained by the
     // UI thread on its next tick. One queue per pane, so a message from a pane the
     // user is not looking at cannot land in another pane's chat.
@@ -145,8 +146,13 @@ class App {
     void scrollChat(int rows);
     // Rows requested by the keyboard since the last call (consumed on read).
     int takeScrollRequest();
-    // True once after new content arrived: the chat must jump to the bottom.
-    bool takeFollowBottom();
+    // A bubble arrived and the chat should look at the bottom -- but only when the
+    // reader allows it. PEEKED, not consumed: on a session's first frames ImGui
+    // still reports a content height of 0, so a request consumed then is a request
+    // wasted. drawChat clears it once it has actually pinned, or once the reader is
+    // somewhere else.
+    bool followPending() const;
+    void clearFollowPending();
     void setFollowBottom(bool on);
 
     const view_model::Source& source() const { return active().source; }
@@ -220,6 +226,7 @@ class App {
     // backs off for a moment afterwards, so a scroll is never fought.
     void noteReaderScroll();
     bool readerMovedRecently() const;
+
     // Resource sampling (started by the window's main loop, never headless). By
     // value: the sampler copies its last snapshot under a lock, and a reference
     // into that would go stale the moment the thread took the next sample.

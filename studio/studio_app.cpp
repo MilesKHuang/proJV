@@ -1057,16 +1057,9 @@ int App::takeScrollRequest() {
     return n;
 }
 
-bool App::takeFollowBottom() {
-    // One-shot: a queued jump is consumed here. Whether the view KEEPS following
-    // is decided per frame by how far the reader is from the bottom (drawChat),
-    // so a new message no longer yanks the transcript while someone is reading
-    // three screens up.
-    bool& pending = active().followBottom;
-    const bool was = pending;
-    pending = false;
-    return was;
-}
+bool App::followPending() const { return active().followBottom; }
+
+void App::clearFollowPending() { active().followBottom = false; }
 
 void App::refuseIfBusy(std::string* why) const {
     if (busy() && why) *why = "refused: a turn is running";
