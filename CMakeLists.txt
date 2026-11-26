@@ -382,6 +382,9 @@ set(STUDIO_SOURCES
     ${STUDIO_DIR}/design/path_text.cpp
     ${STUDIO_DIR}/design/gauges.cpp
     ${STUDIO_DIR}/design/work_clock.cpp
+    # What a text selection covers: the ordering the surface, the highlight and the
+    # clipboard share. ImGui-free so the unit tests can pin it (see tests/CMakeLists).
+    ${STUDIO_DIR}/design/text_select.cpp
     ${STUDIO_DIR}/ui/ui.cpp
 )
 set(STUDIO_BACKEND_SOURCES

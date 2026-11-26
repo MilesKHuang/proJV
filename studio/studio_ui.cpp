@@ -503,7 +503,8 @@ bool drawChatRow(const Frame& f, const view_model::ChatRow& row, float width, in
     return clicked;
 }
 
-void drawStreaming(const Frame& f, const view_model::StreamingView& st, float width) {
+void drawStreaming(const Frame& f, const view_model::StreamingView& st, float width,
+                   int& blockSeq) {
     if (!st.visible) return;
     const Metrics& m = f.metrics;
     const Palette p = ui::palette();
@@ -522,7 +523,7 @@ void drawStreaming(const Frame& f, const view_model::StreamingView& st, float wi
                 ui::text(m, st.reasoningHead, studio_theme::field(&ThemeColors::reasoningTextColor),
                          Type::Small);
             if (st.earlierOmitted) ui::hint(m, "... (earlier thinking omitted)");
-            g_surface.drawBlock(-11, st.reasoningBody, false, textW,
+            g_surface.drawBlock(blockSeq++ * 10, st.reasoningBody, false, textW,
                                 studio_theme::field(&ThemeColors::reasoningBodyText));
         }
         if (st.hasContent) {
@@ -531,8 +532,11 @@ void drawStreaming(const Frame& f, const view_model::StreamingView& st, float wi
                          Type::Caption);
             // Same renderer as a settled row: the streaming and persisted paths used
             // to be two different renderers, so a table that showed while streaming
-            // disappeared when the message settled.
-            g_surface.drawBlock(-12, st.content, true, textW,
+            // disappeared when the message settled. The id comes from the shared
+            // sequence, so a streaming block sits AFTER every settled row in selection
+            // order: the old fixed -11/-12 numbered them before the whole transcript,
+            // and a drag across both copied the live block first.
+            g_surface.drawBlock(blockSeq++ * 10, st.content, true, textW,
                                 studio_theme::field(&ThemeColors::text));
         }
     }
@@ -570,11 +574,15 @@ void drawChat(App& app, const Frame& f) {
         // Monospace inside the reading column: code, tables and box drawing must
         // align, and a terminal chat log is the one place a mono face is right.
         ui::pushType(m, Type::Mono, true);
+        // The highlight is painted on the foreground list, so it must be told where
+        // the chat is: without the rectangle a drag past the last bubble paints over
+        // the composer and the dock.
+        g_surface.setClip(f.chat.x, f.chat.y, f.chat.x + f.chat.w, f.chat.y + f.chat.h);
         bool rowClick = false;
         int blockSeq = 0;
         for (int i = 0; i < static_cast<int>(s.chat.size()); ++i)
             rowClick |= drawChatRow(f, s.chat[static_cast<size_t>(i)], colW, i, app, blockSeq);
-        drawStreaming(f, s.streaming, colW);
+        drawStreaming(f, s.streaming, colW, blockSeq);
         ui::popType();
         if (s.chat.empty() && !s.streaming.visible) {
             // Centred in the visible area rather than glued to the top: an empty
@@ -596,8 +604,10 @@ void drawChat(App& app, const Frame& f) {
         // Mouse selection and Ctrl+C over everything drawn above -- but NOT on the
         // frame a tool block was opened or closed: the selection hit-tests raw
         // mouse clicks (studio_text.cpp), so without this one press would both
-        // toggle the row and start selecting a line inside it.
-        if (!rowClick) g_surface.handleInput();
+        // toggle the row and start selecting a line inside it. While a modal is up it
+        // takes no input either: the dialog owns the keys and the pointer, and the
+        // foreground highlight would otherwise be drawn on top of it.
+        if (!rowClick) g_surface.handleInput(s.modal == "none");
         if (inset > 0.0f) ImGui::Unindent(inset);
     }
     // Sticky bottom, but only for a reader who is already near it. The old rule

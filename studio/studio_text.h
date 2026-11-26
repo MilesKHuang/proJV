@@ -19,32 +19,11 @@
 #include <string>
 #include <vector>
 
+#include "design/text_select.h"
 #include "imgui.h"
 #include "tui/markdown_text.h"
 
 namespace studio {
-
-// One selection over the whole chat view. Blocks are the chat rows, lines are the
-// visual lines of one block, columns are display columns (CJK counts as 2).
-struct Selection {
-    int blockA = -1;
-    int lineA = 0;
-    int colA = 0;
-    int blockB = -1;
-    int lineB = 0;
-    int colB = 0;
-    bool active = false;
-
-    bool empty() const { return blockA < 0 || blockB < 0; }
-    void clear() {
-        blockA = blockB = -1;
-        lineA = lineB = colA = colB = 0;
-        active = false;
-    }
-    // Normalised order: the earlier end first.
-    void ordered(int* blockA_, int* lineA_, int* colA_, int* blockB_, int* lineB_,
-                 int* colB_) const;
-};
 
 // Per-frame state: one drag in progress, the hit boxes of the last frame.
 class TextSurface {
@@ -55,8 +34,17 @@ class TextSurface {
                    ImU32 plainColor);
 
     // Handle mouse + Ctrl+C for everything drawn this frame. Call once per frame,
-    // after all blocks, so hit boxes are complete.
-    void handleInput();
+    // after all blocks, so hit boxes are complete. `interactive` false while a modal
+    // owns the input: the boxes are still cleared (they are per frame) but nothing is
+    // selected or highlighted, because the highlight is drawn on the foreground list
+    // and would sit ON TOP of the dialog.
+    void handleInput(bool interactive = true);
+
+    // The rectangle the chat area occupies this frame. The highlight is painted on the
+    // foreground draw list (a child window's text would otherwise cover it), so it
+    // must be clipped to the chat and nothing else -- without this an over-long drag
+    // paints across the composer and the dock.
+    void setClip(float x0, float y0, float x1, float y1);
 
     // Selection bookkeeping.
     Selection& selection() { return sel_; }
@@ -70,6 +58,14 @@ class TextSurface {
         // flattened, used for hit-testing and for the clipboard.
         std::vector<markdown_text::Segment> runs;
         std::string plain;
+        // The character width this line was WRAPPED with, in pixels. Hit-testing, the
+        // highlight and the clipboard all read it instead of asking ImGui for the
+        // current font: handleInput() runs after the caller has popped the chat face,
+        // so "the current font" there is the proportional UI face -- a different ruler
+        // from the one buildLines measured with, which is why a click landed a few
+        // characters away from the pointer. 0 means "no text on this line" (an HR or a
+        // table placeholder), and every reader falls back to 8 px.
+        float cw = 0.0f;
         float x0 = 0.0f;
         float y0 = 0.0f;
         float x1 = 0.0f;
@@ -117,6 +113,13 @@ class TextSurface {
     std::vector<VisualLine> frameLines_; // hit boxes for THIS frame
     std::vector<std::pair<int, Cached>> cache_;
     Selection sel_;
+    // The chat area this frame, for the foreground highlight (see setClip). Kept as
+    // four floats rather than an ImVec4 so an unset clip is a plain `false`.
+    bool hasClip_ = false;
+    float clipX0_ = 0.0f;
+    float clipY0_ = 0.0f;
+    float clipX1_ = 0.0f;
+    float clipY1_ = 0.0f;
     bool dragging_ = false;
     int dragBlock_ = -1;
     bool haveDragOrigin_ = false;
@@ -127,6 +130,9 @@ class TextSurface {
     const Cached* cachedLayout(int blockId, const std::string& text, bool markdown, float width);
     // x,y -> (block, line, column) under the cursor, or false when it misses text.
     bool hitTest(float x, float y, int* block, int* line, int* col) const;
+    // The nearest line to a pointer that missed every hit box (a drag through the gap
+    // between two bubbles), with its first column, its last, or the one under x.
+    bool snapToNearest(float x, float y, int* block, int* line, int* col) const;
     static int columnAtX(const VisualLine& line, float x);
     static std::string textInLine(const VisualLine& line, int c0, int c1);
 };

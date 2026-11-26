@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "debug_log.h"
-#include "design/tokens.h"
 #include "studio_markdown.h"
 #include "studio_theme.h"
 #include "tui/theme_manager.h"
@@ -118,19 +117,12 @@ int tierOf(const markdown_text::Line& line) {
 
 } // namespace
 
-void Selection::ordered(int* b0, int* l0, int* c0, int* b1, int* l1, int* c1) const {
-    const bool forward = (blockA < blockB) ||
-                         (blockA == blockB && (lineA < lineB || (lineA == lineB && colA <= colB)));
-    *b0 = forward ? blockA : blockB;
-    *l0 = forward ? lineA : lineB;
-    *c0 = forward ? colA : colB;
-    *b1 = forward ? blockB : blockA;
-    *l1 = forward ? lineB : lineA;
-    *c1 = forward ? colB : colA;
-}
-
 int TextSurface::columnAtX(const VisualLine& line, float x) {
-    const float cw = charWidth() > 0.0f ? charWidth() : 8.0f;
+    // The line's OWN character width, recorded when it was wrapped. Asking the
+    // current font here was wrong twice: handleInput() runs after the chat face has
+    // been popped, so it measured the proportional UI face, and a heading pushed yet
+    // another size. One ruler per line, or a click lands where the pointer is not.
+    const float cw = line.cw > 0.0f ? line.cw : 8.0f;
     const int target = static_cast<int>((x - line.x0) / cw + 0.5f);
     if (target <= 0) return 0;
     int cols = 0;
@@ -169,23 +161,16 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
     const float bulletHang = cw * 2.5f; // marker column + one space
     const float quoteHang = cw * 1.5f;
     const float codeHang = cw * 1.0f;
-    // The three tier sizes the draw path can push, from the one token ladder.
-    const float bodyPx = tokens::kTypePx[static_cast<int>(tokens::Type::Body)];
-    const float titlePx = tokens::kTypePx[static_cast<int>(tokens::Type::Title)];
-    const float headingPx = tokens::kTypePx[static_cast<int>(tokens::Type::Heading)];
 
     const auto emitWrapped = [&](const std::vector<markdown_text::Segment>& segs, float hang,
                                  int tier, bool codeBg, bool quote, bool rule,
                                  std::vector<markdown_text::Segment> prefix) {
-        // A heading is WRAPPED here but DRAWN at its own size (Title 22 / Heading 18
-        // against a 16 px body). Without scaling the wrap width by the same ratio the
-        // line was fitted to a face it is not painted in, and the text ran past the
-        // bubble: that is the "text spills out of the bubble" report. Ratios come from
-        // the token ladder, so the two sizes cannot drift.
-        const float tierScale = (tier == 3)   ? (bodyPx / titlePx)
-                                : (tier == 2) ? (bodyPx / headingPx)
-                                              : 1.0f;
-        const float avail = std::max(16.0f, (width - hang) * tierScale);
+        // One face, one size, one ruler: a heading is bold plus a theme colour at body
+        // size (exactly what the TUI does), so the width it is wrapped to is the width
+        // it is painted at. The tier used to shrink this width by bodyPx/titlePx to
+        // compensate for a 22 px Title face; with that face gone, keeping the ratio
+        // would fit every heading into 73 % of its line and leave a ragged block.
+        const float avail = std::max(16.0f, width - hang);
         auto rows = studio_md::wrap(segs, avail);
         for (size_t r = 0; r < rows.size(); ++r) {
             VisualLine vl;
@@ -195,6 +180,7 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
             vl.rule = rule;
             vl.quote = quote;
             vl.codeBg = codeBg;
+            vl.cw = cw; // the ruler hit-testing and the highlight must reuse
             vl.indent = (r == 0) ? 0.0f : hang;
             if (r == 0) {
                 for (auto& p : prefix) {
@@ -392,22 +378,23 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
     for (const auto& cachedLine : layout->lines) {
         VisualLine vl = cachedLine;
         // Air above a heading: glued to the paragraph above it, a heading reads as
-        // part of that paragraph.
-        if (vl.tier != 0 && &cachedLine != &layout->lines.front()) {
-            const float air = (vl.tier == 1 ? 10.0f : (vl.tier == 2 ? 14.0f : 18.0f)) * dpi;
-            ImGui::Dummy(ImVec2(0.0f, air));
-        }
+        // part of that paragraph. ONE value, not one per tier: a heading is no longer
+        // a bigger font (see below), so a tier-dependent gap would still make H1 and H3
+        // look like different sizes -- it is the gap that said "bigger", and it would
+        // now be the only thing left saying it.
+        if (vl.tier != 0 && &cachedLine != &layout->lines.front())
+            ImGui::Dummy(ImVec2(0.0f, 8.0f * dpi));
         const float ind = vl.indent;
         if (ind > 0.0f) ImGui::Indent(ind);
-        // ONE decision, used by the pop at the bottom of this loop. tier 1 (###
-        // H3) is bold at body size: it pushes no face. Popping on `tier != 0`
-        // while pushing only 2 and 3 popped a font that was never pushed, which
-        // is the "Calling PopFont() too many times" assert -- once per H3 line.
-        const bool facePushed = vl.tier == 3 || vl.tier == 2;
-        if (vl.tier == 3)
-            studio_theme::pushText(studio_theme::TextRole::Title);
-        else if (vl.tier == 2)
-            studio_theme::pushText(studio_theme::TextRole::Heading);
+        // No face is pushed here on purpose. A markdown heading is body-size, bold and
+        // in the theme's mdH1/mdH2/mdH3 colour -- the same rule the TUI follows
+        // (markdown_view.cpp pushes bold | color, never a size). It also keeps the ONE
+        // ruler this file depends on: buildLines wrapped the line in the mono face at
+        // body size, so painting it in another face would put the glyphs somewhere the
+        // wrap, the hit-test and the highlight do not expect. The old push (Title 22 /
+        // Heading 18, on the PROPORTIONAL face) did exactly that, and its paired pop was
+        // the "Calling PopFont() too many times" assert whenever a branch left the loop
+        // early.
         // A markdown table is one widget, not a run of padded text lines: hand the
         // parsed rows to ImGui's table (the GUI's ftxui::Table). It brings its own
         // borders, header band and zebra, all from the theme's ImGuiCol_Table* entries.
@@ -430,11 +417,7 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             vl.x1 = std::max(p1.x, p0.x + 1.0f);
             vl.y1 = std::max(p1.y, p0.y + 1.0f);
             frameLines_.push_back(vl);
-            // This branch leaves the loop early, so it must unwind the face push
-            // itself: a heading that turned out to be a table line would otherwise
-            // leak one font onto the stack for every frame it stayed on screen.
-            if (facePushed) studio_theme::popText();
-            if (ind > 0.0f) ImGui::Unindent(ind); // same early exit, same unwind
+            if (ind > 0.0f) ImGui::Unindent(ind); // early exit, unwind the indent
             continue;
         }
 
@@ -503,7 +486,6 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
                         studio_theme::field(&ThemeColors::separator));
         }
         frameLines_.push_back(vl);
-        if (facePushed) studio_theme::popText();
         if (ind > 0.0f) ImGui::Unindent(ind);
     }
 }
@@ -558,7 +540,52 @@ bool TextSurface::hitTest(float x, float y, int* block, int* line, int* col) con
     return false;
 }
 
-void TextSurface::handleInput() {
+void TextSurface::setClip(float x0, float y0, float x1, float y1) {
+    hasClip_ = true;
+    clipX0_ = x0;
+    clipY0_ = y0;
+    clipX1_ = x1;
+    clipY1_ = y1;
+}
+
+bool TextSurface::snapToNearest(float x, float y, int* block, int* line, int* col) const {
+    // The rule: a drag covers every line it passes over, tool rows included. They are
+    // visible text in the transcript, and a selection that silently skipped them would
+    // copy a conversation that reads as if the tools never ran -- which is a lie about
+    // what the agent did, not a convenience.
+    const VisualLine* best = nullptr;
+    float bestDy = 0.0f;
+    for (const auto& vl : frameLines_) {
+        const float dy = y < vl.y0 ? vl.y0 - y : (y > vl.y1 ? y - vl.y1 : 0.0f);
+        if (!best || dy < bestDy) {
+            best = &vl;
+            bestDy = dy;
+        }
+    }
+    if (!best) return false;
+    *block = best->block;
+    *line = best->line;
+    // Past a line's right edge the caret belongs at its end, before its left edge at
+    // its start -- not "the column the arithmetic happens to produce", which would be
+    // negative and clamp to 0 in both cases.
+    if (x <= best->x0)
+        *col = 0;
+    else if (x >= best->x1)
+        *col = columnsOf(best->plain);
+    else
+        *col = columnAtX(*best, x);
+    return true;
+}
+
+void TextSurface::handleInput(bool interactive) {
+    // A modal owns the input while it is open. No click may start a selection behind
+    // it, and the highlight must not be painted over it: it goes on the FOREGROUND
+    // draw list, which is above every window by definition. The boxes are still
+    // cleared, because they are per frame and would otherwise go stale.
+    if (!interactive) {
+        frameLines_.clear();
+        return;
+    }
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 mouse = io.MousePos;
 
@@ -592,11 +619,21 @@ void TextSurface::handleInput() {
             }
         } else {
             sel_.clear();
+            dragging_ = false; // a press outside the text must not extend an old drag
         }
     }
     if (dragging_ && ImGui::IsMouseDown(0)) {
         int block = 0, line = 0, col = 0;
         if (hitTest(mouse.x, mouse.y, &block, &line, &col)) {
+            sel_.blockB = block;
+            sel_.lineB = line;
+            sel_.colB = col;
+        } else if (snapToNearest(mouse.x, mouse.y, &block, &line, &col)) {
+            // Dragging through the padding around a bubble, or past the first or last
+            // line, must still move the caret: the nearest line takes it. Dropping the
+            // sample instead made the selection stop at the edge of the text and start
+            // moving again only when the pointer came back onto a glyph -- the "drag
+            // is stuck" report.
             sel_.blockB = block;
             sel_.lineB = line;
             sel_.colB = col;
@@ -616,19 +653,26 @@ void TextSurface::handleInput() {
     if (sel_.active) {
         int b0, l0, c0, b1, l1, c1;
         sel_.ordered(&b0, &l0, &c0, &b1, &l1, &c1);
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const float cw = charWidth();
+        // FOREGROUND, not the chat window's list. The text lives in child windows (one
+        // per bubble) and a child renders after its parent, so a highlight on the
+        // parent's list is painted first and then covered by the very text it marks --
+        // which is why selection looked like it did nothing at all.
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
         const ImU32 hi = studio_theme::field(&ThemeColors::buttonActive, 0.45f);
+        const bool clipped = hasClip_;
+        if (clipped) dl->PushClipRect(ImVec2(clipX0_, clipY0_), ImVec2(clipX1_, clipY1_), true);
         for (const auto& vl : frameLines_) {
-            const bool afterStart = vl.block > b0 || (vl.block == b0 && vl.line >= l0);
-            const bool beforeEnd = vl.block < b1 || (vl.block == b1 && vl.line <= l1);
-            if (!afterStart || !beforeEnd) continue;
-            const int from = (vl.block == b0 && vl.line == l0) ? c0 : 0;
-            const int to = (vl.block == b1 && vl.line == l1) ? c1 : columnsOf(vl.plain);
-            if (to <= from) continue;
+            int from = 0, to = 0;
+            if (!columnSpan(vl.block, vl.line, columnsOf(vl.plain), b0, l0, c0, b1, l1, c1, &from,
+                            &to))
+                continue;
+            // The line's own ruler, the one it was wrapped with. charWidth() here would
+            // measure whichever face the caller left pushed.
+            const float cw = vl.cw > 0.0f ? vl.cw : 8.0f;
             dl->AddRectFilled(ImVec2(vl.x0 + static_cast<float>(from) * cw, vl.y0),
                               ImVec2(vl.x0 + static_cast<float>(to) * cw, vl.y1), hi);
         }
+        if (clipped) dl->PopClipRect();
     }
 
     frameLines_.clear(); // hit boxes are per frame
@@ -642,12 +686,10 @@ std::string TextSurface::selectedText() const {
     // frameLines_ is cleared at the end of handleInput, so walk the cache instead.
     for (const auto& entry : cache_) {
         for (const auto& vl : entry.second.lines) {
-            const bool afterStart = vl.block > b0 || (vl.block == b0 && vl.line >= l0);
-            const bool beforeEnd = vl.block < b1 || (vl.block == b1 && vl.line <= l1);
-            if (!afterStart || !beforeEnd) continue;
-            const int from = (vl.block == b0 && vl.line == l0) ? c0 : 0;
-            const int to = (vl.block == b1 && vl.line == l1) ? c1 : columnsOf(vl.plain);
-            if (to <= from) continue;
+            int from = 0, to = 0;
+            if (!columnSpan(vl.block, vl.line, columnsOf(vl.plain), b0, l0, c0, b1, l1, c1, &from,
+                            &to))
+                continue;
             if (!out.empty()) out += '\n';
             out += textInLine(vl, from, to);
         }

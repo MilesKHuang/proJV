@@ -71,6 +71,10 @@ set(TEST_SOURCES
     # button table) is plain C++ with no ImGui include, so the geometry the window
     # is built from is pinned here without a GPU, a window or a frame.
     unit/test_studio_design.cpp
+    # What a drag covers: the ordering rule the surface, the highlight and the
+    # clipboard all obey. It is pure arithmetic with no ImGui include, which is the
+    # only reason it can be tested at all.
+    unit/test_studio_select.cpp
     # --screenshot writes a PNG with no image library; the bytes are pinned here.
     unit/test_png_writer.cpp
     unit/test_worker_wait.cpp
@@ -83,6 +87,7 @@ set(TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/studio/design/path_text.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/gauges.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/work_clock.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/text_select.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp

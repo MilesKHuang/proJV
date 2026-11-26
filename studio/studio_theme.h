@@ -60,20 +60,14 @@ void applyMetrics(const studio::tokens::Metrics& m);
 
 // Type scale. One size for everything reads as a terminal; three or four tiers
 // with a ~1.15-1.33 ratio is what makes a hierarchy visible without a font family
-// per role. Sizes are unscaled: ImGui multiplies by FontScaleDpi/FontScaleMain.
-enum class TextRole {
-    Title,   // window / dialog title
-    Heading, // section header (TODO, dialog sections)
-    Body,    // default
-    Small,   // labels, status bar, hints
-    Tiny,    // keycaps, footnotes
-};
-
-float fontPx(TextRole role);
-
-// Push the chrome face at `role`'s size (pair every push with popText).
-void pushText(TextRole role);
-void popText();
+// per role. The ladder itself lives in design/tokens.h (`tokens::Type`), and every
+// caller reaches it through the widget kit (ui::pushType/ui::text) so that one
+// conversion exists.
+//
+// This header used to expose TextRole/fontPx/pushText/popText on top of that ladder.
+// They are gone: the chat's markdown headings were the last caller, and they are now
+// drawn at body size in the body face, bold, the way the TUI draws them. An unused
+// "push a bigger chrome face" helper is how a second typographic ruler comes back.
 
 // A panel surface derived from a theme colour: `base` moved `amount` (0..1) of the
 // way toward white on a dark background, or toward black on a light one. Themes do
@@ -84,9 +78,9 @@ void popText();
 ImU32 surface(ImU32 base, float amount = 0.06f);
 
 // ---- fonts ----------------------------------------------------------------
-// Sizes and spacing are NOT decided here any more: they come from
-// design/tokens.h, and studio_theme::fontPx delegates to that ladder so the theme
-// layer and the widget kit cannot drift apart.
+// Sizes and spacing are NOT decided here: they come from design/tokens.h, and the
+// widget kit (`studio/ui/ui.h`) is the one place that turns a `tokens::Type` into a
+// pushed face, so the theme layer and the widget kit cannot drift apart.
 //
 // Load (or reload) the font atlas at `scale`. Returns false and fills `err`
 // when no usable font was found -- the caller decides how loud to be.

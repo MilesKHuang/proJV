@@ -280,39 +280,6 @@ void applyMetrics(float dpi) {
     applyMetrics(tokens::build(dpi, 1.0f));
 }
 
-float fontPx(TextRole role) {
-    // The ladder lives in design/tokens.h: one source for both front-end layers,
-    // so a dialog title and the header title cannot disagree about their size.
-    // These are 100% sizes; ImGui multiplies by FontScaleMain * FontScaleDpi.
-    switch (role) {
-    case TextRole::Title:
-        return tokens::kTypePx[static_cast<int>(tokens::Type::Title)];
-    case TextRole::Heading:
-        return tokens::kTypePx[static_cast<int>(tokens::Type::Heading)];
-    case TextRole::Small:
-        return tokens::kTypePx[static_cast<int>(tokens::Type::Small)];
-    case TextRole::Tiny:
-        return tokens::kTypePx[static_cast<int>(tokens::Type::Caption)];
-    case TextRole::Body:
-    default:
-        return tokens::kTypePx[static_cast<int>(tokens::Type::Body)];
-    }
-}
-
-// Every push is matched by exactly one popText(), so a face that failed to load
-// must still push SOMETHING. A guarded push with an unguarded pop is precisely
-// the "Calling PopFont() too many times" assert: when the chrome face was
-// missing, every caller popped a font it never pushed and the stack went
-// negative. Falling back to the font already in use keeps push and pop equal.
-void pushText(TextRole role) {
-    ImFont* face = g_ui ? g_ui : ImGui::GetFont();
-    ImGui::PushFont(face, fontPx(role));
-}
-
-void popText() {
-    ImGui::PopFont();
-}
-
 bool loadFonts(float scale, std::string* err) {
     ImGuiIO& io = ImGui::GetIO();
     g_fontScale = scale > 0.1f ? scale : 1.0f;
