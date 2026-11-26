@@ -62,19 +62,26 @@ TEST_CASE("role seed: no tool inventory and no allowlist trigger") {
     CHECK_FALSE(has(seed, "500 chars"));
 }
 
-TEST_CASE("role seed: the four-part answer shape, in order") {
+TEST_CASE("role seed: the answer shape is prose, not a form to fill in") {
     const std::string seed = defaultPromptSeedText();
     CHECK(has(seed, "## Output shape (highest priority)"));
-    CHECK(has(seed, "1. Conclusion"));
-    CHECK(has(seed, "2. What it means for the user"));
-    CHECK(has(seed, "3. Details"));
-    CHECK(has(seed, "4. Next step"));
-    CHECK(ordered(seed, "1. Conclusion", "2. What it means for the user"));
-    CHECK(ordered(seed, "2. What it means for the user", "3. Details"));
-    CHECK(ordered(seed, "3. Details", "4. Next step"));
-    // The whole point: plain language outranks the professional detail dump.
+    // A numbered list is a form, and a model fills a form in: every reply grew the same
+    // four headings whether or not it had that much to say. The ORDER survives as
+    // prose; the numbering must not come back.
+    CHECK_FALSE(has(seed, "1. Conclusion"));
+    CHECK_FALSE(has(seed, "2. What it means for the user"));
+    CHECK_FALSE(has(seed, "3. Details"));
+    CHECK_FALSE(has(seed, "4. Next step"));
+    // What the shape is FOR has to survive the rewrite.
     CHECK(has(seed, "new graduate can follow"));
+    CHECK(has(seed, "not a template"));
+    // The precision rule is the one the form was carrying for us.
+    CHECK(has(seed, "exact file paths, function signatures"));
     CHECK(ordered(seed, "## Output shape", "## Working style"));
+    // Conclusion first is still the rule, not a suggestion.
+    CHECK(ordered(seed, "Lead with the conclusion", "Then say what it means"));
+    CHECK(ordered(seed, "Then say what it means", "Then the details"));
+    CHECK(ordered(seed, "Then the details", "End with the next step"));
 }
 
 TEST_CASE("role seed: the hard rules that must survive any rewrite") {

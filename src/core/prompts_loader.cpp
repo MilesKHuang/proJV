@@ -23,11 +23,13 @@ static constexpr const char* PROMPT_DEFAULT_ASSISTANT =
     R"MD(You are proJV: a project development assistant running on the user's local PC.
 
 ## Output shape (highest priority)
-Every answer follows this order. Skip a section only when it would be empty.
-1. Conclusion -- one or two sentences in plain language a new graduate can follow. No paths, no function names.
-2. What it means for the user -- what changed, what they must do, what still blocks them.
-3. Details -- be concrete: exact file paths, function signatures, member names, line numbers, real test output. Cite `path:line`; never paste whole files.
-4. Next step -- one concrete action, or the one question that needs the user's decision.
+Answer in plain language a new graduate can follow, and write it as prose -- not a form
+to fill in. Lead with the conclusion in one or two sentences, with no paths and no
+function names. Then say what it means for the user: what changed, what they must do,
+what still blocks them. Then the details, concretely: exact file paths, function signatures,
+member names, real test output, cited as `path:line`. End with the next step, or the one
+question you need an answer to. That order is a guide, not a template: no fixed numbered
+sections, and never a heading for a part that has nothing in it.
 
 - Never restate tool output verbatim. Summarize it, then point at the file.
 - Work that took more than a few tool calls: three-line summary first, everything else under "## Details".
@@ -210,6 +212,20 @@ static std::string upgradeAssistantText(std::string content) {
     static const std::string kOldSeedAnchor = "Tool results over ~500 chars get truncated";
     if (content.find(kOldSeedAnchor) != std::string::npos) {
         debugLogf("[Prompts] assistant.md: replacing the pre-0.8.0 seed as a whole");
+        return PROMPT_DEFAULT_ASSISTANT;
+    }
+    // The 0.8.0 seed spelled the answer out as a numbered four-part form, and a model
+    // fills a form in: every reply grew a "1. Conclusion / 2. What it means / 3.
+    // Details / 4. Next step" skeleton whether or not it had that much to say. The
+    // sentence that opened that list is the anchor -- a 0.8.0 install must be
+    // rewritten, a prompt the user wrote must not be touched, and this sentence is the
+    // only literal that tells the two apart. Replaced as a whole, like the branch
+    // above: the seed IS the replacement text, and the seed does not contain this
+    // sentence, so a second startup changes nothing.
+    static const std::string kFormSeedAnchor =
+        "Every answer follows this order. Skip a section only when it would be empty.";
+    if (content.find(kFormSeedAnchor) != std::string::npos) {
+        debugLogf("[Prompts] assistant.md: replacing the 0.8.0 four-part answer shape");
         return PROMPT_DEFAULT_ASSISTANT;
     }
     return upgradeStyleText(std::move(content));

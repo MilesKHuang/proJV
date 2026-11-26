@@ -77,6 +77,37 @@ TEST_CASE("prompt upgrade: the pre-0.8.0 assistant seed is replaced as a whole")
     CHECK(twice == once);
 }
 
+TEST_CASE("prompt upgrade: the 0.8.0 four-part form seed is replaced as a whole") {
+    // The 0.8.0 seed spelled the answer out as a numbered list, and a model fills a
+    // form in. The upgrade is keyed on the sentence that opened that list, not on the
+    // numbering: the numbering is what a hand-written prompt may also use.
+    const std::string formSeed =
+        "You are a helper.\n\n## Output shape (highest priority)\n"
+        "Every answer follows this order. Skip a section only when it would be empty.\n"
+        "1. Conclusion -- one or two sentences.\n"
+        "2. What it means for the user -- what changed.\n"
+        "3. Details -- exact paths.\n"
+        "4. Next step -- one action.\n";
+
+    const std::string once = upgradeSeededPrompt("assistant.md", formSeed);
+    CHECK(once == defaultPromptSeedText());
+    CHECK(once.find("1. Conclusion") == std::string::npos);
+    // Idempotent: the seed it was replaced with does not carry the anchor.
+    CHECK(upgradeSeededPrompt("assistant.md", once) == once);
+}
+
+TEST_CASE("prompt upgrade: a hand-written numbered shape without the seed sentence stays") {
+    // Only the seed's own literal triggers the whole-file replacement. Losing a
+    // hand-written prompt is far worse than answering in four parts for one more
+    // install, so anything less specific is left to the style upgrade.
+    const std::string custom =
+        "# my role\n\n## Output shape\n1. Conclusion -- short.\n2. What it means -- detail.\n";
+    const std::string up = upgradeSeededPrompt("assistant.md", custom);
+    CHECK(up.find("1. Conclusion") != std::string::npos);
+    CHECK(up.find("2. What it means") != std::string::npos);
+    CHECK(up != defaultPromptSeedText());
+}
+
 TEST_CASE("prompt upgrade: a hand-written assistant prompt only gets the style fix") {
     const std::string custom =
         "# my role\n\n## Hard Rules\n- Answer like a human: conclusion first, then what it means; "
