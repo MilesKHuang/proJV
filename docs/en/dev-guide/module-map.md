@@ -264,7 +264,10 @@ the code disagree, the code wins.
   is moved by editing that one function. `studio/design/tokens.{h,cpp}` is the
   type/space/radius ladder -- a hard-coded pixel value in a draw call is a bug.
 - **Chrome that is not the view model.** `studio/design/work_clock.{h,cpp}` (turn
-  length and throughput, injected timestamps, no clock in the view model) and
+  length and throughput, injected timestamps, no clock in the view model; a finished
+  turn freezes its length in `finalElapsedMs`, and the bar keeps showing it until the
+  next turn starts), `studio/design/text_select.{h,cpp}` (what a drag covers: order,
+  line range, column span -- ImGui-free, so it is tested) and
   `studio/png_writer.{h,cpp}` (`--screenshot`: stored-deflate PNG, no image
   library). `studio/ui/ui.{h,cpp}` is the widget kit; one radius, one padding.
 - **Screenshots.** `proJV_studio --screenshot out.png [--frames N] [--demo-chat]

@@ -210,7 +210,9 @@
   （`studio_ui.cpp`）把整窗写成嵌套节点，挪一条带子只改这一个函数。
   `studio/design/tokens.{h,cpp}` 是字号/间距/圆角阶梯——在绘制调用里写死的像素值是 bug。
 - **不属于视图模型的界面部件。** `studio/design/work_clock.{h,cpp}`（回合时长与吞吐，
-  时间戳由外部注入，视图模型不读时钟）与 `studio/png_writer.{h,cpp}`
+  时间戳由外部注入，视图模型不读时钟；一轮结束时把时长冻结进 `finalElapsedMs`，状态栏
+  一直显示到下一轮开始）、`studio/design/text_select.{h,cpp}`（一次拖选覆盖了什么：顺序、
+  行区间、列区间——不含 ImGui，所以可单测）与 `studio/png_writer.{h,cpp}`
   （`--screenshot`：stored-deflate 写 PNG，不引入图像库）。`studio/ui/ui.{h,cpp}`
   是控件套件：一个圆角、一种内边距。
 - **截图。** `proJV_studio --screenshot out.png [--frames N] [--demo-chat]

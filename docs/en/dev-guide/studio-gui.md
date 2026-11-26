@@ -111,6 +111,16 @@ page exits (there is nothing to type into yet).
 - Monospace first, CJK merged behind it: Consolas + Microsoft YaHei on Windows,
   DejaVu Sans Mono + Noto Sans Mono CJK SC on Linux. A proportional face would
   misalign every box-drawing table the TUI relies on.
+- **One face and one size inside a chat block.** A markdown heading is bold plus a
+  theme colour (`mdH1`/`mdH2`/`mdH3`) at body size -- exactly what the TUI does
+  (`markdown_view.cpp` pushes `bold | color`, never a size). It used to push Title
+  (22 px) and Heading (18 px) on the *proportional* face, which put three different
+  rulers on one line: `buildLines` wrapped with the mono advance, `drawBlock` painted
+  with the proportional one, and `hitTest` measured a third. Hit-testing now reads the
+  width recorded on each `VisualLine` (`cw`), so a click lands on the character under
+  the pointer whatever the caller left pushed on the font stack.
+- The air above a heading is one fixed value, not one per tier: with the size gone, a
+  tier-dependent gap would still be the only thing saying "bigger".
 - `io.ConfigDpiScaleFonts` plus `style.FontScaleMain` from the monitor DPI; with
   ImGui 1.92+ the atlas re-rasterizes per size, so 125 % / 150 % stay sharp.
 - The IME candidate window follows the caret through
@@ -358,7 +368,17 @@ inside the block does nothing and the labels run into the border.
   over and copied with Ctrl+C (`studio/studio_text.cpp`); the "/" list is a floating
   window anchored above the prompt, so it never pushes the prompt off the screen; modal
   dialogs carry Close/OK buttons. These are additions on top of the key map, never
-  replacements for it.
+  replacements for it. Four rules make the selection behave like a text field:
+  the highlight is painted on the **foreground** draw list, clipped to the chat rect
+  (a child window's text renders after its parent, so a highlight on the parent's list
+  was covered by the very glyphs it marked); a drag that misses every glyph snaps to
+  the nearest line, first or last column, so passing through the gap between two
+  bubbles does not stall it; every line carries the character width it was wrapped
+  with; and a streaming block takes its id from the same `blockSeq` as the settled
+  rows, so a drag across both copies them in visual order (the old fixed `-11/-12`
+  numbered the live block before the whole transcript). The ordering itself lives in
+  `studio/design/text_select.h`, which has no ImGui include and is pinned by
+  `tests/unit/test_studio_select.cpp`.
 - **Eleven dialogs, one shell.** Title bar with a close affordance, a scrolling body and
   a right-aligned action footer, sized from its content; the primary action carries
   the accent. Eleven hand-sized dialogs used to clip their own text at 150% DPI.- **Readability beats fidelity for dim text.** `studio_theme::readable()` lifts
@@ -432,7 +452,8 @@ inside the block does nothing and the labels run into the border.
 | `studio/design/file_tree.{h,cpp}` | the tree model: Explorer order, lazy levels, visible rows |
 | `studio/design/path_text.{h,cpp}` | the path -> prompt text rule (`>`, `@`, quoting) |
 | `studio/design/gauges.{h,cpp}` | bytes / percent / fraction / ceiling arithmetic for the System panel |
-| `studio/design/work_clock.{h,cpp}` | turn elapsed time and throughput, timestamps injected |
+| `studio/design/work_clock.{h,cpp}` | turn elapsed time and throughput, timestamps injected; a finished turn keeps its length in `finalElapsedMs` |
+| `studio/design/text_select.{h,cpp}` | what a selection covers: normalised order, line range, column span (no ImGui, so it is tested) |
 | `src/platform/isystem_stats.h` | the sampling interface (no child processes, unknown is not zero) |
 | `src/platform/system_stats_{win,linux}.cpp` | the two implementations (Toolhelp32 + PDH / `/proc` + sysfs) |
 | `studio/design/tokens.{h,cpp}` | the size ladder (type / space / radius) and `Metrics` |

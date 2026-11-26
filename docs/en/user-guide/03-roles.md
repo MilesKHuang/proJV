@@ -12,6 +12,15 @@ name is the role name. One role is seeded on first launch:
 | `assistant` | default, and for almost everything. Plans with `update_todo`, writes code and design documents, and holds the full tool set |
 | `compactor` | internal: how early conversation is summarised at context pressure (never in the `Tab` cycle) |
 
+The seeded `assistant.md` asks for **prose in one order**, not a form: conclusion
+first, then what it means for you, then the details, then the next step -- and no
+heading for a part that has nothing to say. Earlier releases spelled that out as a
+numbered list, and the model filled the form in on every answer, long or short. An
+install that still has the numbered seed is rewritten on the next launch; the old
+text is kept next to it as `assistant.md.bak`. Nothing else is touched: a prompt you
+wrote yourself is never replaced (the exact anchors are in `upgradeAssistantText`,
+`src/core/prompts_loader.cpp`).
+
 Earlier releases seeded three roles - `coder`, `designer`, `analyzer`. They were
 merged into `assistant`: the plan lives in the TODO list, so a second prompt file
 only bought a narrower tool list while costing a phase-switching habit. Nothing

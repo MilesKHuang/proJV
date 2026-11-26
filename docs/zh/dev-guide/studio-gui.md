@@ -99,6 +99,14 @@ Esc 关闭除审批以外的全部——破坏性命令要一个明确答复。�
 - 等宽在前、CJK 合并在后：Windows 用 Consolas + 微软雅黑，Linux 用
   DejaVu Sans Mono + Noto Sans Mono CJK SC。换成比例字体，TUI 依赖的框线表格
   会整片错位。
+- **一个气泡里只有一套字体、一个字号。** Markdown 标题是正文大小的粗体 + 主题色
+  （`mdH1`/`mdH2`/`mdH3`），跟 TUI 完全一样（`markdown_view.cpp` 只推 `bold | color`，
+  从不推字号）。老做法对 H1/H2 推 Title（22px）/ Heading（18px），而且推的是**比例字体**，
+  于是一行文字上出现了三把尺子：`buildLines` 按等宽前进宽度换行、`drawBlock` 按比例字体
+  绘制、`hitTest` 又量第三种。现在命中测试读的是每行自己记下的 `cw`（`VisualLine::cw`），
+  点哪儿就落在哪儿，与调用方在字体栈上留下了什么无关。
+- 标题上方的空气改成一个固定值，不再按 tier 分档：字号没了以后，按档变化的间距会变成
+  唯一还在暗示"这里更大"的东西。
 - `io.ConfigDpiScaleFonts` 加 `style.FontScaleMain` 跟随显示器 DPI；ImGui 1.92+
   按实际字号重新栅格化，125% / 150% 依然清晰。
 - 输入法候选窗通过 `ImGui::GetPlatformIO().Platform_SetImeDataFn` 跟随光标
@@ -237,6 +245,13 @@ spinner 是画出来的圆弧，相位取自帧号（所以截图可复现），
 - **窗口有鼠标，也有选区模型。** 聊天区文字可拖选并 Ctrl+C 复制
   （`studio/studio_text.cpp`）；`/` 列表是锚在输入行上方的浮层窗口，永远不会把
   输入框挤出窗口；模态对话框带 Close/OK 按钮。这些都是键位表之上的补充，从不替代它。
+  拖选像文本框，靠四条规则：高亮画在**前景** draw list 上并按聊天区矩形裁剪（子窗口的
+  文字在父窗口之后渲染，画在父窗口列表上的高亮会被它标记的那些字盖住）；拖到空白处
+  没命中任何字形时吸附到最近一行的首列或末列，所以滑过两个气泡之间的缝隙不会"卡住"；
+  每行都带着它换行时用的字符宽度；流式块与已完成行用同一个 `blockSeq` 编号，跨两者拖选
+  按视觉顺序复制（老的固定 `-11/-12` 让正在输出的块排在整个对话之前）。排序规则自身
+  在 `studio/design/text_select.h`，不 include ImGui，由
+  `tests/unit/test_studio_select.cpp` 钉住。
 - **十个模态共用一个外壳。** 标题栏（含关闭按钮）、可滚动正文、右对齐动作页脚，
   尺寸随内容长；按钮里主操作用强调色。以前十种对话框十种尺寸，在 150% 下会裁字。
 - **次要文字以可读性优先。** `studio_theme::readable()` 把次要文字提到对窗口底色
@@ -295,7 +310,8 @@ spinner 是画出来的圆弧，相位取自帧号（所以截图可复现），
 | `studio/design/file_tree.{h,cpp}` | 树模型：Explorer 顺序、惰性层级、可见行 |
 | `studio/design/path_text.{h,cpp}` | 路径 -> 提示文本的规则（`>`、`@`、加引号） |
 | `studio/design/gauges.{h,cpp}` | System 面板的字节/百分比/占比/上限算术 |
-| `studio/design/work_clock.{h,cpp}` | 回合耗时与吞吐，时间戳外部注入 |
+| `studio/design/work_clock.{h,cpp}` | 回合耗时与吞吐，时间戳外部注入；结束的一轮把时长冻结在 `finalElapsedMs` |
+| `studio/design/text_select.{h,cpp}` | 一次拖选覆盖了什么：归一化顺序、行区间、列区间（不碰 ImGui，所以可单测） |
 | `src/platform/isystem_stats.h` | 采样接口（不拉子进程，未知不等于 0） |
 | `src/platform/system_stats_{win,linux}.cpp` | 两份实现（Toolhelp32 + PDH / `/proc` + sysfs） |
 | `studio/studio_modals.cpp` | 十个模态 |
