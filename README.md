@@ -1,7 +1,7 @@
 <h1 align="center">proJV</h1>
 
 <p align="center">
-  <img src="assets/social-preview.png" width="780" alt="proJV: native C++ terminal AI agent for DeepSeek"/>
+  <img src="assets/social-preview.png" width="780" alt="proJV: a native C++ AI agent core"/>
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  A native C++ AI agent for the terminal, built on DeepSeek.<br/>
+  A native C++ AI agent core — one core, two front-ends, built on DeepSeek.<br/>
   <code>proJV = Project Just Vibing</code>
 </p>
 
@@ -23,7 +23,10 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo.gif" alt="proJV demo"/>
+  <a href="assets/demo.gif"><img src="assets/demo.gif" width="480" alt="proJV studio: a question, a streamed answer, the dock on the right"/></a>
+  <a href="assets/demo-tui.gif"><img src="assets/demo-tui.gif" width="480" alt="proJV TUI: the same session in the terminal"/></a>
+  <br/>
+  <sub>the window front-end &nbsp;·&nbsp; the terminal front-end, same core &nbsp;·&nbsp; click either for full size</sub>
 </p>
 
 <p align="center">
@@ -32,17 +35,12 @@
 
 ---
 
-## Three things that make it different
+## Four things that make it different
 
-- **Native C++, ~4 MB, zero package managers.** FTXUI + Dear ImGui + libcurl +
-  SQLite, all vendored. One `cmake --build` and you have two binaries you can scp:
-  the terminal one and the window one (4.02 MB / 4.00 MB, Release).
-- **Multi-agent skills are data, not code.** A skill is a folder:
-  `config.json` + one `.md` per role + verb tool schemas. Copy it in — it runs.
-  A supervisor can fan one reply out to ten workers that execute concurrently.
-- **Every layer is yours.** Roles, tools, prompts, themes, the compaction
-  strategy, Python tools — all plain files next to the binary. No locked
-  ecosystem.
+- **Separated core and front-end: build your own UI.** The terminal and window front-ends share one core, and the core's tests build without either of them.
+- **Text-driven multi-agent workflows.** Five ready examples covering the core scenarios: a round table, a squad swarm, an expert vote, and a dev/test pair.
+- **Full prefix caching, hit rate normally above 95%.** A fixed system prompt and fine context management keep the prefix hit rate high.
+- **One file, no runtime, no complex setup.** A single 4 MB file; paste an API key and start.
 
 ---
 

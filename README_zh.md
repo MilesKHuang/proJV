@@ -1,7 +1,7 @@
 <h1 align="center">proJV</h1>
 
 <p align="center">
-  <img src="assets/social-preview.png" width="780" alt="proJV：原生 C++ 终端 AI agent"/>
+  <img src="assets/social-preview.png" width="780" alt="proJV：原生 C++ AI agent 核心"/>
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  一个原生的 C++ 终端 AI agent，基于 DeepSeek。<br/>
+  一个原生的 C++ AI agent 核心：一份核心、两个前端，基于 DeepSeek。<br/>
   <code>proJV = Project Just Vibing</code>
 </p>
 
@@ -23,7 +23,10 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo.gif" alt="proJV 演示"/>
+  <a href="assets/demo.gif"><img src="assets/demo.gif" width="480" alt="proJV studio：一个问题、一段流式回答，右侧是 dock"/></a>
+  <a href="assets/demo-tui.gif"><img src="assets/demo-tui.gif" width="480" alt="proJV TUI：同一个会话的终端形态"/></a>
+  <br/>
+  <sub>窗口前端 &nbsp;·&nbsp; 终端前端，同一个核心 &nbsp;·&nbsp; 点开看原尺寸</sub>
 </p>
 
 <p align="center">
@@ -32,16 +35,12 @@
 
 ---
 
-## 三个不一样的地方
+## 四个不一样的地方
 
-- **原生 C++，约 4 MB，零包管理器。** FTXUI + Dear ImGui + libcurl + SQLite 全部内置，
-  一次 `cmake --build` 就得到两个能直接 scp 的单文件二进制：终端版与窗口版
-  （Release 实测 4.02 MB / 4.00 MB）。
-- **多 agent 技能是数据，不是代码。** 一个技能就是一个文件夹：`config.json` +
-  每个角色一个 `.md` + 动词级工具 schema。扔进去就能跑，一个调度者可以把一次
-  回复派给十个并发执行的 worker。
-- **每一层都是你的。** 角色、工具、提示词、主题、压缩策略、Python 工具
-  —— 全是二进制旁边的普通文件，没有封闭生态。
+- **核心与前端分离，可以建立属于你自己的 UI。** 终端版与窗口版共用一份核心，核心测试可脱离前端构建。
+- **文本编辑，就能驱动 Multi-Agent 工作流。** 五个现成范例，覆盖圆桌会议 / 分队蜂群 / 专家投票 / 编程测试配对开发等核心场景。
+- **完整前缀缓存，命中率常态 >95%。** 固定的 system prompt 与良好的上下文管理，让缓存命中保持在高位。
+- **单文件无运行时，无需复杂配置。** 4 MB，配好 api key 直接开始使用。
 
 ---
 
