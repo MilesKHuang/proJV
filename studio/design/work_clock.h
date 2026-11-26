@@ -24,8 +24,9 @@ constexpr long long kWindowMs = 2000;
 struct Clock {
     static constexpr int kSamples = 256; // ~4 s at 60 fps; the array is trimmed by time
     bool running = false;
-    long long startedMs = 0; // monotonic ms when the turn started
-    int tokensAtStart = 0;   // OUTPUT tokens when the turn started
+    long long startedMs = 0;      // monotonic ms when the turn started
+    long long finalElapsedMs = 0; // duration frozen by end(), 0 until the first stop
+    int tokensAtStart = 0;        // OUTPUT tokens when the turn started
     long long sampleMs[kSamples] = {};
     int sampleTokens[kSamples] = {};
     int sampleCount = 0;
@@ -35,10 +36,14 @@ struct Clock {
 // start, so a re-entrant tick cannot make a turn look one second old.
 void begin(Clock& c, long long nowMs, int completionTokens);
 
-// Stop the clock. Elapsed time stays readable (a finished turn has a duration).
-void end(Clock& c);
+// Stop the clock, freezing the turn's length in finalElapsedMs. Elapsed time stays
+// readable after the stop (a finished turn has a duration): the status bar keeps
+// showing it until the next begin() starts a new one. A second end() is a no-op, so
+// a falling edge that ticks twice cannot overwrite the real duration.
+void end(Clock& c, long long nowMs);
 
-// Seconds since the turn started, 0 when it is not running.
+// Seconds since the turn started, 0 when it is not running. A finished turn's
+// length is Clock::finalElapsedMs -- not this.
 double elapsedSeconds(const Clock& c, long long nowMs);
 
 // Record the turn's output-token count. A no-op while the clock is stopped, and a

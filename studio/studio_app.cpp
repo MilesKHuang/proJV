@@ -389,15 +389,33 @@ void App::fillSource() {
         // Throughput has to come from the text ARRIVING: the provider reports usage
         // only when the stream ends, so completionTokens() sits at 0 for the whole
         // answer and a window over it can never produce a rate. Estimate from the
-        // streamed text with the same estimator the context budget uses, and let
-        // work_clock average that. Only the active pane is measured -- it is the only
-        // one whose summary is drawn.
+        // streamed text with the same estimator the context budget uses. Only the
+        // active pane is measured -- it is the only one whose summary is drawn.
         if (demoBusy_ && !demoStreamText_.empty()) s.status.streamingText = demoStreamText_;
-        const std::string& streamed = s.status.streamingText;
-        if (active().clock.running && !streamed.empty()) {
-            const size_t tokens =
-                estimateTokensForText(streamed) + estimateTokensForText(s.status.reasoningText);
-            work_clock::noteTokens(active().clock, monotonicMs(), static_cast<int>(tokens));
+        // A turn's emission is counted MONOTONICALLY, not read off the buffer. The
+        // clock's window divides "how many tokens were emitted since the turn began"
+        // over a span, so a buffer length is the wrong input twice over: the provider
+        // empties it for every new round (each tool call), and it does not move at all
+        // while a tool runs. `delta < 0` is exactly "a new round emptied it" (only
+        // onText/onThinking ever write streamingText, and only upwards inside a round),
+        // so the round restarts the count from what is on screen instead of going
+        // backwards. This runs whether or not the buffer is empty this frame: skipping
+        // it would leave lastBufferEstimate stale and the next drop would be miscounted.
+        Pane& pane = active();
+        const int buffer = static_cast<int>(estimateTokensForText(s.status.streamingText) +
+                                            estimateTokensForText(s.status.reasoningText));
+        int delta = buffer - pane.lastBufferEstimate;
+        if (delta < 0) delta = buffer;
+        pane.emittedTokens += delta;
+        pane.lastBufferEstimate = buffer;
+        if (pane.clock.running) {
+            const long long now = monotonicMs();
+            work_clock::noteTokens(pane.clock, now, pane.emittedTokens);
+            // Hold the last real rate: tokensPerSecond() reports 0 once the window is
+            // quiet, and a bar that blinks between "34 tok/s" and "0 tok/s" while a
+            // tool runs says the model stalled. begin() clears this, never this frame.
+            const double rate = work_clock::tokensPerSecond(pane.clock, now);
+            if (rate > 0.0) pane.heldRate = rate;
         }
 
         s.msgCount = a->getSession().messageCount();
@@ -1490,10 +1508,20 @@ void App::tick() {
         const bool busyNow = pane.rt->isBusy() || (demoBusy_ && &pane == &active());
         if (busyNow) {
             // The baseline is "no output yet"; the samples come from fillSource, which
-            // is the one place that already holds the streamed text.
-            if (!pane.clock.running) work_clock::begin(pane.clock, monotonicMs(), 0);
+            // is the one place that already holds the streamed text. The emission
+            // counters belong to a turn, so they are reset with it -- after begin(),
+            // which is the point where the pane really starts a new one (begin() is a
+            // no-op while running, so this block cannot fire twice in a turn).
+            if (!pane.clock.running) {
+                work_clock::begin(pane.clock, monotonicMs(), 0);
+                pane.emittedTokens = 0;
+                pane.lastBufferEstimate = 0;
+                pane.heldRate = 0.0;
+            }
         } else if (pane.clock.running) {
-            work_clock::end(pane.clock);
+            // Freeze the turn's length: the summary keeps showing it until the next
+            // turn starts, so a reader who looked away still sees what the turn cost.
+            work_clock::end(pane.clock, monotonicMs());
         }
         // A turn's END is the falling edge, which is exactly what the TUI beeps on
         // (main_tui.cpp: prevBusy && !curBusy). Every pane can end a turn, so any
@@ -1698,10 +1726,16 @@ const ToolPaths& App::toolPaths() const {
 std::string App::workSummary() const {
     if (panes_.empty() || !runtime_) return std::string();
     const Pane& pane = active();
-    if (!pane.clock.running) return std::string();
-    const long long now = monotonicMs();
-    const double seconds = work_clock::elapsedSeconds(pane.clock, now);
-    const double rate = work_clock::tokensPerSecond(pane.clock, now);
+    // A pane that has never run a turn has nothing to report. Once it has, the two
+    // numbers survive the turn's end: the length comes from the frozen finalElapsedMs
+    // and the rate from the last figure the window measured, both replaced only when
+    // the next turn begins (see the busy edge in tick()).
+    if (pane.clock.startedMs == 0) return std::string();
+    const double seconds =
+        pane.clock.running
+            ? work_clock::elapsedSeconds(pane.clock, monotonicMs())
+            : static_cast<double>(pane.clock.finalElapsedMs) / 1000.0;
+    const double rate = pane.heldRate;
     char buf[96];
     const AgentStatus status = runtime_->status();
     if (status.state == AgentState::ExecutingTool && status.toolProgressTotal > 0) {

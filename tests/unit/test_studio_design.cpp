@@ -580,9 +580,23 @@ TEST_CASE("work_clock: elapsed time from injected timestamps") {
     // Clock skew (a smaller `now`) can never produce a negative duration.
     CHECK(studio::work_clock::elapsedSeconds(c, 0) == doctest::Approx(0.0));
 
-    studio::work_clock::end(c);
+    studio::work_clock::end(c, 3000);
     CHECK_FALSE(c.running);
+    // The stopped clock keeps the turn's length: a finished turn has a duration, and
+    // the status bar reads it while the next turn has not started.
+    CHECK(c.finalElapsedMs == 2000);
     CHECK(studio::work_clock::elapsedSeconds(c, 9000) == doctest::Approx(0.0));
+
+    // A second stop must keep the duration it already has, not recompute it from a
+    // start time that no longer describes anything.
+    studio::work_clock::end(c, 99000);
+    CHECK(c.finalElapsedMs == 2000);
+
+    // A new turn clears the frozen duration, and clock skew clamps at zero.
+    studio::work_clock::begin(c, 10000, 0);
+    CHECK(c.finalElapsedMs == 0);
+    studio::work_clock::end(c, 9000);
+    CHECK(c.finalElapsedMs == 0);
 }
 
 TEST_CASE("work_clock: the rate is output tokens over a sliding window") {
@@ -620,7 +634,7 @@ TEST_CASE("work_clock: the rate is output tokens over a sliding window") {
     CHECK(tokensPerSecond(c, 6000) == doctest::Approx(0.0));
 
     // A stopped clock records nothing.
-    end(c);
+    end(c, 6200);
     noteTokens(c, 6200, 999);
     CHECK(tokensPerSecond(c, 6200) == doctest::Approx(0.0));
 }

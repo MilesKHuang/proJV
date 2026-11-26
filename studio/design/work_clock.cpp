@@ -39,12 +39,16 @@ void begin(Clock& c, long long nowMs, int completionTokens) {
     if (c.running) return; // a second tick must not restart the turn
     c.running = true;
     c.startedMs = nowMs;
+    c.finalElapsedMs = 0; // a new turn has no duration yet
     c.tokensAtStart = completionTokens > 0 ? completionTokens : 0;
     c.sampleCount = 0;
     pushSample(c, nowMs, c.tokensAtStart);
 }
 
-void end(Clock& c) {
+void end(Clock& c, long long nowMs) {
+    if (!c.running) return; // a second stop must keep the duration it already has
+    const long long delta = nowMs - c.startedMs;
+    c.finalElapsedMs = delta > 0 ? delta : 0; // clock skew can never be negative
     c.running = false;
 }
 

@@ -110,6 +110,16 @@ struct Pane {
     std::string error;
     work_clock::Clock clock;
     int tokensMark = 0; // prompt+completion when the current turn started
+    // What this turn has emitted so far, as a MONOTONIC count (see fillSource). The
+    // clock's window divides emitted tokens over a span, so it must be fed a count
+    // that never falls: feeding it the buffer length made the rate collapse to 0
+    // every time the provider emptied the buffer for a new round.
+    int emittedTokens = 0;
+    int lastBufferEstimate = 0; // the buffer length the count above was updated from
+    // The last rate the clock actually measured. A quiet window reports 0 by design
+    // (work_clock.h), so the bar keeps the last real figure until the next turn --
+    // otherwise "0 tok/s" would blink on between two tool calls.
+    double heldRate = 0.0;
     // Last frame's busy flag: a turn's END is the falling edge, which is what the
     // TUI beeps on. Per pane, because every pane can finish a turn.
     bool wasBusy = false;
@@ -299,10 +309,12 @@ class App {
     float dpiScale() const { return dpiScale_; }
     void setDpiScale(float s) { dpiScale_ = s; }
 
-    // "12.4s - 34 tok/s - tool 2/3" for the active pane, or "" when it is idle.
+    // "12.4s - 34 tok/s - tool 2/3" for the active pane, or "" before its first turn.
     // One derivation, so the status line and the System panel cannot disagree. The
     // view model never reads a clock (its snapshots are golden tests), which is why
-    // this lives here.
+    // this lives here. A finished turn KEEPS its numbers: the reader who looks away
+    // for a minute still sees how long the last answer took and how fast it arrived,
+    // and only the next turn's begin() replaces them.
     std::string workSummary() const;
 
   private:
