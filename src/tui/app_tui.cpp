@@ -290,6 +290,15 @@ void TuiApp::toggleReasoning() {
     reasoningExpanded_ = !reasoningExpanded_;
 }
 
+void TuiApp::queueNotice(const std::string& text) {
+    // The queue drainNotices() already reads every frame: one system bubble, the
+    // same shape the turn thread's notices have, so a refusal reads like every
+    // other system message. Draining also resets the chat scroll, so the line is
+    // visible even when the reader was scrolled up.
+    std::lock_guard<std::mutex> lk(noticeMutex_);
+    pendingNotices_.push_back(text);
+}
+
 void TuiApp::scrollChat(int delta) {
     int maxScroll =
         chatContentRows_ > chatViewportRows_ ? chatContentRows_ - chatViewportRows_ - 1 : 0;

@@ -1118,6 +1118,14 @@ void SessionRuntime::applyConfigToAgent() {
 // ---- session lifecycle --------------------------------------------------
 
 void SessionRuntime::newChat() {
+    // Guarded against a running turn: reinitConversation() cancels the agent and
+    // closes the database, so doing it under a live worker loses the conversation
+    // and can close the DB out from under it. The front-end asks first (it has the
+    // sentence to show); this is the backstop for any other caller.
+    if (busy_.load()) {
+        debugLogWarn("[Runtime] newChat refused: a turn is running");
+        return;
+    }
     reinitConversation(false);
 }
 
@@ -1175,6 +1183,12 @@ bool SessionRuntime::useSessionFile(const std::string& dbPath) {
 
 void SessionRuntime::switchToDialog(const std::string& dbPath) {
     if (!agent_) return;
+    // Cancels the turn and closes the database: refused while a turn runs. A
+    // front-end checks first for the message; this is the backstop.
+    if (busy_.load()) {
+        debugLogWarn("[Runtime] switchToDialog refused: a turn is running");
+        return;
+    }
     agent_->cancel();
 
     const std::string oldPath = storage_.currentPath();
@@ -1233,6 +1247,12 @@ std::string SessionRuntime::activePromptContent() const {
 }
 
 void SessionRuntime::setModel(const std::string& model) {
+    // A model swap under a live request changes what the next round is sent to and
+    // resets the context window mid-turn; refused while a turn runs.
+    if (busy_.load()) {
+        debugLogWarn("[Runtime] setModel refused: a turn is running");
+        return;
+    }
     config_.model = model;
     if (agent_) {
         agent_->setModel(model);

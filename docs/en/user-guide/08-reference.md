@@ -23,6 +23,16 @@
 | `Esc` | Cancel the running turn / clear the input / ask before quitting |
 | `Ctrl+C` | Nothing: the terminal keeps it for copying a selection |
 
+While a turn is running, the keys that change the session do nothing and put one
+line in the chat: `busy -- finish the current turn first`. Those keys are `F3` (new
+chat), the `Enter` of the `F4` session picker, the `Enter` of the `F10` model
+picker, `Tab` (role), and saving the `F2` dialog. Opening a picker (`F4`, `F10`) is
+read-only and still allowed; only the action is held back. `F5` opens and lists as
+usual, but while a turn runs its panel shows that same sentence and neither `Enter`
+nor `R` acts on a server. The display-only keys (`F1`, `F6`-`F9`) stay live. The
+window (studio) refuses the same actions and puts the same sentence in its status
+line.
+
 ## Commands
 
 | Command | Action |
@@ -176,6 +186,13 @@ what the derivation produced, the second says what a reader actually sees. Neith
 opens a dialog, and `--demo-chat` makes both work on a machine with no key. The
 window's own behaviour (fold, follow, layout) is described in
 [the studio guide](../dev-guide/studio-gui.md).
+
+Selecting text with the mouse and `Ctrl+C` copy exactly the glyphs under the
+highlight, Chinese included: the hit-test, the band and the clipboard all read the
+per-character pixel offsets the font measured, so there is no "columns x one
+character width" guess left to drift. Two consequences worth knowing: a table is
+selected and copied as one block (its cells come back tab-separated), and a folded
+tool row is not on screen, so a selection that spans it skips its body.
 
 ---
 

@@ -75,6 +75,9 @@ set(TEST_SOURCES
     # clipboard all obey. It is pure arithmetic with no ImGui include, which is the
     # only reason it can be tested at all.
     unit/test_studio_select.cpp
+    # Selection on RENDERED lines: per-character pixel offsets -> characters, and the
+    # copy rule (soft-wrap join, no leak from an undrawn line). Also ImGui-free.
+    unit/test_studio_copy.cpp
     # --screenshot writes a PNG with no image library; the bytes are pinned here.
     unit/test_png_writer.cpp
     unit/test_worker_wait.cpp
@@ -88,6 +91,7 @@ set(TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/studio/design/gauges.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/work_clock.cpp
     ${CMAKE_SOURCE_DIR}/studio/design/text_select.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/text_runs.cpp
     ${SRC_DIR}/tui/speaker_colors.cpp
     ${SRC_DIR}/tui/chat_view.cpp
     ${SRC_DIR}/tui/diff_view.cpp
@@ -152,3 +156,36 @@ if(WIN32)
 endif()
 
 add_test(NAME proJV_tests COMMAND proJV_tests)
+
+# --- Headless copy probe -------------------------------------------------
+# No API key, no model, no GPU, no window: it drives the real studio::TextSurface
+# through a headless ImGui context with real mouse/keyboard events and checks that a
+# drag's clipboard text equals the glyphs it covered (the "copy does not match the
+# selection" bug, especially over Chinese). The unit test above pins the arithmetic;
+# this one pins the font: only a real face can show that a CJK advance is not two
+# Latin cells.
+add_executable(proJV_copy_probe
+    ${CMAKE_SOURCE_DIR}/tests/copy_selftest.cpp
+    ${CMAKE_SOURCE_DIR}/studio/studio_text.cpp
+    ${CMAKE_SOURCE_DIR}/studio/studio_markdown.cpp
+    ${CMAKE_SOURCE_DIR}/studio/studio_theme.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/tokens.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/fit.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/text_select.cpp
+    ${CMAKE_SOURCE_DIR}/studio/design/text_runs.cpp
+)
+target_include_directories(proJV_copy_probe PRIVATE
+    ${EXTERNAL_DIR}
+    ${SRC_DIR}
+    ${SRC_DIR}/client
+    ${CMAKE_SOURCE_DIR}/studio
+)
+target_link_libraries(proJV_copy_probe PRIVATE proJV_lib projv_imgui)
+if(WIN32)
+    target_compile_definitions(proJV_copy_probe PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
+if(MSVC)
+    target_compile_options(proJV_copy_probe PRIVATE /utf-8)
+endif()
+add_test(NAME studio_copy_probe COMMAND proJV_copy_probe)

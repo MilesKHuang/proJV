@@ -12,13 +12,16 @@
 //      nothing while a skill runs" report. Layout is cached per (block, width,
 //      content hash) and rebuilt only when the text or the width changes.
 //
-// Monospace is what makes the hit-testing exact: a column is a multiple of the
-// character width, so x -> column is arithmetic, not a search.
+// Hit-testing reads the offsets the layout MEASURED (see VisualLine::charX), not a
+// guessed "columns x one character width": a monospace Latin face and a merged CJK
+// face do not share a cell size, so the guess drifted over Chinese. One ruler, the
+// one the glyphs were drawn with, for the click, the highlight and the clipboard.
 #pragma once
 
 #include <string>
 #include <vector>
 
+#include "design/text_runs.h"
 #include "design/text_select.h"
 #include "imgui.h"
 #include "tui/markdown_text.h"
@@ -33,12 +36,18 @@ class TextSurface {
     void drawBlock(int blockId, const std::string& text, bool markdown, float width,
                    ImU32 plainColor);
 
+    // Start a draw pass: forget last frame's hit boxes. Call ONCE before the frame's
+    // drawBlock calls (drawChat does), so the lines collected are exactly this frame's.
+    void beginDraw();
+
     // Handle mouse + Ctrl+C for everything drawn this frame. Call once per frame,
     // after all blocks, so hit boxes are complete. `interactive` false while a modal
-    // owns the input: the boxes are still cleared (they are per frame) but nothing is
-    // selected or highlighted, because the highlight is drawn on the foreground list
-    // and would sit ON TOP of the dialog.
-    void handleInput(bool interactive = true);
+    // owns the input: the lines are still collected as this frame's truth (so a copy
+    // made with the keyboard elsewhere is not stale) but nothing is selected or
+    // highlighted, because the highlight is painted on the foreground list and would
+    // sit ON TOP of the dialog. `acceptClick` false on the frame a chat row was
+    // toggled: the same press must not also start a selection.
+    void handleInput(bool interactive = true, bool acceptClick = true);
 
     // The rectangle the chat area occupies this frame. The highlight is painted on the
     // foreground draw list (a child window's text would otherwise cover it), so it
@@ -49,6 +58,20 @@ class TextSurface {
     // Selection bookkeeping.
     Selection& selection() { return sel_; }
 
+    // What was drawn on the last beginDraw..handleInput pass, in visual order, with
+    // each line's geometry and measured per-character offsets. Read-only; used by the
+    // headless copy probe (tests/copy_selftest.cpp) so the drag -> highlight -> copy
+    // path can be checked without a GPU, a key or a model.
+    struct LineInfo {
+        int block = 0;
+        int line = 0;
+        float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+        bool soft = false;
+        std::string text;
+        std::vector<float> charX;
+    };
+    std::vector<LineInfo> laidOutLines() const;
+
     // Text the selection covers (plain, no styling). Empty when nothing is selected.
     std::string selectedText() const;
 
@@ -58,14 +81,17 @@ class TextSurface {
         // flattened, used for hit-testing and for the clipboard.
         std::vector<markdown_text::Segment> runs;
         std::string plain;
-        // The character width this line was WRAPPED with, in pixels. Hit-testing, the
-        // highlight and the clipboard all read it instead of asking ImGui for the
-        // current font: handleInput() runs after the caller has popped the chat face,
-        // so "the current font" there is the proportional UI face -- a different ruler
-        // from the one buildLines measured with, which is why a click landed a few
-        // characters away from the pointer. 0 means "no text on this line" (an HR or a
-        // table placeholder), and every reader falls back to 8 px.
-        float cw = 0.0f;
+        // Where every character starts, in pixels from this line's left edge: one
+        // entry per code point, plus a trailing entry for the line's total width.
+        // Measured once, at layout time, with the font that will draw it, so the
+        // click, the highlight and the clipboard all read ONE ruler. A CJK glyph is
+        // its own font-wide box here, not "two Latin cells" -- that assumption is
+        // what made a drag over Chinese drift away from the pointer.
+        std::vector<float> charX;
+        // This visual line continues the previous one (a soft wrap): the clipboard
+        // joins them with NO separator, because the space the break dropped is still
+        // at the end of the previous line (studio_md::wrap keeps it there).
+        bool soft = false;
         float x0 = 0.0f;
         float y0 = 0.0f;
         float x1 = 0.0f;
@@ -110,7 +136,18 @@ class TextSurface {
     // ImGui::BeginTable with the theme's table colours: borders, header band, zebra.
     void drawTable(const TableData& t);
 
-    std::vector<VisualLine> frameLines_; // hit boxes for THIS frame
+    // Lines drawn this frame, in visual order, with the pixel offset of every
+    // character (see VisualLine::charX). Kept until the next beginDraw() rather than
+    // cleared in handleInput: a selection lives across frames (a drag, then Ctrl+C
+    // later), and the click, the highlight and the clipboard all read THIS one list,
+    // so what is copied is exactly what is highlighted and on screen. Copying from
+    // the layout cache instead (append-only) is what leaked an old streamed block into
+    // the clipboard with no highlight to match it.
+    //
+    // Consequence, deliberate: only what was drawn this frame can be copied. A folded
+    // tool row is not drawn, so a selection that spans it skips its body -- the reader
+    // sees a highlight on what they will get.
+    std::vector<VisualLine> lines_;
     std::vector<std::pair<int, Cached>> cache_;
     Selection sel_;
     // The chat area this frame, for the foreground highlight (see setClip). Kept as
@@ -121,11 +158,6 @@ class TextSurface {
     float clipX1_ = 0.0f;
     float clipY1_ = 0.0f;
     bool dragging_ = false;
-    int dragBlock_ = -1;
-    bool haveDragOrigin_ = false;
-    int originBlock_ = 0;
-    int originLine_ = 0;
-    int originCol_ = 0;
 
     const Cached* cachedLayout(int blockId, const std::string& text, bool markdown, float width);
     // x,y -> (block, line, column) under the cursor, or false when it misses text.
@@ -133,8 +165,8 @@ class TextSurface {
     // The nearest line to a pointer that missed every hit box (a drag through the gap
     // between two bubbles), with its first column, its last, or the one under x.
     bool snapToNearest(float x, float y, int* block, int* line, int* col) const;
+    // The column under x on ONE line, read from the offsets the layout measured.
     static int columnAtX(const VisualLine& line, float x);
-    static std::string textInLine(const VisualLine& line, int c0, int c1);
 };
 
 } // namespace studio

@@ -11,7 +11,10 @@
 namespace studio {
 
 // One selection over the whole chat view. Blocks are the chat rows, lines are the
-// visual lines of one block, columns are display columns (CJK counts as 2).
+// visual lines of one block, columns are CHARACTER indices into that line's text (a
+// CJK glyph is one character, not two cells): the pixel span a selection becomes is
+// measured per character by the font that draws it, so a terminal-style display
+// column would be a second, disagreeing unit.
 struct Selection {
     int blockA = -1;
     int lineA = 0;
@@ -38,10 +41,10 @@ struct Selection {
 // and depends on the ids being in visual order (see blockSeq in studio_ui.cpp).
 bool lineInRange(int block, int line, int block0, int line0, int block1, int line1);
 
-// The [from, to) display-column span one line contributes to the selection.
-// `columns` is that line's own length in display columns. False when the line
-// contributes nothing -- the range ends before its first column, which is the case
-// that must not emit an empty line into the clipboard.
+// The [from, to) character span one line contributes to the selection.
+// `columns` is that line's own length in characters (text_runs::charCount of its
+// text). False when the line contributes nothing -- the range ends before its first
+// column, which is the case that must not emit an empty line into the clipboard.
 bool columnSpan(int block, int line, int columns, int block0, int line0, int col0, int block1,
                 int line1, int col1, int* from, int* to);
 

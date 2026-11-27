@@ -5,6 +5,8 @@
 #include "theme_map.h"
 #include "theme_manager.h"
 
+#include "core/view_model.h"
+
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -97,6 +99,12 @@ Component makeConfigDialog(TuiApp& app, std::function<void()> onClose) {
     Component saveBtn = Button("Save", [&app, onClose, cfg, maxTokens, temperature, effortIndex,
                                         effortNames, contextWindow, snapGb, snapDays, intOr,
                                         doubleOr, modeIndex, modeNames] {
+        // Saving midway through a turn rewrites config and tool state under the
+        // worker: refuse, keep the dialog open on the user's edits, say why.
+        if (app.isBusy()) {
+            app.queueNotice(view_model::busyRefusal());
+            return;
+        }
         // Clamp exactly where config.cpp clamps on load: the file and the UI must
         // never disagree about what a legal value is.
         cfg->maxTokens =

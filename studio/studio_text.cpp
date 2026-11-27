@@ -33,15 +33,6 @@ size_t hashText(const std::string& s) {
     return h;
 }
 
-float charWidth() {
-    return ImGui::CalcTextSize("M").x;
-}
-
-int codepointWidth(const std::string& s, size_t i) {
-    const unsigned char c = static_cast<unsigned char>(s[i]);
-    return c >= 0xE0 ? 2 : 1; // CJK / full-width shapes occupy two columns
-}
-
 size_t cpLen(const std::string& s, size_t i) {
     const unsigned char c = static_cast<unsigned char>(s[i]);
     if (c >= 0xF0) return 4;
@@ -50,14 +41,42 @@ size_t cpLen(const std::string& s, size_t i) {
     return 1;
 }
 
-int columnsOf(const std::string& s) {
-    int cols = 0;
+// The character offsets a line needs for hit-testing, highlight and copy: one entry
+// per code point plus a trailing entry for the total width, measured with the font
+// that draws the line. This is the ONE ruler those three readers share; the old
+// "columns x width('M')" guess is what drifted over CJK, because a merged Chinese
+// glyph is its own full-width box, not two Latin cells.
+//
+// Incremental, not CalcTextSize per prefix (that would be O(n^2)): one advance per
+// glyph, straight from the baked face, so a 500-character line costs 500 lookups.
+std::vector<float> measureCharX(const std::string& plain) {
+    std::vector<float> xs;
+    xs.reserve(plain.size() + 1);
+    xs.push_back(0.0f);
+    ImFontBaked* baked = ImGui::GetFontBaked();
+    if (!baked) baked = ImGui::GetFont()->GetFontBaked(ImGui::GetFontSize());
+    float x = 0.0f;
     size_t i = 0;
-    while (i < s.size()) {
-        cols += codepointWidth(s, i);
-        i += cpLen(s, i);
+    while (i < plain.size()) {
+        const unsigned char c0 = static_cast<unsigned char>(plain[i]);
+        const size_t len = cpLen(plain, i);
+        // Decode one UTF-8 code point (a line never carries an invalid byte: it came
+        // from markdown parse / a message, both UTF-8). A stray byte falls back to U+FFFD.
+        unsigned int cp = 0xFFFD;
+        if (len == 1 && c0 < 0x80) {
+            cp = c0;
+        } else if (len >= 2 && i + len <= plain.size()) {
+            cp = (len == 2) ? static_cast<unsigned int>(c0 & 0x1F)
+                 : (len == 3) ? static_cast<unsigned int>(c0 & 0x0F)
+                              : static_cast<unsigned int>(c0 & 0x07);
+            for (size_t k = 1; k < len; ++k)
+                cp = (cp << 6) | (static_cast<unsigned char>(plain[i + k]) & 0x3F);
+        }
+        x += baked ? baked->GetCharAdvance(static_cast<ImWchar>(cp)) : 8.0f;
+        xs.push_back(x);
+        i += len;
     }
-    return cols;
+    return xs;
 }
 
 ImU32 runColor(markdown_text::Style style, ImU32 plainOverride) {
@@ -118,38 +137,19 @@ int tierOf(const markdown_text::Line& line) {
 } // namespace
 
 int TextSurface::columnAtX(const VisualLine& line, float x) {
-    // The line's OWN character width, recorded when it was wrapped. Asking the
-    // current font here was wrong twice: handleInput() runs after the chat face has
-    // been popped, so it measured the proportional UI face, and a heading pushed yet
-    // another size. One ruler per line, or a click lands where the pointer is not.
-    const float cw = line.cw > 0.0f ? line.cw : 8.0f;
-    const int target = static_cast<int>((x - line.x0) / cw + 0.5f);
-    if (target <= 0) return 0;
-    int cols = 0;
-    size_t i = 0;
-    while (i < line.plain.size()) {
-        const int w = codepointWidth(line.plain, i);
-        if (cols + w > target) return cols;
-        cols += w;
-        i += cpLen(line.plain, i);
+    // Read the offsets the layout measured with the font that DRAWS this line -- the
+    // one ruler the click, the highlight and the clipboard share (see charX). The old
+    // "(x - x0) / width('M')" division assumed every glyph is a Latin cell, which is
+    // false for a merged CJK face and put the caret a few characters off there.
+    if (line.charX.size() <= 1) {
+        // No per-glyph ruler: a table (or an empty line). It is ONE block, so the
+        // pointer's half of its box says which side of it the caret is on: left half
+        // "before the table", right half "after it". That keeps a drag across a table
+        // able to copy it whole, without pretending the table is a line of text.
+        const int columns = text_runs::charCount(line.plain);
+        return (x - line.x0) * 2.0f < (line.x1 - line.x0) ? 0 : columns;
     }
-    return cols;
-}
-
-std::string TextSurface::textInLine(const VisualLine& line, int c0, int c1) {
-    if (c0 < 0) c0 = 0;
-    if (c1 < c0) c1 = c0;
-    std::string out;
-    int cols = 0;
-    size_t i = 0;
-    while (i < line.plain.size()) {
-        const int w = codepointWidth(line.plain, i);
-        const size_t len = cpLen(line.plain, i);
-        if (cols >= c0 && cols < c1) out.append(line.plain, i, len);
-        cols += w;
-        i += len;
-    }
-    return out;
+    return text_runs::columnAt(line.charX, x - line.x0);
 }
 
 std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& text, bool markdown,
@@ -157,10 +157,13 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                                                              std::vector<TableData>* tables) {
     std::vector<VisualLine> out;
     int lineNo = 0;
-    const float cw = charWidth() > 0.0f ? charWidth() : 8.0f;
-    const float bulletHang = cw * 2.5f; // marker column + one space
-    const float quoteHang = cw * 1.5f;
-    const float codeHang = cw * 1.0f;
+    // The hanging indents are still expressed in a "one character" unit, but only
+    // for spacing decoration (a bullet's marker column). Widths that decide where a
+    // CLICK lands come from charX, not from this.
+    const float cell = ImGui::CalcTextSize("M").x > 0.0f ? ImGui::CalcTextSize("M").x : 8.0f;
+    const float bulletHang = cell * 2.5f; // marker column + one space
+    const float quoteHang = cell * 1.5f;
+    const float codeHang = cell * 1.0f;
 
     const auto emitWrapped = [&](const std::vector<markdown_text::Segment>& segs, float hang,
                                  int tier, bool codeBg, bool quote, bool rule,
@@ -180,8 +183,10 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
             vl.rule = rule;
             vl.quote = quote;
             vl.codeBg = codeBg;
-            vl.cw = cw; // the ruler hit-testing and the highlight must reuse
             vl.indent = (r == 0) ? 0.0f : hang;
+            // Every row after the first is a SOFT wrap of the same paragraph: the
+            // clipboard joins those without a newline.
+            vl.soft = (r > 0);
             if (r == 0) {
                 for (auto& p : prefix) {
                     vl.plain += p.text;
@@ -192,6 +197,7 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                 vl.plain += s.text;
                 vl.runs.push_back(s);
             }
+            vl.charX = measureCharX(vl.plain);
             out.push_back(std::move(vl));
         }
     };
@@ -249,7 +255,8 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                         for (const auto& seg : r->cells[c])
                             text += seg.text;
                     cells[c] = text;
-                    td.weights[c] = std::max(td.weights[c], static_cast<float>(columnsOf(text)));
+                    td.weights[c] = std::max(td.weights[c], static_cast<float>(
+                                                               text_runs::charCount(text)));
                 }
                 td.rows.push_back(std::move(cells));
             }
@@ -258,6 +265,23 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                 vl.block = blockId;
                 vl.line = lineNo++;
                 vl.tableIndex = static_cast<int>(tables->size());
+                // A table is ONE selectable line so it can be copied (the cells given
+                // to the widget are plain text; there is no per-glyph geometry to read
+                // back from ImGui's table). Tabs keep columns apart, newlines rows.
+                // Deliberately NO charX here: the glyphs on screen are placed by the
+                // table widget, not by this string, so any per-character offsets would
+                // be invented -- and an invented ruler is what put the highlight off
+                // the glyphs in the first place. A table is selected as a whole
+                // (see columnAtX and the highlight loop).
+                std::string plain;
+                for (const auto& row : td.rows) {
+                    if (!plain.empty()) plain += '\n';
+                    for (size_t c = 0; c < row.size(); ++c) {
+                        if (c > 0) plain += '\t';
+                        plain += row[c];
+                    }
+                }
+                vl.plain = std::move(plain);
                 tables->push_back(std::move(td));
                 out.push_back(std::move(vl));
             }
@@ -274,10 +298,13 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
                 vl.line = lineNo++;
                 vl.codeBg = true;
                 vl.indent = codeHang;
+                // A code line is its own line even when it is long: no soft wrap here,
+                // it is drawn at its natural width inside the band.
                 for (const auto& s : lines[j].segs) {
                     vl.plain += s.text;
                     vl.runs.push_back(s);
                 }
+                vl.charX = measureCharX(vl.plain);
                 out.push_back(std::move(vl));
                 ++j;
             }
@@ -323,7 +350,7 @@ std::vector<TextSurface::VisualLine> TextSurface::buildLines(const std::string& 
         if (line.segs[0].style == markdown_text::Style::Ordered) {
             const std::string num = line.segs[0].text;
             std::vector<markdown_text::Segment> body(line.segs.begin() + 1, line.segs.end());
-            const float hang = cw * static_cast<float>(columnsOf(num) + 1);
+            const float hang = cell * static_cast<float>(text_runs::charCount(num) + 1);
             emitWrapped(body, hang, 0, false, false, false, {line.segs[0]});
             ++i;
             continue;
@@ -416,7 +443,7 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
             vl.y0 = p0.y;
             vl.x1 = std::max(p1.x, p0.x + 1.0f);
             vl.y1 = std::max(p1.y, p0.y + 1.0f);
-            frameLines_.push_back(vl);
+            lines_.push_back(std::move(vl));
             if (ind > 0.0f) ImGui::Unindent(ind); // early exit, unwind the indent
             continue;
         }
@@ -485,7 +512,9 @@ void TextSurface::drawBlock(int blockId, const std::string& text, bool markdown,
                         ImVec2(vl.x0 + width - ind, vl.y1 + 3.0f * dpi),
                         studio_theme::field(&ThemeColors::separator));
         }
-        frameLines_.push_back(vl);
+        // One move, not one copy: VisualLine carries charX (a vector per line), so a
+        // copy here would allocate once per rendered line per frame.
+        lines_.push_back(std::move(vl));
         if (ind > 0.0f) ImGui::Unindent(ind);
     }
 }
@@ -529,7 +558,7 @@ void TextSurface::drawTable(const TableData& t) {
 }
 
 bool TextSurface::hitTest(float x, float y, int* block, int* line, int* col) const {
-    for (const auto& vl : frameLines_) {
+    for (const auto& vl : lines_) {
         if (y >= vl.y0 && y <= vl.y1 + 2.0f && x >= vl.x0 - 2.0f && x <= vl.x1 + 40.0f) {
             *block = vl.block;
             *line = vl.line;
@@ -555,7 +584,7 @@ bool TextSurface::snapToNearest(float x, float y, int* block, int* line, int* co
     // what the agent did, not a convenience.
     const VisualLine* best = nullptr;
     float bestDy = 0.0f;
-    for (const auto& vl : frameLines_) {
+    for (const auto& vl : lines_) {
         const float dy = y < vl.y0 ? vl.y0 - y : (y > vl.y1 ? y - vl.y1 : 0.0f);
         if (!best || dy < bestDy) {
             best = &vl;
@@ -571,25 +600,30 @@ bool TextSurface::snapToNearest(float x, float y, int* block, int* line, int* co
     if (x <= best->x0)
         *col = 0;
     else if (x >= best->x1)
-        *col = columnsOf(best->plain);
+        *col = text_runs::charCount(best->plain);
     else
         *col = columnAtX(*best, x);
     return true;
 }
 
-void TextSurface::handleInput(bool interactive) {
-    // A modal owns the input while it is open. No click may start a selection behind
-    // it, and the highlight must not be painted over it: it goes on the FOREGROUND
-    // draw list, which is above every window by definition. The boxes are still
-    // cleared, because they are per frame and would otherwise go stale.
-    if (!interactive) {
-        frameLines_.clear();
-        return;
-    }
+void TextSurface::beginDraw() {
+    lines_.clear();
+}
+
+void TextSurface::handleInput(bool interactive, bool acceptClick) {
+    // lines_ already holds exactly what was drawn this frame (beginDraw cleared it,
+    // drawBlock filled it). The click, the highlight and the clipboard all read it,
+    // so what is copied is what is on screen with a highlight on it -- no append-only
+    // cache that a folded row or an old streamed block could leak back into.
+    // A modal owns the input while it is open: nothing is selected or highlighted,
+    // because the highlight is painted on the foreground list and would sit ON TOP of
+    // the dialog.
+    if (!interactive) return;
+
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 mouse = io.MousePos;
 
-    if (ImGui::IsMouseClicked(0)) {
+    if (acceptClick && ImGui::IsMouseClicked(0)) {
         int block = 0, line = 0, col = 0;
         if (hitTest(mouse.x, mouse.y, &block, &line, &col)) {
             sel_.blockA = sel_.blockB = block;
@@ -598,22 +632,19 @@ void TextSurface::handleInput(bool interactive) {
             sel_.active = true;
             dragging_ = true;
             if (ImGui::IsMouseDoubleClicked(0)) {
-                for (const auto& vl : frameLines_) {
+                for (const auto& vl : lines_) {
                     if (vl.block != block || vl.line != line) continue;
-                    size_t b = 0;
-                    int cols = 0;
-                    while (b < vl.plain.size() && cols + codepointWidth(vl.plain, b) <= col) {
-                        cols += codepointWidth(vl.plain, b);
-                        b += cpLen(vl.plain, b);
-                    }
-                    size_t e = b;
-                    while (e < vl.plain.size() && vl.plain[e] != ' ')
-                        e += cpLen(vl.plain, e);
-                    size_t s = b;
-                    while (s > 0 && vl.plain[s - 1] != ' ')
-                        s -= cpLen(vl.plain, s - 1);
-                    sel_.colA = columnsOf(vl.plain.substr(0, s));
-                    sel_.colB = columnsOf(vl.plain.substr(0, e));
+                    // Word boundaries in CHARACTER indices: walk back to the previous
+                    // space, forward to the next, then express both as indices.
+                    const int n = text_runs::charCount(vl.plain);
+                    int b = col;
+                    if (b > n) b = n;
+                    int s = b;
+                    while (s > 0 && text_runs::sliceChars(vl.plain, s - 1, s) != " ") --s;
+                    int e = b;
+                    while (e < n && text_runs::sliceChars(vl.plain, e, e + 1) != " ") ++e;
+                    sel_.colA = s;
+                    sel_.colB = e;
                     break;
                 }
             }
@@ -661,40 +692,69 @@ void TextSurface::handleInput(bool interactive) {
         const ImU32 hi = studio_theme::field(&ThemeColors::buttonActive, 0.45f);
         const bool clipped = hasClip_;
         if (clipped) dl->PushClipRect(ImVec2(clipX0_, clipY0_), ImVec2(clipX1_, clipY1_), true);
-        for (const auto& vl : frameLines_) {
+        for (const auto& vl : lines_) {
             int from = 0, to = 0;
-            if (!columnSpan(vl.block, vl.line, columnsOf(vl.plain), b0, l0, c0, b1, l1, c1, &from,
-                            &to))
+            const int columns = text_runs::charCount(vl.plain);
+            if (!columnSpan(vl.block, vl.line, columns, b0, l0, c0, b1, l1, c1, &from, &to))
                 continue;
-            // The line's own ruler, the one it was wrapped with. charWidth() here would
-            // measure whichever face the caller left pushed.
-            const float cw = vl.cw > 0.0f ? vl.cw : 8.0f;
-            dl->AddRectFilled(ImVec2(vl.x0 + static_cast<float>(from) * cw, vl.y0),
-                              ImVec2(vl.x0 + static_cast<float>(to) * cw, vl.y1), hi);
+            // A table has no per-glyph offsets (see columnAtX): mark the whole block
+            // when the selection covers all of it, and draw nothing when it covers
+            // part of it. A band derived from invented offsets would sit on the wrong
+            // glyphs, which is exactly the complaint this change is about.
+            if (vl.tableIndex >= 0) {
+                if (from == 0 && to == columns)
+                    dl->AddRectFilled(ImVec2(vl.x0, vl.y0), ImVec2(vl.x1, vl.y1), hi);
+                continue;
+            }
+            // The SAME per-character offsets the click used: from and to are character
+            // indices, and charX turns them back into the pixels under the glyphs. No
+            // "column x width('M')" any more, so a CJK selection lands on its glyphs.
+            if (vl.charX.size() <= 1) continue;
+            const int last = static_cast<int>(vl.charX.size()) - 1;
+            const float x0 = vl.charX[std::max(0, std::min(from, last))];
+            const float x1 = vl.charX[std::max(0, std::min(to, last))];
+            if (x1 <= x0) continue;
+            dl->AddRectFilled(ImVec2(vl.x0 + x0, vl.y0), ImVec2(vl.x0 + x1, vl.y1), hi);
         }
         if (clipped) dl->PopClipRect();
     }
-
-    frameLines_.clear(); // hit boxes are per frame
 }
 
 std::string TextSurface::selectedText() const {
     if (!sel_.active || sel_.empty()) return std::string();
-    int b0, l0, c0, b1, l1, c1;
-    sel_.ordered(&b0, &l0, &c0, &b1, &l1, &c1);
-    std::string out;
-    // frameLines_ is cleared at the end of handleInput, so walk the cache instead.
-    for (const auto& entry : cache_) {
-        for (const auto& vl : entry.second.lines) {
-            int from = 0, to = 0;
-            if (!columnSpan(vl.block, vl.line, columnsOf(vl.plain), b0, l0, c0, b1, l1, c1, &from,
-                            &to))
-                continue;
-            if (!out.empty()) out += '\n';
-            out += textInLine(vl, from, to);
-        }
+    // Copy from the SAME lines the highlight and the click used (lines_), so the two
+    // cannot disagree. `soft` lines are a wrapped paragraph: joined without a
+    // newline, or a wrapped Chinese sentence would be pasted as broken lines.
+    std::vector<text_runs::Line> lines;
+    lines.reserve(lines_.size());
+    for (const auto& vl : lines_) {
+        text_runs::Line ln;
+        ln.block = vl.block;
+        ln.line = vl.line;
+        ln.text = vl.plain;
+        ln.charX = vl.charX;
+        ln.soft = vl.soft;
+        lines.push_back(std::move(ln));
+    }
+    return text_runs::extract(lines, sel_);
+}
+
+std::vector<TextSurface::LineInfo> TextSurface::laidOutLines() const {
+    std::vector<LineInfo> out;
+    out.reserve(lines_.size());
+    for (const auto& vl : lines_) {
+        LineInfo li;
+        li.block = vl.block;
+        li.line = vl.line;
+        li.x0 = vl.x0;
+        li.y0 = vl.y0;
+        li.x1 = vl.x1;
+        li.y1 = vl.y1;
+        li.soft = vl.soft;
+        li.text = vl.plain;
+        li.charX = vl.charX;
+        out.push_back(std::move(li));
     }
     return out;
 }
-
 } // namespace studio

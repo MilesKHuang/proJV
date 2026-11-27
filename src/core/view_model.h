@@ -51,6 +51,12 @@ std::string lastNarrationLine(const std::string& status);
 // value, only the field a front-end must resolve through the active theme.
 std::string fieldName(const std::string ThemeColors::*field);
 
+// The one sentence a front-end shows when it refuses an action because a turn is
+// running (new chat, switching session or model, a role switch, an MCP toggle, a
+// config save). It lives here for the same reason a label does: the reader must not
+// get different words from the terminal and from the window.
+const char* busyRefusal();
+
 // ---- chat area -----------------------------------------------------------
 
 // One bordered block of the chat area. `kind` picks the layout, the rest are

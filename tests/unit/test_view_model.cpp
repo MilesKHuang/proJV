@@ -278,6 +278,17 @@ TEST_CASE("view_model: lastNarrationLine keeps the newest line") {
     CHECK(lastNarrationLine("") == "");
 }
 
+TEST_CASE("view_model: the busy refusal is one sentence, shared by both front-ends") {
+    // The TUI's key map, its MCP panel and the studio's status line all print this
+    // string; a second copy is how the terminal and the window start disagreeing.
+    REQUIRE(busyRefusal() != nullptr);
+    const std::string sentence = busyRefusal();
+    CHECK(!sentence.empty());
+    CHECK(sentence.find("busy") != std::string::npos);
+    // It names the way out, because the reader is stuck until the turn ends.
+    CHECK(sentence.find("turn") != std::string::npos);
+}
+
 TEST_CASE("view_model: the JSON snapshot is one object and is deterministic") {
     Source src;
     src.version = "1.2.3";

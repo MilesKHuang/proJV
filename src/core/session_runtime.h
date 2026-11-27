@@ -136,6 +136,10 @@ class SessionRuntime {
     void saveApiKeyAndConnect(const std::string& apiKey);
     void saveFullConfig(const AppConfig& next);
     void switchPrompt(int index);
+    // newChat / switchToDialog / setModel change the live session or the model, so
+    // they do nothing while a turn runs: they call cancel() or close the database,
+    // and a third caller must not be able to race the worker. The front-end refuses
+    // first (it has the sentence to show); the guard here is the backstop.
     void newChat();
     void switchToDialog(const std::string& dbPath);
     // Give the session a fixed database file, creating it when it is not there.

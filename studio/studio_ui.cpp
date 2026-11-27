@@ -578,6 +578,9 @@ void drawChat(App& app, const Frame& f) {
         // the chat is: without the rectangle a drag past the last bubble paints over
         // the composer and the dock.
         g_surface.setClip(f.chat.x, f.chat.y, f.chat.x + f.chat.w, f.chat.y + f.chat.h);
+        // Start this frame's line list. drawBlock fills it; handleInput selects over
+        // it, highlights it and copies from it -- one source for all three.
+        g_surface.beginDraw();
         bool rowClick = false;
         int blockSeq = 0;
         for (int i = 0; i < static_cast<int>(s.chat.size()); ++i)
@@ -601,13 +604,14 @@ void drawChat(App& app, const Frame& f) {
             ImGui::PopTextWrapPos();
             ImGui::PopStyleColor();
         }
-        // Mouse selection and Ctrl+C over everything drawn above -- but NOT on the
-        // frame a tool block was opened or closed: the selection hit-tests raw
-        // mouse clicks (studio_text.cpp), so without this one press would both
-        // toggle the row and start selecting a line inside it. While a modal is up it
-        // takes no input either: the dialog owns the keys and the pointer, and the
-        // foreground highlight would otherwise be drawn on top of it.
-        if (!rowClick) g_surface.handleInput(s.modal == "none");
+        // Mouse selection and Ctrl+C over everything drawn above. `acceptClick` is
+        // false on the frame a tool block was opened or closed: the selection
+        // hit-tests raw mouse clicks (studio_text.cpp), so without this one press
+        // would both toggle the row and start selecting a line inside it. While a
+        // modal is up the surface takes no input either: the dialog owns the keys and
+        // the pointer, and the foreground highlight would otherwise be drawn on top of
+        // it.
+        g_surface.handleInput(s.modal == "none", !rowClick);
         if (inset > 0.0f) ImGui::Unindent(inset);
     }
     // Sticky bottom, but only for a reader who is already near it. The old rule

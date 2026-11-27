@@ -385,6 +385,10 @@ set(STUDIO_SOURCES
     # What a text selection covers: the ordering the surface, the highlight and the
     # clipboard share. ImGui-free so the unit tests can pin it (see tests/CMakeLists).
     ${STUDIO_DIR}/design/text_select.cpp
+    # Selection arithmetic on RENDERED lines: character offsets measured by the font
+    # that draws them, so a click, a highlight and a copy agree on a mixed Latin/CJK
+    # line. ImGui-free (it consumes offsets the layout already measured), unit-tested.
+    ${STUDIO_DIR}/design/text_runs.cpp
     ${STUDIO_DIR}/ui/ui.cpp
 )
 set(STUDIO_BACKEND_SOURCES

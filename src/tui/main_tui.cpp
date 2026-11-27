@@ -24,6 +24,7 @@
 #include "platform/log_files.h"
 #include "core/config.h"
 #include "core/events.h"
+#include "core/view_model.h"
 #include "core/help_text.h"
 #include "core/session_runtime.h"
 #include "core/terminal_status.h"
@@ -886,7 +887,14 @@ int main(int argc, char** argv) {
             return true;
         }
         if (e == Event::F3) {
-            app.newChat();
+            // New chat cancels the turn and closes the database, so it waits for the
+            // turn to end. Opening things stays allowed; only the act is refused, and
+            // it says why with the sentence both front-ends share.
+            if (app.isBusy()) {
+                app.queueNotice(view_model::busyRefusal());
+            } else {
+                app.newChat();
+            }
             return true;
         }
         // F4 opens an old session, F5 opens MCP. The keys swapped, the variable
@@ -930,6 +938,8 @@ int main(int argc, char** argv) {
             if (!app.isBusy()) {
                 int n = static_cast<int>(app.promptFiles().size());
                 if (n > 0) app.switchPrompt((app.activePromptIndex() + 1) % n);
+            } else {
+                app.queueNotice(view_model::busyRefusal());
             }
             return true;
         }
@@ -1191,11 +1201,14 @@ int main(int argc, char** argv) {
         config_view::makeApprovalDialog(app, [&] { show_approval = false; });
     Component mcp_dialog = mcp_view::makeMcpDialog(app, [&] { show_mcp = false; });
 
-    // F4: session picker (sessions live in a fixed directory).
+    // F4: session picker (sessions live in a fixed directory). Opening the list is
+    // read-only, so it is allowed while busy; only the ACTUAL switch is refused.
     MenuOption open_opt;
     open_opt.on_enter = [&] {
-        if (*session_selected >= 0 && *session_selected < (int)session_paths->size() &&
-            !(*session_paths)[*session_selected].empty()) {
+        if (app.isBusy()) {
+            app.queueNotice(view_model::busyRefusal());
+        } else if (*session_selected >= 0 && *session_selected < (int)session_paths->size() &&
+                   !(*session_paths)[*session_selected].empty()) {
             app.switchToDialog((*session_paths)[*session_selected]);
         }
         show_open = false;
@@ -1223,8 +1236,13 @@ int main(int argc, char** argv) {
     // F10: model picker (state + refresh lambda defined above).
     MenuOption model_opt;
     model_opt.on_enter = [&, model_names, model_selected] {
-        if (*model_selected >= 0 && *model_selected < static_cast<int>(model_names->size()) &&
-            (*model_names)[*model_selected] != "(loading models...)") {
+        // Opening the list is read-only; swapping the model under a live turn is not,
+        // so only the apply is refused.
+        if (app.isBusy()) {
+            app.queueNotice(view_model::busyRefusal());
+        } else if (*model_selected >= 0 &&
+                   *model_selected < static_cast<int>(model_names->size()) &&
+                   (*model_names)[*model_selected] != "(loading models...)") {
             app.setModel((*model_names)[*model_selected]);
         }
         show_model = false;

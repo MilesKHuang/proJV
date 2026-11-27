@@ -786,6 +786,13 @@ void App::openConfigModal() {
 
 void App::saveConfigFromForm() {
     if (!runtime_) return;
+    // Saving rewrites config and the tool table under the worker, so it waits for the
+    // turn to end. Unlike the TUI dialog, this closes anyway -- the form is still on
+    // screen behind it and can be reopened when the turn ends.
+    if (busy()) {
+        setReceipt(view_model::busyRefusal());
+        return;
+    }
     AppConfig next = form_.cfg;
     // Clamp exactly where config.cpp clamps on load: the file and the UI must
     // never disagree about what a legal value is.
@@ -924,6 +931,13 @@ void App::listMove(int delta) {
 
 void App::listActivate() {
     if (modal_ == "open") {
+        // Opening a session cancels the turn and closes the database: browse the list,
+        // but refuse the switch while busy.
+        if (busy()) {
+            setReceipt(view_model::busyRefusal());
+            closeModal();
+            return;
+        }
         const auto paths = runtime_ ? runtime_->listSessions() : std::vector<std::string>{};
         if (listSelected_ >= 0 && listSelected_ < static_cast<int>(paths.size()))
             switchToDialog(paths[static_cast<size_t>(listSelected_)]);
@@ -931,6 +945,11 @@ void App::listActivate() {
         return;
     }
     if (modal_ == "model") {
+        if (busy()) {
+            setReceipt(view_model::busyRefusal());
+            closeModal();
+            return;
+        }
         if (listSelected_ >= 0 && listSelected_ < static_cast<int>(modelRows_.size()) &&
             modelRows_[static_cast<size_t>(listSelected_)] != "(loading models...)")
             setModel(modelRows_[static_cast<size_t>(listSelected_)]);
@@ -1017,7 +1036,11 @@ void App::newChat() {
 }
 
 void App::switchPromptNext() {
-    if (!runtime_ || busy()) return;
+    if (!runtime_) return;
+    if (busy()) {
+        setReceipt(view_model::busyRefusal());
+        return;
+    }
     const int n = static_cast<int>(runtime_->promptFiles().size());
     if (n > 0) runtime_->switchPrompt((runtime_->activePromptIndex() + 1) % n);
 }
@@ -1049,7 +1072,11 @@ void App::setMcpEnabled(const std::string& name, bool on) {
 }
 
 void App::restartMcp(const std::string& name) {
-    if (!runtime_ || busy()) return;
+    if (!runtime_) return;
+    if (busy()) {
+        setReceipt(view_model::busyRefusal());
+        return;
+    }
     if (mcp::Manager* m = runtime_->mcpManager()) m->restart(name);
 }
 
@@ -1081,7 +1108,9 @@ bool App::followEnabled() const {
 }
 
 void App::refuseIfBusy(std::string* why) const {
-    if (busy() && why) *why = "refused: a turn is running";
+    // The shared sentence, not a second wording: a reader who sees a refusal in the
+    // terminal and one in the window must not think they are different conditions.
+    if (busy() && why) *why = view_model::busyRefusal();
 }
 
 // ---- the key map (docs/*/user-guide/08-reference.md, key for key) --------
@@ -1129,6 +1158,13 @@ bool App::handleKey(GKey key) {
         openConfigModal();
         return true;
     case GKey::F3:
+        // New chat cancels the turn and closes the database, so it waits for the turn
+        // to end. This is the ONE guard point -- the header button calls handleKey too
+        // (studio_ui.cpp), so the button and the key cannot disagree.
+        if (busy()) {
+            setReceipt(view_model::busyRefusal());
+            return true;
+        }
         newChat();
         return true;
     case GKey::F4:

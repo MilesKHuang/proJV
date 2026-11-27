@@ -72,6 +72,13 @@ class TuiApp {
     void toggleReasoning();
     bool reasoningExpanded() const { return reasoningExpanded_; }
 
+    // Say why an action was refused (a busy F3, a busy config save): one system
+    // line, queued through the same mutex-guarded notice list the turn thread uses
+    // and painted on the next frame. Going through that list, instead of writing
+    // chatHistory from here, keeps the one-writer rule this class is built on
+    // (see noticeMutex_) even if a caller ever runs off the UI thread.
+    void queueNotice(const std::string& text);
+
     void emergencyShutdown();
 
     // Keyboard scroll for the chat area (row-granular, real rendered rows).

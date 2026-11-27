@@ -1,6 +1,8 @@
 // proJV TUI -- F5 MCP server panel implementation.
 #include "mcp_view.h"
 
+#include "core/view_model.h"
+
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -111,7 +113,7 @@ Component makeMcpDialog(TuiApp& app, std::function<void()> onClose) {
         }
         els.push_back(separator());
         if (app.isBusy())
-            els.push_back(text("busy -- finish the current turn first") | dim);
+            els.push_back(text(view_model::busyRefusal()) | dim);
         else
             els.push_back(text("Enter toggle · R restart · Esc close") | dim);
         els.push_back(hbox({restartBtn->Render(), text("  "), closeBtn->Render()}));

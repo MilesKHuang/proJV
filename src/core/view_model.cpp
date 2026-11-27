@@ -157,6 +157,12 @@ std::string fieldName(const std::string ThemeColors::*field) {
     return std::string();
 }
 
+const char* busyRefusal() {
+    // Wording is deliberately a statement of fact, not an apology: the key DID
+    // something (it said why), and the turn is the thing in the way.
+    return "busy -- finish the current turn first";
+}
+
 std::vector<TodoRow> todoRows(const std::string& pendingTodo) {
     std::vector<TodoRow> rows;
     if (pendingTodo.empty()) return rows;
