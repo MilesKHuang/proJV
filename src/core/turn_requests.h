@@ -1,9 +1,13 @@
 // proJV -- follow-up turn requests raised by a tool.
 //
-// Three tools end the model's turn and ask the runtime for a turn of their own:
+// Two tools end the model's turn and ask the runtime for a turn of their own:
 //   run_skill    -> a skill phase, then a nudge turn so the model can report it;
-//   view_image   -> a synthetic user message carrying the images, then a turn;
-//   exec_shell(background:true) -> a report once the detached task finishes.
+//   view_image   -> a synthetic user message carrying the images, then a turn.
+//
+// A background task is deliberately NOT one of them. It can finish long after the
+// turn that started it has ended, so there is no turn to queue a request in; it
+// reports through TaskRegistry's finish hook instead (core/task_registry.h) and the
+// runtime either injects it at a round boundary or wakes a turn of its own.
 //
 // It used to be a single slot: the second request of a tool round was silently
 // dropped, and every caller had to explain the refusal to the model. A queue costs
@@ -15,7 +19,7 @@
 
 namespace turn_requests {
 
-enum class Kind { None, Skill, Image, Process };
+enum class Kind { None, Skill, Image };
 
 struct State {
     std::deque<Kind> pending;

@@ -141,8 +141,15 @@ the code disagree, the code wins.
   child once the OS buffer fills. One monitor thread per registry (not per task),
   joined in `shutdown()`; Windows adds a Job Object with `KILL_ON_JOB_CLOSE` so a
   proJV crash takes the children with it. `exec_shell(background:true)` starts one,
-  `task_output` reads it, `/end_task` kills it, and the turn loop reports finished
-  ids through `turn_requests` (`Kind::Process`).
+  `task_output` reads it, `/end_task` kills it.
+- **A finished task reports itself.** The monitor thread calls the registry's finish
+  hook (`setOnFinished`), the runtime files the id in one slot, and whoever is awake
+  drains the slot: a running turn at its round boundary, an idle session by starting
+  a turn of its own (`SessionRuntime::wakeForFinishedTasks()`, called per frame next
+  to `drainPendingQueue`). A batch leaves as ONE message, so three tasks ending
+  together cost one model call, not three. A kill counts as a finish -- otherwise the
+  model waits forever on an id that will never speak again. The report text is
+  `bg_task::finishedReportText`, pure and unit-tested.
 ## 7. Skill engine
 
 - **Responsibility.** Run a JSON-described multi-agent program: fixed agents,

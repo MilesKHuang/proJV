@@ -77,6 +77,25 @@ const char* stateLabel(State s) {
     return "?";
 }
 
+std::string finishedReportText(const std::vector<int>& ids, const std::vector<Snapshot>& snaps) {
+    std::string msg = "[background] ";
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (i) msg += "\n[background] ";
+        // Linear on purpose: a session starts a handful of tasks, and a map here
+        // would be a second place to keep the ids consistent with.
+        const Snapshot* snap = nullptr;
+        for (const auto& cand : snaps)
+            if (cand.id == ids[i]) snap = &cand;
+        msg += "bg#" + std::to_string(ids[i]);
+        if (snap)
+            msg += " " + std::string(stateLabel(snap->state)) + " (exit " +
+                   std::to_string(snap->exitCode) + "), " + std::to_string(snap->outputBytes) +
+                   " bytes: " + snap->command;
+        msg += "\nRead it with task_output(" + std::to_string(ids[i]) + ").";
+    }
+    return msg;
+}
+
 } // namespace bg_task
 
 namespace {
@@ -238,6 +257,8 @@ int TaskRegistry::start(const std::string& command, const std::string& workDir,
 
 bool TaskRegistry::end(int id, std::string& error) {
     std::shared_ptr<Task> t;
+    bool notify = false;
+    std::function<void(int)> cb;
     {
         std::lock_guard<std::mutex> lk(mutex_);
         t = find(id);
@@ -252,6 +273,14 @@ bool TaskRegistry::end(int id, std::string& error) {
         }
         t->killedByUser = true;
         t->state = bg_task::State::Killed;
+        // A kill is a finish. Without this line the model is never told that the
+        // id it is waiting on is dead, and shutdown() (stopping_ already set) stays
+        // silent instead of reporting the tasks it is cleaning up.
+        if (!stopping_.load(std::memory_order_acquire)) {
+            finished_.push_back(id);
+            notify = true;
+        }
+        cb = onFinished_;
     }
 #ifdef _WIN32
     if (t->job)
@@ -264,6 +293,7 @@ bool TaskRegistry::end(int id, std::string& error) {
         killpg(t->pid, SIGKILL);
     }
 #endif
+    if (notify && cb) cb(id);
     return true;
 }
 
@@ -342,10 +372,18 @@ std::vector<int> TaskRegistry::takeFinished() {
     return out;
 }
 
+void TaskRegistry::setOnFinished(std::function<void(int)> cb) {
+    std::lock_guard<std::mutex> lk(mutex_);
+    onFinished_ = std::move(cb);
+}
+
 void TaskRegistry::reaper() {
     while (!stopping_.load(std::memory_order_acquire)) {
+        std::vector<int> done;
+        std::function<void(int)> cb;
         {
             std::lock_guard<std::mutex> lk(mutex_);
+            cb = onFinished_;
             for (const auto& t : tasks_) {
                 if (t->state != bg_task::State::Running) continue;
                 if (nowMs() - t->startedAtMs > bg_task::kBackgroundTimeoutMs) {
@@ -359,6 +397,7 @@ void TaskRegistry::reaper() {
 #endif
                     t->state = bg_task::State::TimedOut;
                     finished_.push_back(t->id);
+                    done.push_back(t->id);
                     continue;
                 }
                 bool exited = false;
@@ -381,9 +420,15 @@ void TaskRegistry::reaper() {
                     t->exitCode = code;
                     t->state = (code == 0) ? bg_task::State::Done : bg_task::State::Failed;
                     finished_.push_back(t->id);
+                    done.push_back(t->id);
                 }
             }
         }
+        // Outside the lock: the hook is allowed to call takeFinished()/snapshots(),
+        // and calling it here under the mutex would deadlock the very owner it
+        // wakes. One call per id, in the order they were reaped.
+        for (int id : done)
+            if (cb) cb(id);
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
 }
@@ -391,6 +436,9 @@ void TaskRegistry::reaper() {
 void TaskRegistry::shutdown() {
     if (stopping_.exchange(true, std::memory_order_acq_rel)) return;
     if (reaper_.joinable()) reaper_.join();
+    // The hook captured a pointer to its owner, and shutdown() is the last call
+    // that owner makes: no callback may run after this returns.
+    setOnFinished(nullptr);
     endAll();
     std::lock_guard<std::mutex> lk(mutex_);
     for (const auto& t : tasks_) {

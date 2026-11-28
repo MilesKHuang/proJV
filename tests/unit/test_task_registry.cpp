@@ -10,8 +10,10 @@
 #include "core/task_registry.h"
 
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -24,6 +26,30 @@ bool waitFinished(TaskRegistry& reg, int id, int timeoutMs) {
     }
     return false;
 }
+
+// What the finish hook saw. The hook runs on the registry's monitor thread or on
+// the caller of end(), so this is the one piece of shared state a test guards.
+struct HookSink {
+    std::mutex mutex;
+    std::vector<int> ids;
+
+    bool waitFor(int id, int timeoutMs) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        while (std::chrono::steady_clock::now() < deadline) {
+            {
+                std::lock_guard<std::mutex> lk(mutex);
+                for (int seen : ids)
+                    if (seen == id) return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        return false;
+    }
+    size_t count() {
+        std::lock_guard<std::mutex> lk(mutex);
+        return ids.size();
+    }
+};
 
 } // namespace
 
@@ -111,6 +137,74 @@ TEST_CASE("bg_task: a finished task cannot be killed twice") {
     std::string endErr;
     CHECK_FALSE(reg.end(id, endErr));
     CHECK(endErr.find("already finished") != std::string::npos);
+}
+
+TEST_CASE("bg_task: the report merges several tasks into one block") {
+    std::vector<bg_task::Snapshot> snaps(2);
+    snaps[0].id = 3;
+    snaps[0].state = bg_task::State::Done;
+    snaps[0].exitCode = 0;
+    snaps[0].outputBytes = 12;
+    snaps[0].command = "cmake --build build";
+    snaps[1].id = 5;
+    snaps[1].state = bg_task::State::Failed;
+    snaps[1].exitCode = 2;
+    snaps[1].outputBytes = 40;
+    snaps[1].command = "ctest";
+
+    const std::string text = bg_task::finishedReportText({3, 5}, snaps);
+    // One block, one entry per task, in the order given: that is what keeps an idle
+    // wake at a single model call even when three tasks end together.
+    CHECK(text.rfind("[background] bg#3 done (exit 0), 12 bytes: cmake --build build", 0) == 0);
+    CHECK(text.find("[background] bg#5 failed (exit 2), 40 bytes: ctest") != std::string::npos);
+    CHECK(text.find("Read it with task_output(3).") != std::string::npos);
+    CHECK(text.find("Read it with task_output(5).") != std::string::npos);
+    CHECK(text.find("\n\n") == std::string::npos); // no blank line between entries
+
+    // An id with no snapshot still gets its line: dropping it would leave the model
+    // waiting forever for a task it started.
+    const std::string orphan = bg_task::finishedReportText({9}, {});
+    CHECK(orphan.find("bg#9") != std::string::npos);
+    CHECK(orphan.find("task_output(9)") != std::string::npos);
+}
+
+TEST_CASE("bg_task: the finish hook fires once for a child that exits") {
+    TaskRegistry reg;
+    HookSink sink;
+    reg.setOnFinished([&sink](int id) {
+        std::lock_guard<std::mutex> lk(sink.mutex);
+        sink.ids.push_back(id);
+    });
+    std::string err;
+    const int id = reg.start("echo projv-hook-probe", "", err);
+    REQUIRE_MESSAGE(id > 0, err);
+    CHECK(sink.waitFor(id, 15000));
+    CHECK(sink.count() == 1); // one call per task, never one per poll
+}
+
+TEST_CASE("bg_task: a task stopped by end() reports as finished") {
+    TaskRegistry reg;
+    HookSink sink;
+    reg.setOnFinished([&sink](int id) {
+        std::lock_guard<std::mutex> lk(sink.mutex);
+        sink.ids.push_back(id);
+    });
+    std::string err;
+#ifdef _WIN32
+    const int id = reg.start("ping -n 20 127.0.0.1", "", err);
+#else
+    const int id = reg.start("sleep 20", "", err);
+#endif
+    REQUIRE_MESSAGE(id > 0, err);
+    std::string endErr;
+    REQUIRE(reg.end(id, endErr));
+    // A kill is a finish. Without this the model waits on an id that will never
+    // report again.
+    CHECK(sink.waitFor(id, 5000));
+    bool listed = false;
+    for (int done : reg.takeFinished())
+        if (done == id) listed = true;
+    CHECK(listed);
 }
 
 TEST_CASE("bg_task: shutdown drops every task") {

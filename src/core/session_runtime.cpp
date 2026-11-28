@@ -249,6 +249,23 @@ bool SessionRuntime::initialize() {
     loadTomlConfig(config_, "");
     client_.setConfig(config_);
     setupTools();
+    // A finished background task files its id here from the registry's monitor
+    // thread. Nothing else happens in this hook: Agent belongs to the turn thread,
+    // and this is not it. The reporting happens at a round boundary, or in a turn
+    // of its own when the session is idle (wakeForFinishedTasks).
+    taskRegistry_.setOnFinished([this](int id) {
+        {
+            std::lock_guard<std::mutex> lk(taskReportMutex_);
+            taskReport_.push_back(id);
+        }
+        // And ask for a frame. FTXUI renders only when something invalidates the
+        // frame (external/FTXUI-7.0.3/src/ftxui/component/app.cpp:993-996), so a
+        // terminal that is sitting idle would never reach the per-frame housekeeping
+        // that reports this id -- the wake would wait for the next keystroke. This
+        // is the repaint callback streaming already uses; a windowed front-end runs
+        // its own 60 fps loop and leaves it unset.
+        if (onStreamingTick) onStreamingTick();
+    });
     skillsDir_ = getProjvDir() + "/skills";
     SkillRunner::ensureDefaultSkills(skillsDir_);
 
@@ -662,10 +679,30 @@ void SessionRuntime::doWork() {
         return;
     }
 
+    bool userTurn = false;
     if (pendingTurn_) {
         PendingTurn t = std::move(*pendingTurn_);
         pendingTurn_.reset();
         agent_->startTurn(t.text, std::move(t.images));
+        userTurn = true;
+    }
+    // A finished background task reports itself even when nothing else is going on:
+    // wakeForFinishedTasks() started this turn for exactly that. Injected AFTER
+    // startTurn() so the report follows the user's own line when both are present.
+    {
+        const std::vector<int> done = takeTaskReport();
+        if (!done.empty()) {
+            reportFinishedTasks(done);
+            // With no user line driving the turn, the System message alone reads as
+            // an FYI and the model answers "noted". The nudge is what turns it into
+            // work: read the output, carry the task on, say what changed.
+            if (!userTurn)
+                agent_->setTurnNudge(
+                    "[background report] A background task you started finished while nothing else "
+                    "was running. Read what it printed with task_output, then carry the work on: "
+                    "what changed, what it means for the user, the next step. Do not start the same "
+                    "work again.");
+        }
     }
     runTurnLoop();
 }
@@ -789,36 +826,13 @@ void SessionRuntime::runTurnLoop() {
 
         // 1b. Background tasks that finished since the last check. This outranks the
         // wish: the model asked to be told, and the output is only useful while the
-        // instruction that started it is still in context.
+        // instruction that started it is still in context. The ids pile up in one
+        // slot (registry hook -> taskReport_), so three tasks that ended together are
+        // one message and one extra round, not three of each.
         {
-            const std::vector<int> done = taskRegistry_.takeFinished();
+            const std::vector<int> done = takeTaskReport();
             if (!done.empty()) {
-                std::string msg = "[background] ";
-                for (size_t i = 0; i < done.size(); ++i) {
-                    if (i) msg += "\n[background] ";
-                    const auto snaps = taskRegistry_.snapshots();
-                    const bg_task::Snapshot* snap = nullptr;
-                    for (const auto& cand : snaps)
-                        if (cand.id == done[i]) snap = &cand;
-                    msg += "bg#" + std::to_string(done[i]);
-                    if (snap)
-                        msg += " " + std::string(bg_task::stateLabel(snap->state)) + " (exit " +
-                               std::to_string(snap->exitCode) + "), " +
-                               std::to_string(snap->outputBytes) + " bytes: " + snap->command;
-                    msg += "\nRead it with task_output(" + std::to_string(done[i]) + ").";
-                    events::Event e(events::Kind::Task, nextSeq());
-                    e.id = "bg#" + std::to_string(done[i]);
-                    if (snap) {
-                        e.activity = bg_task::stateLabel(snap->state);
-                        e.exitCode = snap->exitCode;
-                        e.hasExit = true;
-                        e.bytes = static_cast<int>(snap->outputBytes);
-                        e.cmd = snap->command;
-                    }
-                    emit(e);
-                }
-                notice(msg);
-                agent_->addPersistedMessage(Message::System(msg));
+                reportFinishedTasks(done);
                 continue; // let the model react to the result
             }
         }
@@ -1017,6 +1031,52 @@ void SessionRuntime::drainPendingQueue() {
         pendingQueue_.erase(pendingQueue_.begin());
     }
     if (submit(next)) startAsync();
+}
+
+// ---- finished background tasks -----------------------------------------
+//
+// One slot, two consumers, and only ever one of them awake: a running turn takes
+// the whole batch at its round boundary, an idle session starts a turn for it. The
+// two never race because the idle path refuses to run while busy_.
+
+std::vector<int> SessionRuntime::takeTaskReport() {
+    std::vector<int> out;
+    std::lock_guard<std::mutex> lk(taskReportMutex_);
+    out.swap(taskReport_);
+    return out;
+}
+
+void SessionRuntime::reportFinishedTasks(const std::vector<int>& ids) {
+    if (ids.empty()) return;
+    const auto snaps = taskRegistry_.snapshots();
+    for (int id : ids) {
+        events::Event e(events::Kind::Task, nextSeq());
+        e.id = "bg#" + std::to_string(id);
+        for (const auto& s : snaps) {
+            if (s.id != id) continue;
+            e.activity = bg_task::stateLabel(s.state);
+            e.exitCode = s.exitCode;
+            e.hasExit = true; // exit 0 is meaningful for a process
+            e.bytes = static_cast<int>(s.outputBytes);
+            e.cmd = s.command;
+        }
+        emit(e);
+    }
+    const std::string msg = bg_task::finishedReportText(ids, snaps);
+    notice(msg);
+    if (agent_) agent_->addPersistedMessage(Message::System(msg));
+}
+
+void SessionRuntime::wakeForFinishedTasks() {
+    if (!agent_ || busy_.load()) return; // a running turn reports at its boundary
+    if (pendingCount() > 0) return;      // the user's line goes first -- and carries this
+    {
+        std::lock_guard<std::mutex> lk(taskReportMutex_);
+        if (taskReport_.empty()) return;
+    }
+    // doWork() takes the slot before the first round, so the batch is never lost if
+    // startAsync refuses (busy_ became true in between): it stays for the next turn.
+    startAsync();
 }
 
 void SessionRuntime::approveTool(int action) {

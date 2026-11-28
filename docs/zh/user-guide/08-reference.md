@@ -64,7 +64,7 @@
 | `file_search` | 按文件名找文件 |
 | `list_dir` | 目录树，支持 `depth` 与 `exclude` |
 | `format_file` | clang-format，或纯空白清理兜底 |
-| `exec_shell` | 执行命令（需要审批，最长 30 分钟）。长输出保留**最后** 400 行（`tail_lines` 10-2000，或 `full_output` 最多 200 KB）。`background: true` 会作为 `bg#N` 转到后台 |
+| `exec_shell` | 执行命令（需要审批，最长 30 分钟）。长输出保留**最后** 400 行（`tail_lines` 10-2000，或 `full_output` 最多 200 KB）。`background: true` 会作为 `bg#N` 转到后台；它结束时模型会被告知并自己接着干，窗口空闲也一样 |
 | `web_search` | DeepSeek 搜索 API |
 | `fetch_url` | DeepSeek 抓取 API（返回 Markdown） |
 | `update_todo` | TODO 面板：`init` / `update` / `done` |

@@ -95,6 +95,13 @@ class SessionRuntime {
     // previous turn is over (TuiApp does it from its per-frame sync).
     void drainPendingQueue();
 
+    // Idle housekeeping, called from the same per-frame place as
+    // drainPendingQueue: a background task finished and nothing else is going on,
+    // so start a turn for it -- the model reads the output and carries the work
+    // on. Silent while a turn runs (that turn reports at its own round boundary)
+    // and while a user line is queued (the user's turn carries the report).
+    void wakeForFinishedTasks();
+
     // --- events out -------------------------------------------------------
     std::function<void(const events::Event&)> onEvent;
     // A one-line system message for the chat (a slash-command reply, an error
@@ -185,6 +192,13 @@ class SessionRuntime {
     void notice(const std::string& text);
     int nextSeq() { return ++seq_; }
 
+    // Turn finished ids into the one block the model reads: the events the stream
+    // carries, the chat line, and the System message. Called from the turn thread
+    // only -- either at a round boundary or at the start of a wake turn.
+    void reportFinishedTasks(const std::vector<int>& ids);
+    // The accumulated ids, taken out in one go (the slot maps 1:1 onto a batch).
+    std::vector<int> takeTaskReport();
+
     struct PendingTurn {
         std::string text;
         std::vector<ImageAttachment> images;
@@ -210,6 +224,10 @@ class SessionRuntime {
     Storage storage_;
     Agent* agent_ = nullptr;
     IProcessRunner* procRunner_ = nullptr;
+    // Declared BEFORE taskRegistry_ on purpose: the registry's monitor thread
+    // calls the finish hook, so the slot it writes into must outlive that thread.
+    std::mutex taskReportMutex_;
+    std::vector<int> taskReport_;
     TaskRegistry taskRegistry_;
 
     std::string skillsDir_;

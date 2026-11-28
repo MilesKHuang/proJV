@@ -67,7 +67,7 @@ covers the topic you are typing.
 | `file_search` | Find files by name |
 | `list_dir` | Directory tree with `depth` and `exclude` |
 | `format_file` | clang-format, or a whitespace-only fallback |
-| `exec_shell` | Run a command (approval required, 30 min cap). Long output keeps the **last** 400 lines (`tail_lines` 10-2000, or `full_output` for up to 200 KB). `background: true` detaches it as `bg#N` |
+| `exec_shell` | Run a command (approval required, 30 min cap). Long output keeps the **last** 400 lines (`tail_lines` 10-2000, or `full_output` for up to 200 KB). `background: true` detaches it as `bg#N`; when it ends the model is told and carries the work on by itself, even if the window was idle |
 | `web_search` | DeepSeek Search API |
 | `fetch_url` | DeepSeek Fetch API (returns Markdown) |
 | `update_todo` | TODO panel: `init` / `update` / `done` |

@@ -156,6 +156,10 @@ void TuiApp::syncChatFromAgent() {
 
     // Send any queued message once the previous turn has finished.
     if (runtime_) runtime_->drainPendingQueue();
+    // A background task that ended while the session was idle reports itself: this
+    // starts the turn, the runtime injects the report before the first round. Called
+    // after the drain so a line the user typed always goes first.
+    if (runtime_) runtime_->wakeForFinishedTasks();
 }
 
 status_bar::Data TuiApp::getStatusBarData() const {

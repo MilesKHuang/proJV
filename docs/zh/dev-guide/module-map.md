@@ -101,7 +101,8 @@
 - **测试。** `test_file_tools.cpp`、`test_diff_capture.cpp`、`test_web_api.cpp`。
 
 - **输出整形。** `src/tools/shell_output.{h,cpp}` 是唯一截断命令输出的地方，而且保留**尾部**：编译器和测试框架把结论放在最后。两层都用它——平台 runner 保留 4 MB（内存护栏，丢掉中段），`exec_shell` 保留最后 400 行，`full_output` 时最多 200 KB；切点总是回退到合法 UTF-8 边界。
-- **后台任务。** `src/core/task_registry.{h,cpp}` 起独立子进程，输出直接写进每个任务自己的临时文件——管道没人读会在 OS 缓冲区满时把子进程卡死。每个 registry 一个监视线程（不是每个任务一个），在 `shutdown()` 里 join；Windows 额外用带 `KILL_ON_JOB_CLOSE` 的 Job Object，proJV 崩溃也会带走子进程。`exec_shell(background:true)` 起任务，`task_output` 读输出，`/end_task` 杀任务，回合循环通过 `turn_requests`（`Kind::Process`）报告已完成的 id。
+- **后台任务。** `src/core/task_registry.{h,cpp}` 起独立子进程，输出直接写进每个任务自己的临时文件——管道没人读会在 OS 缓冲区满时把子进程卡死。每个 registry 一个监视线程（不是每个任务一个），在 `shutdown()` 里 join；Windows 额外用带 `KILL_ON_JOB_CLOSE` 的 Job Object，proJV 崩溃也会带走子进程。`exec_shell(background:true)` 起任务，`task_output` 读输出，`/end_task` 杀任务。
+- **结束的任务自己上报。** 监视线程调 registry 的结束回调（`setOnFinished`），运行时把 id 记进一个槽，醒着的一方把槽取空：回合还在跑就在轮次边界取，已经空闲就自己起一轮（`SessionRuntime::wakeForFinishedTasks()`，和 `drainPendingQueue` 一样由前端每帧调用）。攒在一起的 id 是**一条**消息，所以三个任务同时结束只花一次模型调用，不是三次。被杀也算结束——否则模型会一直等着一个再也不会说话的任务。报告文本是 `bg_task::finishedReportText`，纯函数，有单元测试。
 
 ## 7. 技能引擎
 

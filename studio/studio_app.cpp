@@ -1588,7 +1588,12 @@ void App::tick() {
     }
 
     for (auto& pane : panes_) {
-        if (pane->state == Pane::State::Ready) pane->rt->drainPendingQueue();
+        if (pane->state != Pane::State::Ready) continue;
+        // A line the user typed goes first; a background task that ended while the
+        // pane was idle reports itself right after. Both are per-frame housekeeping,
+        // so every pane wakes on its own -- including the ones not on screen.
+        pane->rt->drainPendingQueue();
+        pane->rt->wakeForFinishedTasks();
     }
 
     // One sampler group per pane: its background tasks, its MCP servers and -- when

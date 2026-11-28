@@ -17,6 +17,7 @@
 #pragma once
 #include <atomic>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -54,6 +55,16 @@ std::string latestLine(const std::string& s, size_t maxCols);
 
 const char* stateLabel(State s);
 
+// The block the model reads once a task is over: one "[background] bg#N ..."
+// line plus a task_output hint per id, in the order given. A batch (several tasks
+// ended together) is ONE message with one entry each, never one message per task:
+// that is what makes an idle wake cost a single model call.
+//
+// An id with no snapshot still gets its line. Dropping it would leave the model
+// waiting forever for a task it started, so the report is never allowed to be
+// silent about an id -- and this is pure, so the wording is testable.
+std::string finishedReportText(const std::vector<int>& ids, const std::vector<Snapshot>& snaps);
+
 } // namespace bg_task
 
 class TaskRegistry {
@@ -83,6 +94,12 @@ class TaskRegistry {
     // Ids that finished since the last call, oldest first. The turn loop turns each
     // one into a synthetic message so the model learns about it.
     std::vector<int> takeFinished();
+    // Called by the monitor thread for every task that just finished -- exited,
+    // timed out, or stopped by /end_task (a kill has to report too, or the model
+    // waits forever for an id that will never speak again). Installed once, by the
+    // owner, and run with NO registry lock held: the hook may call takeFinished()
+    // or snapshots(). Keep it short -- it shares the thread that reaps every task.
+    void setOnFinished(std::function<void(int)> cb);
     // Called by the turn loop's owner: shutdown() kills everything, joins the
     // monitor threads, and removes the temp files.
     void shutdown();
@@ -95,6 +112,7 @@ class TaskRegistry {
     mutable std::mutex mutex_;
     std::vector<std::shared_ptr<Task>> tasks_;
     std::vector<int> finished_;
+    std::function<void(int)> onFinished_; // guarded by mutex_; copied out before the call
     std::thread reaper_;
     std::atomic<bool> stopping_{false};
 };
